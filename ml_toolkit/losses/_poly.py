@@ -53,4 +53,9 @@ class PolyLoss:
         clip_eps = 1e-7
         der2 = np.minimum(der2, -clip_eps)
 
+        if weights is not None:
+            w = np.asarray(weights, dtype=np.float64)
+            der1 = der1 * w
+            der2 = der2 * w
+
         return list(zip(der1.tolist(), der2.tolist()))

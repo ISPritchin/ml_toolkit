@@ -101,4 +101,10 @@ class LDAMLoss:
 
         der1 = -(class_w * (p_adj - y))
         der2 = -(class_w * p_adj * (1.0 - p_adj))
+
+        if weights is not None:
+            w = np.asarray(weights, dtype=np.float64)
+            der1 = der1 * w
+            der2 = der2 * w
+
         return list(zip(der1.tolist(), der2.tolist()))

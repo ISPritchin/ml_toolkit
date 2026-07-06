@@ -75,16 +75,27 @@ class AsymmetricLoss:
                 gn = self.gamma_neg
                 log1m = np.log(1.0 - ps_a + eps)
                 focal_w_neg = ps_a ** max(gn - 1, 0)
-                dLdf = (
+                # dLdf здесь уже равно der1 = -dL/df (см. регрессию в тестах) —
+                # предыдущая версия ошибочно негировала его повторно, разворачивая
+                # знак градиента для негативов с p > prob_margin.
+                der1_neg = (
                     -gn * focal_w_neg * log1m
                     + ps_a ** gn / (1.0 - ps_a + eps)
                 ) * pn_a * qn_a
-                d1[active] = -dLdf
+                d1[active] = der1_neg
                 d2[active] = -(ps_a ** gn * pn_a * qn_a)
             der1[neg] = d1
             der2[neg] = d2
 
         der2 = np.minimum(der2, -eps)
+
+        # sample weight из Pool(weight=...) — CatBoost не применяет его сам к
+        # результату кастомного лосса, это обязанность самого лосса.
+        if weights is not None:
+            w = np.asarray(weights, dtype=np.float64)
+            der1 = der1 * w
+            der2 = der2 * w
+
         return list(zip(der1.tolist(), der2.tolist()))
 
     def is_max_optimal(self) -> bool:

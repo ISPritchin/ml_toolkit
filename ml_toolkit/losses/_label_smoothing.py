@@ -38,4 +38,9 @@ class LabelSmoothingLoss:
         der1 = y_s - p
         der2 = -(p * (1.0 - p))
 
+        if weights is not None:
+            w = np.asarray(weights, dtype=np.float64)
+            der1 = der1 * w
+            der2 = der2 * w
+
         return list(zip(der1.tolist(), der2.tolist()))

@@ -158,6 +158,31 @@ class PULearningClassifier(BasePreset):
         self.best_params_ = best_params
         return model
 
+    # ── Оценка c ──────────────────────────────────────────────────────────────
+
+    def _estimate_c(self, raw_c: np.ndarray, y_c: np.ndarray) -> None:
+        """Точечная оценка c = mean(raw score) по c-holdout позитивам, с клипом
+
+        снизу по c_lower_bound. Выделено в отдельный метод, чтобы
+        ElkanNotoHoldoutPU (029) мог переопределить его и добавить bootstrap-CI,
+        не дублируя остальной fit().
+        """
+        pos_mask = y_c == 1
+        if pos_mask.sum() == 0:
+            logger.warning('[PULearning] Нет позитивов в c-holdout — c оставлен = 1.0')
+            self.c_ = 1.0
+        else:
+            self.c_ = float(raw_c[pos_mask].mean())
+
+        if self.c_ < self.c_lower_bound:
+            logger.warning(
+                '[PULearning] c=%.4f < lower_bound=%.4f. '
+                'Возможно, модель недостаточно различает классы. '
+                'Используем c=%.4f.',
+                self.c_, self.c_lower_bound, self.c_lower_bound,
+            )
+            self.c_ = self.c_lower_bound
+
     # ── fit ───────────────────────────────────────────────────────────────────
 
     def fit(
@@ -222,21 +247,7 @@ class PULearningClassifier(BasePreset):
         y_c = y_va[idx_c]
         self.raw_pr_auc_ = float(average_precision_score(y_c, raw_c))
 
-        pos_mask = y_c == 1
-        if pos_mask.sum() == 0:
-            logger.warning('[PULearning] Нет позитивов в c-holdout — c оставлен = 1.0')
-            self.c_ = 1.0
-        else:
-            self.c_ = float(raw_c[pos_mask].mean())
-
-        if self.c_ < self.c_lower_bound:
-            logger.warning(
-                '[PULearning] c=%.4f < lower_bound=%.4f. '
-                'Возможно, модель недостаточно различает классы. '
-                'Используем c=%.4f.',
-                self.c_, self.c_lower_bound, self.c_lower_bound,
-            )
-            self.c_ = self.c_lower_bound
+        self._estimate_c(raw_c, y_c)
 
         corrected_c = np.clip(raw_c / self.c_, 0.0, 1.0)
         self.corrected_pr_auc_ = float(average_precision_score(y_c, corrected_c))
@@ -244,7 +255,7 @@ class PULearningClassifier(BasePreset):
         logger.info(
             '[PULearning] c=%.4f (по %d c-holdout позитивам)  '
             'raw PR-AUC=%.4f  corrected PR-AUC=%.4f (различие — только эффект клипа)',
-            self.c_, int(pos_mask.sum()), self.raw_pr_auc_, self.corrected_pr_auc_,
+            self.c_, int((y_c == 1).sum()), self.raw_pr_auc_, self.corrected_pr_auc_,
         )
 
         self.valid_pred_ = np.clip(raw_va / self.c_, 0.0, 1.0)

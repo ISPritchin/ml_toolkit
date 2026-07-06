@@ -50,4 +50,13 @@ class FocalLoss:
         der1 = -dfl_df
         der2 = -(alpha_t * (1.0 - p_t) ** self.gamma * p * (1.0 - p))
 
+        # Пример-уровневый sample weight из Pool(weight=...) — CatBoost его не
+        # применяет сам, это обязанность лосса (проверено эмпирически: weights
+        # доходит до calc_ders_range as-is). Здесь это чистый множитель поверх
+        # per-row лосса, поэтому домножает der1/der2 без изменения формы.
+        if weights is not None:
+            w = np.asarray(weights, dtype=np.float64)
+            der1 = der1 * w
+            der2 = der2 * w
+
         return list(zip(der1.tolist(), der2.tolist()))

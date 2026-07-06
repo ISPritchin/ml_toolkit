@@ -19,6 +19,21 @@ from ml_toolkit.presets.classification.high_pr_auc.focal_loss import FocalLossCl
 from ml_toolkit.presets.classification.high_pr_auc.tversky_loss import TverskyLossClassifier
 from ml_toolkit.presets.classification.high_pr_auc.poly_loss import PolyLossClassifier
 from ml_toolkit.presets.classification.high_pr_auc.ldam import LDAMClassifier
+from ml_toolkit.presets.classification.high_pr_auc.ghm_loss import GHMLossClassifier
+from ml_toolkit.presets.classification.high_pr_auc.influence_balanced_loss import InfluenceBalancedLossClassifier
+from ml_toolkit.presets.classification.high_pr_auc.dice_loss import DiceLossClassifier
+from ml_toolkit.presets.classification.high_pr_auc.asymmetric_poly_loss import AsymmetricPolyLossClassifier
+from ml_toolkit.presets.classification.high_pr_auc.confident_learning_cleaner import ConfidentLearningCleaner
+from ml_toolkit.presets.classification.high_pr_auc.co_teaching import CoTeachingClassifier
+from ml_toolkit.presets.classification.high_pr_auc.bagging_pu import BaggingPUClassifier
+from ml_toolkit.presets.classification.high_pr_auc.spy_pu import SpyPUClassifier
+from ml_toolkit.presets.classification.high_pr_auc.elkan_noto_holdout_pu import ElkanNotoHoldoutPU
+from ml_toolkit.presets.classification.high_pr_auc.nnpu_loss import NNPUClassifier
+from ml_toolkit.presets.classification.high_pr_auc.heterogeneous_stacking import HeterogeneousStacking
+from ml_toolkit.presets.classification.high_pr_auc.multi_seed_blend import MultiSeedBlend
+from ml_toolkit.presets.classification.high_pr_auc.greedy_ensemble_selection import GreedyForwardEnsembleSelection
+from ml_toolkit.presets.classification.high_pr_auc.drift_robust import DriftRobustClassifier
+from ml_toolkit.presets.classification.high_pr_auc.adversarial_weighting import AdversarialValidationWeighting
 
 __all__ = [
     'BoostedEnsemble',
@@ -42,4 +57,19 @@ __all__ = [
     'TverskyLossClassifier',
     'PolyLossClassifier',
     'LDAMClassifier',
+    'GHMLossClassifier',
+    'InfluenceBalancedLossClassifier',
+    'DiceLossClassifier',
+    'AsymmetricPolyLossClassifier',
+    'ConfidentLearningCleaner',
+    'CoTeachingClassifier',
+    'BaggingPUClassifier',
+    'SpyPUClassifier',
+    'ElkanNotoHoldoutPU',
+    'NNPUClassifier',
+    'HeterogeneousStacking',
+    'MultiSeedBlend',
+    'GreedyForwardEnsembleSelection',
+    'DriftRobustClassifier',
+    'AdversarialValidationWeighting',
 ]
