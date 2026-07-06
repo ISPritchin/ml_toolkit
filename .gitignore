@@ -6,6 +6,11 @@ tests/output/*.parquet
 
 CLAUDE.md
 pack.py
+clean.py
 plan.txt
 tasks/
 **/catboost_info/
+experiments/
+**/.DS_Store
+.claude/
+.claudeignore
