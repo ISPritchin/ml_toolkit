@@ -1,7 +1,7 @@
 [project]
 name = "ml-toolkit"
 version = "0.1.0"
-description = "Переиспользуемые ML-примитивы (feature engineering, модели, отбор признаков, оценка/интерпретация) и конкретные бизнес-пайплайны (tasks/) на их основе"
+description = "Переиспользуемые ML-примитивы: feature engineering, модели, отбор признаков, оценка/интерпретация"
 requires-python = ">=3.10"
 dependencies = [
     "polars>=1.0",
@@ -20,7 +20,6 @@ dependencies = [
     "imbalanced-learn>=0.12",
     "deap>=1.4.4",
     "openpyxl>=3.1.5",
-    "python-pptx>=1.0.2",
 ]
 
 [dependency-groups]
@@ -35,7 +34,17 @@ dev = [
 ]
 
 [tool.uv]
-package = false
+package = true
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ml_toolkit", "ml_toolkit.*"]
+
+[tool.setuptools.package-data]
+ml_toolkit = ["transformers/presets/*.yaml"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "tasks"]
+testpaths = ["tests"]

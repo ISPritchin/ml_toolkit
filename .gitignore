@@ -3,12 +3,14 @@
 *.pyc
 .pytest_cache/
 tests/output/*.parquet
+dist/
+build/
+*.egg-info/
 
 CLAUDE.md
 pack.py
 clean.py
 plan.txt
-tasks/
 **/catboost_info/
 experiments/
 **/.DS_Store
