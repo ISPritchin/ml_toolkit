@@ -1,0 +1,290 @@
+"""AnomalyBlendClassifier: Isolation Forest + supervised CatBoost blending.
+
+Принципиально другой взгляд: не учить классификатор на всех данных,
+а комбинировать детекцию аномалий с supervised сигналом.
+
+Идея:
+  IsolationForest обучается только на известных позитивах.
+  Чем более «нормальным» по меркам позитивов выглядит пример — тем выше его
+  anomaly_score (высокий score = похож на позитивов).
+
+  Итоговый скор: α * supervised_score + (1-α) * anomaly_score
+  α ищется по val PR-AUC: полный перебор 50 значений [0, 1].
+
+Когда аномальный сигнал помогает:
+  - Позитивы образуют компактный кластер в feature space.
+  - Supervised модель «переобучилась» на видимые негативы и теряет recall.
+  - IsolationForest более устойчив к небольшому числу позитивов,
+    потому что он учится ТОЛЬКО на позитивах (без дисбаланса).
+
+Интерпретация alpha_ после fit:
+  alpha_ ≈ 1.0 → аномальный сигнал почти не нужен (supervised достаточен).
+  alpha_ ≈ 0.5 → оба источника дополняют друг друга.
+  alpha_ ≈ 0.0 → только IsolationForest; supervised модель не информативна.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+from sklearn.metrics import average_precision_score
+
+from ml_toolkit.presets.classification._base import BasePreset
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_CBT_PARAMS: dict[str, Any] = {
+    'iterations': 700,
+    'max_depth': 5,
+    'learning_rate': 0.05,
+    'l2_leaf_reg': 3.0,
+    'subsample': 0.8,
+    'min_data_in_leaf': 10,
+    'early_stopping_rounds': 100,
+    'loss_function': 'Logloss',
+    'eval_metric': 'PRAUC',
+    'random_seed': 42,
+    'verbose': 0,
+}
+
+
+def _minmax_normalize(arr: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    span = hi - lo
+    if span < 1e-12:
+        return np.full_like(arr, 0.5)
+    return np.clip((arr - lo) / span, 0.0, 1.0)
+
+
+class AnomalyBlendClassifier(BasePreset):
+    """Blend Isolation Forest (обученного на позитивах) и CatBoost.
+
+    Parameters
+    ----------
+    n_if_estimators:
+        Число деревьев Isolation Forest. Больше → стабильнее, медленнее.
+    supervised_params:
+        Параметры CatBoost. None → дефолтные.
+    n_alpha_steps:
+        Количество значений alpha при поиске [0, 1]. Дефолт: 51.
+    random_seed:
+        Зерно для IF и CatBoost.
+
+    Атрибуты после fit::
+
+        alpha_          — оптимальное alpha = вес supervised сигнала
+        if_pr_auc_      — val PR-AUC аномального сигнала (α=0)
+        sup_pr_auc_     — val PR-AUC supervised сигнала (α=1)
+        blend_pr_auc_   — val PR-AUC итогового blend
+        alpha_scan_df_  — pd.DataFrame (alpha, pr_auc) для всех точек поиска
+
+    Пример::
+
+        model = AnomalyBlendClassifier(n_if_estimators=200)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        print(f'alpha={model.alpha_:.2f}: sup={model.sup_pr_auc_:.4f}  '
+              f'IF={model.if_pr_auc_:.4f}  blend={model.blend_pr_auc_:.4f}')
+    """
+
+    def __init__(
+        self,
+        n_if_estimators: int = 200,
+        supervised_params: dict[str, Any] | None = None,
+        n_alpha_steps: int = 51,
+        random_seed: int = 42,
+        cat_features: list[str] | None = None,
+        selected_features: list[str] | None = None,
+    ) -> None:
+        super().__init__(params=None, n_optuna_trials=0)
+        self.n_if_estimators = n_if_estimators
+        self.supervised_params = supervised_params
+        self.n_alpha_steps = n_alpha_steps
+        self.random_seed = random_seed
+        self.cat_features = cat_features or []
+        self.selected_features = selected_features or []
+
+        self.alpha_: float = 1.0
+        self.if_pr_auc_: float = 0.0
+        self.sup_pr_auc_: float = 0.0
+        self.blend_pr_auc_: float = 0.0
+        self.alpha_scan_df_: pd.DataFrame | None = None
+
+        self._if_model: IsolationForest | None = None
+        self._sup_model: Any = None
+        self._if_lo: float = 0.0
+        self._if_hi: float = 1.0
+
+    # ── Isolation Forest ──────────────────────────────────────────────────────
+
+    def _fit_isolation_forest(
+        self, X_pos: np.ndarray
+    ) -> IsolationForest:
+        return IsolationForest(
+            n_estimators=self.n_if_estimators,
+            contamination='auto',
+            random_state=self.random_seed,
+        ).fit(X_pos)
+
+    def _if_score(self, X: np.ndarray) -> np.ndarray:
+        # score_samples: более высокий → менее аномальный (= более похож на позитивов IF)
+        raw = self._if_model.score_samples(X)
+        return _minmax_normalize(raw, self._if_lo, self._if_hi)
+
+    # ── Supervised ────────────────────────────────────────────────────────────
+
+    def _fit_catboost(
+        self,
+        X_tr: pd.DataFrame,
+        y_tr: np.ndarray,
+        X_va: pd.DataFrame,
+        y_va: np.ndarray,
+    ) -> Any:
+        from catboost import CatBoostClassifier, Pool
+
+        params = {**(self.supervised_params or _DEFAULT_CBT_PARAMS), 'random_seed': self.random_seed}
+        model = CatBoostClassifier(**params)
+        tr_pool = Pool(X_tr, y_tr, cat_features=self.cat_features_)
+        va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
+        model.fit(tr_pool, eval_set=va_pool, verbose=False)
+        return model
+
+    def _sup_score(self, X: pd.DataFrame) -> np.ndarray:
+        from catboost import Pool
+        pool = Pool(X[self.selected_features_], cat_features=self.cat_features_)
+        return self._sup_model.predict_proba(pool)[:, 1]
+
+    # ── Alpha search ──────────────────────────────────────────────────────────
+
+    def _find_alpha(
+        self, sup_va: np.ndarray, if_va: np.ndarray, y_va: np.ndarray
+    ) -> tuple[float, pd.DataFrame]:
+        alphas = np.linspace(0.0, 1.0, self.n_alpha_steps)
+        scores = np.array([
+            average_precision_score(y_va, a * sup_va + (1 - a) * if_va)
+            for a in alphas
+        ])
+        best_idx = int(np.argmax(scores))
+        scan_df = pd.DataFrame({'alpha': alphas, 'pr_auc': scores})
+        return float(alphas[best_idx]), scan_df
+
+    # ── fit ───────────────────────────────────────────────────────────────────
+
+    def fit(
+        self,
+        X_train: Any,
+        y_train: Any,
+        X_valid: Any,
+        y_valid: Any,
+        selected_features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> 'AnomalyBlendClassifier':
+        X_train, y_train, X_valid, y_valid = self._coerce_inputs(
+            X_train, y_train, X_valid, y_valid
+        )
+        feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
+        self.selected_features_ = feats
+        self.cat_features_ = cat_features or self.cat_features
+
+        y_tr = y_train.values
+        y_va = y_valid.values
+        X_tr_feats = X_train[feats]
+        X_va_feats = X_valid[feats]
+
+        # Числовые признаки для IF (no cats)
+        num_feats = [f for f in feats if f not in self.cat_features_]
+
+        n_pos = int(y_tr.sum())
+        logger.info(
+            '[AnomalyBlend] n_pos_train=%d  n_if_estimators=%d  num_feats_for_IF=%d',
+            n_pos, self.n_if_estimators, len(num_feats),
+        )
+
+        # ── 1. Isolation Forest на train-позитивах ─────────────────────────
+        X_pos_np = X_tr_feats[num_feats].values[y_tr == 1]
+        self._if_model = self._fit_isolation_forest(X_pos_np)
+
+        # Калибруем диапазон нормализации по train (позитивы + негативы)
+        all_if_raw = self._if_model.score_samples(X_tr_feats[num_feats].values)
+        self._if_lo = float(all_if_raw.min())
+        self._if_hi = float(all_if_raw.max())
+
+        if_va = self._if_score(X_va_feats[num_feats].values)
+        self.if_pr_auc_ = float(average_precision_score(y_va, if_va))
+
+        # ── 2. CatBoost supervised ─────────────────────────────────────────
+        self._sup_model = self._fit_catboost(X_tr_feats, y_tr, X_va_feats, y_va)
+        sup_va = self._sup_score(X_valid)
+        self.sup_pr_auc_ = float(average_precision_score(y_va, sup_va))
+
+        logger.info(
+            '[AnomalyBlend] IF PR-AUC=%.4f  supervised PR-AUC=%.4f',
+            self.if_pr_auc_, self.sup_pr_auc_,
+        )
+
+        # ── 3. Поиск оптимального alpha ────────────────────────────────────
+        self.alpha_, self.alpha_scan_df_ = self._find_alpha(sup_va, if_va, y_va)
+        blend_va = self.alpha_ * sup_va + (1 - self.alpha_) * if_va
+        self.blend_pr_auc_ = float(average_precision_score(y_va, blend_va))
+
+        logger.info(
+            '[AnomalyBlend] alpha=%.3f (sup_w=%.3f  if_w=%.3f)  blend PR-AUC=%.4f',
+            self.alpha_, self.alpha_, 1 - self.alpha_, self.blend_pr_auc_,
+        )
+
+        self.valid_pred_ = blend_va
+
+        from catboost import Pool as _Pool
+
+        if_tr = self._if_score(X_tr_feats[num_feats].values)
+        sup_tr = self._sup_model.predict_proba(
+            _Pool(X_tr_feats, y_tr, cat_features=self.cat_features_)
+        )[:, 1]
+        self.train_pred_ = self.alpha_ * sup_tr + (1 - self.alpha_) * if_tr
+
+        self.best_params_ = {
+            'alpha': self.alpha_,
+            'n_if_estimators': self.n_if_estimators,
+            'if_pr_auc': self.if_pr_auc_,
+            'sup_pr_auc': self.sup_pr_auc_,
+        }
+        self._model = True
+        return self
+
+    # ── predict ───────────────────────────────────────────────────────────────
+
+    def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
+        num_feats = [f for f in self.selected_features_ if f not in self.cat_features_]
+        if_s = self._if_score(X[num_feats].values)
+        sup_s = self._sup_score(X)
+        return self.alpha_ * sup_s + (1 - self.alpha_) * if_s
+
+    def plot_alpha_scan(self, ax: Any = None, path: str | None = None) -> None:
+        """График PR-AUC по всем значениям alpha с отмеченным оптимумом."""
+        import matplotlib.pyplot as plt
+
+        if self.alpha_scan_df_ is None:
+            raise RuntimeError('Вызовите .fit() перед plot_alpha_scan()')
+
+        df = self.alpha_scan_df_
+        fig, ax_ = (plt.subplots(figsize=(8, 4)) if ax is None else (ax.get_figure(), ax))
+        ax_.plot(df['alpha'], df['pr_auc'], color='steelblue', lw=1.5)
+        ax_.axvline(self.alpha_, color='red', linestyle='--', lw=1.5,
+                    label=f'optimal α={self.alpha_:.3f}  PR-AUC={self.blend_pr_auc_:.4f}')
+        ax_.axhline(self.sup_pr_auc_, color='gray', linestyle=':', alpha=0.7,
+                    label=f'supervised only={self.sup_pr_auc_:.4f}')
+        ax_.axhline(self.if_pr_auc_, color='orange', linestyle=':', alpha=0.7,
+                    label=f'IF only={self.if_pr_auc_:.4f}')
+        ax_.set_xlabel('alpha (weight of supervised)')
+        ax_.set_ylabel('val PR-AUC')
+        ax_.set_title('AnomalyBlend: alpha search')
+        ax_.legend()
+        plt.tight_layout()
+        if path:
+            fig.savefig(path, dpi=150, bbox_inches='tight')
+        elif ax is None:
+            plt.show()
+        if ax is None:
+            plt.close(fig)

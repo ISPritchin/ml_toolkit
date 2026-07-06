@@ -1,0 +1,247 @@
+"""BoostedEnsemble: ансамбль CatBoost-моделей с разными функциями потерь.
+
+Стратегии усреднения:
+  'mean'     — простое среднее вероятностей.
+  'rank'     — среднее нормализованных рангов (устойчиво к разным масштабам).
+  'weighted' — веса оптимизированы по PR-AUC на val через Optuna (100 триалов).
+  'power'    — generalized mean с alpha, подобранным по val.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import numpy as np
+import pandas as pd
+from sklearn.metrics import average_precision_score
+
+from ml_toolkit.losses import FocalLoss as _FocalLoss
+from ml_toolkit.models._utils import fit_rank_reference, rank_transform
+from ml_toolkit.presets.classification._base import BasePreset
+
+logger = logging.getLogger(__name__)
+
+
+# ─── Стратегии усреднения ────────────────────────────────────────────────────
+
+def _optimize_weights(probas: list[np.ndarray], y_val: np.ndarray, random_seed: int = 42) -> np.ndarray:
+    import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    n = len(probas)
+
+    def objective(trial: optuna.Trial) -> float:
+        raw = np.array([trial.suggest_float(f'w{i}', 0.0, 1.0) for i in range(n)])
+        w = raw / (raw.sum() + 1e-9)
+        blend = sum(wi * pi for wi, pi in zip(w, probas))
+        return float(average_precision_score(y_val, blend))
+
+    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=random_seed))
+    study.optimize(objective, n_trials=100, show_progress_bar=False)
+    raw = np.array([study.best_params[f'w{i}'] for i in range(n)])
+    return raw / (raw.sum() + 1e-9)
+
+
+def _fit_power_alpha(probas: list[np.ndarray], y_val: np.ndarray, random_seed: int = 42) -> float:
+    import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    def objective(trial: optuna.Trial) -> float:
+        alpha = trial.suggest_float('alpha', 0.1, 5.0, log=True)
+        clipped = [np.clip(p, 1e-9, 1.0 - 1e-9) for p in probas]
+        blend = np.mean([p ** alpha for p in clipped], axis=0) ** (1.0 / alpha)
+        return float(average_precision_score(y_val, blend))
+
+    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=random_seed))
+    study.optimize(objective, n_trials=50, show_progress_bar=False)
+    return float(study.best_params['alpha'])
+
+
+def _get_proba(model, pool) -> np.ndarray:
+    """predict_proba с fallback на sigmoid(raw) для кастомных лоссов."""
+    from catboost import CatBoostError
+
+    try:
+        raw = model.predict_proba(pool)
+        if raw.ndim == 2:
+            return raw[:, 1]
+        return 1.0 / (1.0 + np.exp(-raw.astype(np.float64)))
+    except CatBoostError:
+        # Модели с кастомным Python-лоссом не поддерживают predict_proba
+        raw = model.predict(pool, prediction_type='RawFormulaVal')
+        return 1.0 / (1.0 + np.exp(-np.asarray(raw, dtype=np.float64)))
+
+
+# ─── Дефолтные конфиги ──────────────────────────────────────────────────────
+
+def _default_loss_configs():
+    return [
+        {'loss_function': 'Logloss', 'scale_pos_weight': 1.0, 'random_seed': 42},
+        {'loss_function': 'Logloss', 'scale_pos_weight': 4.0, 'random_seed': 123},
+        {'loss_function': _FocalLoss(gamma=1.0, alpha=0.5), 'eval_metric': 'AUC', 'random_seed': 42},
+        {'loss_function': _FocalLoss(gamma=2.5, alpha=0.25), 'eval_metric': 'AUC', 'random_seed': 456},
+    ]
+
+
+DEFAULT_BASE_PARAMS: dict[str, Any] = {
+    'iterations': 700,
+    'max_depth': 5,
+    'learning_rate': 0.05,
+    'l2_leaf_reg': 3.0,
+    'subsample': 0.8,
+    'min_data_in_leaf': 10,
+    'early_stopping_rounds': 100,
+    'eval_metric': 'PRAUC',
+    'verbose': 0,
+}
+
+
+# ─── Класс ──────────────────────────────────────────────────────────────────
+
+class BoostedEnsemble(BasePreset):
+    """Ансамбль CatBoost с разными loss-функциями и умным усреднением.
+
+    Parameters
+    ----------
+    loss_configs:
+        Список словарей; каждый мёрджится с base_params перед обучением модели.
+        По умолчанию — 4 конфига: Logloss×2 + FocalLoss×2.
+    averaging:
+        'mean', 'rank', 'weighted' (Optuna по val), 'power' (alpha по val).
+    base_params:
+        Общие параметры CatBoost (iterations, max_depth и т.д.).
+        Конфиги из loss_configs переопределяют эти параметры.
+    random_seed:
+        Зерно Optuna sampler'а для averaging='weighted'/'power' (подбор весов/alpha
+        блендинга). Отдельные модели ансамбля намеренно используют разные seed'ы
+        (см. loss_configs) — это создаёт разнообразие внутри ансамбля, а не
+        несогласованность.
+
+    Пример::
+
+        model = BoostedEnsemble(averaging='rank')
+        model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
+        proba = model.predict_proba(X_test)
+    """
+
+    def __init__(
+        self,
+        loss_configs: list[dict] | None = None,
+        averaging: str = 'rank',
+        base_params: dict[str, Any] | None = None,
+        random_seed: int = 42,
+        cat_features: list[str] | None = None,
+        selected_features: list[str] | None = None,
+    ):
+        super().__init__(params=None, n_optuna_trials=0)
+        self.loss_configs = loss_configs  # None → ленивый дефолт в fit()
+        self.averaging = averaging
+        self.base_params = base_params or dict(DEFAULT_BASE_PARAMS)
+        self.random_seed = random_seed
+        self.cat_features = cat_features or []
+        self.selected_features = selected_features or []
+
+        self.models_: list = []
+        self._weights: np.ndarray | None = None
+        self._power_alpha: float = 1.0
+        self._rank_refs_: list[np.ndarray] = []
+
+    def fit(
+        self,
+        X_train: Any,
+        y_train: Any,
+        X_valid: Any,
+        y_valid: Any,
+        selected_features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> 'BoostedEnsemble':
+        from catboost import CatBoostClassifier, Pool
+
+        X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
+        feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
+        self.selected_features_ = feats
+        self.cat_features_ = cat_features or self.cat_features
+
+        y_tr = y_train.values
+        y_va = y_valid.values
+
+        va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
+        loss_configs = self.loss_configs or _default_loss_configs()
+
+        tr_probas, va_probas = [], []
+        self.models_ = []
+
+        for i, cfg in enumerate(loss_configs):
+            params = {**self.base_params, **cfg}
+            # CatBoost требует eval_metric при кастомном loss_function
+            if not isinstance(params.get('loss_function', 'Logloss'), str):
+                params.setdefault('eval_metric', 'AUC')
+            logger.info('[BoostedEnsemble] Модель %d/%d  loss_cfg=%s', i + 1, len(loss_configs), cfg)
+
+            tr_pool = Pool(X_train[feats], y_tr, cat_features=self.cat_features_)
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False)
+
+            va_p = _get_proba(m, va_pool)
+            tr_p = _get_proba(m, Pool(X_train[feats], cat_features=self.cat_features_))
+            logger.info('[BoostedEnsemble] Модель %d  val PR-AUC=%.4f', i + 1,
+                        average_precision_score(y_va, va_p))
+
+            self.models_.append(m)
+            va_probas.append(va_p)
+            tr_probas.append(tr_p)
+
+        # Референсы rank-усреднения — train-вероятности каждой модели; predict
+        # использует их же, поэтому скор не зависит от состава батча.
+        self._rank_refs_ = [fit_rank_reference(p) for p in tr_probas]
+
+        self.valid_pred_ = self._blend(va_probas, y_va, fit_blend=True)
+        self.train_pred_ = self._blend(tr_probas, fit_blend=False)
+        self.best_params_ = {'averaging': self.averaging, 'n_models': len(self.models_)}
+        self._model = True  # sentinel for _check_fitted
+
+        logger.info('[BoostedEnsemble] Ансамбль val PR-AUC=%.4f',
+                    average_precision_score(y_va, self.valid_pred_))
+        return self
+
+    def _blend(
+        self,
+        probas: list[np.ndarray],
+        y_val: np.ndarray | None = None,
+        fit_blend: bool = False,
+    ) -> np.ndarray:
+        if self.averaging == 'mean':
+            return np.mean(probas, axis=0)
+
+        if self.averaging == 'rank':
+            return np.mean(
+                [rank_transform(p, ref) for p, ref in zip(probas, self._rank_refs_)],
+                axis=0,
+            )
+
+        if self.averaging == 'weighted':
+            if fit_blend and y_val is not None:
+                self._weights = _optimize_weights(probas, y_val, random_seed=self.random_seed)
+                logger.info('[BoostedEnsemble] Оптимальные веса: %s', np.round(self._weights, 3))
+            w = self._weights if self._weights is not None else np.ones(len(probas)) / len(probas)
+            return sum(wi * pi for wi, pi in zip(w, probas))
+
+        if self.averaging == 'power':
+            if fit_blend and y_val is not None:
+                self._power_alpha = _fit_power_alpha(probas, y_val, random_seed=self.random_seed)
+                logger.info('[BoostedEnsemble] Power alpha=%.3f', self._power_alpha)
+            alpha = self._power_alpha
+            clipped = [np.clip(p, 1e-9, 1.0 - 1e-9) for p in probas]
+            return np.mean([p ** alpha for p in clipped], axis=0) ** (1.0 / alpha)
+
+        raise ValueError(f"Неизвестный averaging={self.averaging!r}. "
+                         "Допустимые: 'mean', 'rank', 'weighted', 'power'.")
+
+    def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
+        from catboost import Pool
+        probas = [
+            _get_proba(m, Pool(X[self.selected_features_], cat_features=self.cat_features_))
+            for m in self.models_
+        ]
+        return self._blend(probas, fit_blend=False)

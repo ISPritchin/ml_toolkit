@@ -1,0 +1,11 @@
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+tests/output/*.parquet
+
+CLAUDE.md
+pack.py
+plan.txt
+tasks/
+**/catboost_info/

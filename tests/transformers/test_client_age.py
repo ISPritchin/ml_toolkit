@@ -1,0 +1,48 @@
+import math
+import pytest
+
+from tests.transformers.conftest import run_transformer, get_feature_output
+
+
+def _run(values, params=None):
+    return run_transformer("client_age", values, params)
+
+
+def _get(arrays, suffixes, suffix):
+    return get_feature_output(arrays, suffixes, suffix)
+
+
+def test_young_client_flag_set():
+    # pos=0,1,2 → flag=1; pos=3 → flag=0
+    arrs, sfxs = _run([10, 20, 30, 40])
+    flag = _get(arrs, sfxs, "new_client_flag")
+    assert flag[0] == pytest.approx(1.0)
+    assert flag[1] == pytest.approx(1.0)
+    assert flag[2] == pytest.approx(1.0)
+    assert flag[3] == pytest.approx(0.0)
+
+
+def test_normalized_age_formula():
+    # months_since_start_norm = pos/(pos+12)
+    arrs, sfxs = _run([10] * 13)
+    norm = _get(arrs, sfxs, "months_since_start_norm")
+    assert norm[0] == pytest.approx(0.0)          # 0/(0+12)=0
+    assert norm[12] == pytest.approx(12 / 24)     # 12/(12+12)=0.5
+
+
+def test_norm_monotone_increases():
+    arrs, sfxs = _run([1] * 24)
+    norm = _get(arrs, sfxs, "months_since_start_norm")
+    assert all(norm[i] <= norm[i + 1] for i in range(len(norm) - 1))
+
+def test_with_mixed_zeros():
+    # Series with alternating zeros and non-zeros (economic domain):
+    # [50, 30, 0, 80, 0, 0, 20, 40, 0, 10, 0, 60, 0, 0, 35]
+    # zeros at idx 2,4,5,8,10,12,13 — two consecutive-zero runs ({4,5} and {12,13})
+    # last 6 values: [10, 0, 60, 0, 0, 35]  (3 zeros, 3 non-zeros)
+    values = [50, 30, 0, 80, 0, 0, 20, 40, 0, 10, 0, 60, 0, 0, 35]
+    arrs, sfxs = _run(values)
+    assert math.isfinite(_get(arrs, sfxs, 'new_client_flag')[-1]), 'new_client_flag must be finite'
+    assert _get(arrs, sfxs, 'new_client_flag')[-1] == pytest.approx(0.0, abs=1e-6)
+    assert math.isfinite(_get(arrs, sfxs, 'months_since_start_norm')[-1]), 'months_since_start_norm must be finite'
+    assert _get(arrs, sfxs, 'months_since_start_norm')[-1] == pytest.approx(0.5384615384615384, rel=1e-4)
