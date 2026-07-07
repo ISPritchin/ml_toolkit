@@ -104,6 +104,13 @@ _CLASS_TO_NAME: dict[str, str] = {
 }
 
 
+_RAW_LIB_CLASS_TO_NAME: dict[str, str] = {
+    'CatBoostClassifier': 'catboost', 'CatBoostRegressor': 'catboost',
+    'LGBMClassifier': 'lightgbm', 'LGBMRegressor': 'lightgbm', 'Booster': 'lightgbm',
+    'XGBClassifier': 'xgboost', 'XGBRegressor': 'xgboost',
+}
+
+
 def _detect_name(model: BaseModel) -> str:
     cls_name = type(model).__name__
     name = _CLASS_TO_NAME.get(cls_name, 'unknown')
@@ -114,6 +121,14 @@ def _detect_name(model: BaseModel) -> str:
     if cls_name in ('InterpretableTreeRegressor', 'InterpretableTreeClassifier'):
         inner = type(getattr(model, '_model', None)).__name__
         name = 'locally_linear_forest' if ('Locally' in inner or 'Linear' in inner) else 'soft_decision_tree'
+
+    if name == 'unknown':
+        # Пресеты из ml_toolkit.presets (HardNegativeMiner, SnapshotEnsembleClassifier,
+        # ...) не зарегистрированы по имени класса-обёртки, но для одномодельных
+        # пресетов self._model — настоящий catboost/lightgbm/xgboost объект;
+        # определяем тип по нему, а не по имени обёртки.
+        inner_cls = type(getattr(model, '_model', None)).__name__
+        name = _RAW_LIB_CLASS_TO_NAME.get(inner_cls, 'unknown')
 
     return name
 

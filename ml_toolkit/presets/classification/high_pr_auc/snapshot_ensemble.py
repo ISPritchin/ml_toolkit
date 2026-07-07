@@ -18,6 +18,7 @@ seed'ы / подпространства признаков, см. FeatureBaggin
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -60,8 +61,20 @@ class SnapshotEnsembleClassifier(BasePreset):
     n_optuna_trials:
         Если > 0, параметры CatBoost подбираются через Optuna (по val PR-AUC,
         с MedianPruner) вместо base_params/дефолтных.
+    param_space:
+        Кастомная функция `f(trial) -> dict` — search space для Optuna вместо
+        дефолтного (iterations/max_depth/learning_rate/l2_leaf_reg/subsample/
+        min_data_in_leaf). Может как включать только часть тюнящихся параметров
+        (недостающие из loss_function/eval_metric/early_stopping_rounds/
+        random_seed/verbose подставляются дефолтами), так и переопределять
+        любой из них, включая loss_function/eval_metric — то, что вернула
+        param_space, имеет приоритет над дефолтами. Действует только при
+        n_optuna_trials > 0. None → дефолтный search space.
     optuna_timeout:
         Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     calibrate:
         Применять ли изотоническую калибровку к итоговым (усреднённым по
         снэпшотам) вероятностям.
@@ -86,7 +99,9 @@ class SnapshotEnsembleClassifier(BasePreset):
         snapshot_fracs: list[float] | None = None,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         calibrate: bool = True,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
@@ -100,7 +115,9 @@ class SnapshotEnsembleClassifier(BasePreset):
         super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         self.snapshot_fracs = fracs
         self.base_params = base_params
+        self.param_space = param_space
         self.optuna_timeout = optuna_timeout
+        self.optuna_verbose = optuna_verbose
         self.calibrate = calibrate
         self.random_seed = random_seed
         self.cat_features = cat_features or []
@@ -116,23 +133,31 @@ class SnapshotEnsembleClassifier(BasePreset):
         import optuna
         from catboost import CatBoostClassifier
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-        def objective(trial: optuna.Trial) -> float:
-            params = {
+        def _default_space(trial: optuna.Trial) -> dict[str, Any]:
+            return {
                 'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
                 'max_depth': trial.suggest_int('max_depth', 3, 7),
                 'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
                 'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
                 'subsample': trial.suggest_float('subsample', 0.5, 1.0),
                 'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+            }
+
+        def objective(trial: optuna.Trial) -> float:
+            tunable = self.param_space(trial) if self.param_space is not None else _default_space(trial)
+            params = {
                 'loss_function': 'Logloss',
                 'eval_metric': 'PRAUC',
                 'early_stopping_rounds': 100,
                 'random_seed': self.random_seed,
                 'verbose': 0,
+                **tunable,
             }
-            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            trial.set_user_attr('cb_params', params)
+            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
             m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -145,11 +170,7 @@ class SnapshotEnsembleClassifier(BasePreset):
                                     pruner=make_pruner())
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        return {
-            **study.best_params,
-            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
-            'early_stopping_rounds': 100, 'random_seed': self.random_seed, 'verbose': 0,
-        }
+        return dict(study.best_trial.user_attrs['cb_params'])
 
     def fit(
         self,

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -72,8 +73,20 @@ class EasyEnsembleClassifier(BasePreset):
         Если > 0, общая архитектура (одна на всех estimator'ов) подбирается через
         Optuna по val PR-AUC на одном представительном под-бэге (undersampled как
         и остальные estimator'ы).
+    param_space:
+        Кастомная функция `f(trial) -> dict` — search space для Optuna вместо
+        дефолтного (под выбранный `base`: catboost или lightgbm). Может как
+        включать только часть тюнящихся параметров (недостающие из loss/eval
+        для catboost, random_state/verbose/n_jobs для lightgbm подставляются
+        дефолтами), так и переопределять любой из них, включая loss_function/
+        eval_metric — то, что вернула param_space, имеет приоритет над
+        дефолтами. Действует только при n_optuna_trials > 0. None → дефолтный
+        search space.
     optuna_timeout:
         Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     random_seed:
         Начальное зерно. Каждый estimator получает seed + i. Также сид Optuna sampler'а.
 
@@ -91,7 +104,9 @@ class EasyEnsembleClassifier(BasePreset):
         base: str = 'catboost',
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -103,7 +118,9 @@ class EasyEnsembleClassifier(BasePreset):
         self.neg_ratio = neg_ratio
         self.base = base
         self.base_params = base_params
+        self.param_space = param_space
         self.optuna_timeout = optuna_timeout
+        self.optuna_verbose = optuna_verbose
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -163,25 +180,33 @@ class EasyEnsembleClassifier(BasePreset):
         import optuna
         from catboost import CatBoostClassifier, Pool
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
         tr_pool = Pool(X_sub, y_sub, cat_features=self.cat_features_)
         va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
 
-        def objective(trial: optuna.Trial) -> float:
-            params = {
+        def _default_space(trial: optuna.Trial) -> dict[str, Any]:
+            return {
                 'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
                 'max_depth': trial.suggest_int('max_depth', 3, 7),
                 'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
                 'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
                 'subsample': trial.suggest_float('subsample', 0.5, 1.0),
                 'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+            }
+
+        def objective(trial: optuna.Trial) -> float:
+            tunable = self.param_space(trial) if self.param_space is not None else _default_space(trial)
+            params = {
                 'loss_function': 'Logloss',
                 'eval_metric': 'PRAUC',
                 'early_stopping_rounds': 80,
                 'random_seed': self.random_seed,
                 'verbose': 0,
+                **tunable,
             }
-            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            trial.set_user_attr('cb_params', params)
+            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
             m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -194,20 +219,17 @@ class EasyEnsembleClassifier(BasePreset):
                                     pruner=make_pruner())
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        return {
-            **study.best_params,
-            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
-            'early_stopping_rounds': 80, 'random_seed': self.random_seed, 'verbose': 0,
-        }
+        return dict(study.best_trial.user_attrs['cb_params'])
 
     def _tune_lgb(self, X_sub: pd.DataFrame, y_sub: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
         import optuna
         import lightgbm as lgb
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-        def objective(trial: optuna.Trial) -> float:
-            params = {
+        def _default_space(trial: optuna.Trial) -> dict[str, Any]:
+            return {
                 'n_estimators': trial.suggest_int('n_estimators', 300, 1000, step=100),
                 'max_depth': trial.suggest_int('max_depth', 3, 8),
                 'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
@@ -217,10 +239,12 @@ class EasyEnsembleClassifier(BasePreset):
                 'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
                 'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
                 'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
-                'random_state': self.random_seed,
-                'verbose': -1,
-                'n_jobs': -1,
             }
+
+        def objective(trial: optuna.Trial) -> float:
+            tunable = self.param_space(trial) if self.param_space is not None else _default_space(trial)
+            params = {'random_state': self.random_seed, 'verbose': -1, 'n_jobs': -1, **tunable}
+            trial.set_user_attr('cb_params', params)
             m = lgb.LGBMClassifier(**params)
             m.fit(
                 X_sub, y_sub,
@@ -235,7 +259,7 @@ class EasyEnsembleClassifier(BasePreset):
                                     sampler=optuna.samplers.TPESampler(seed=self.random_seed))
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        return {**study.best_params, 'random_state': self.random_seed, 'verbose': -1, 'n_jobs': -1}
+        return dict(study.best_trial.user_attrs['cb_params'])
 
     # ── fit ───────────────────────────────────────────────────────────────────
 

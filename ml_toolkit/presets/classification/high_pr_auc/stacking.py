@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -87,8 +88,20 @@ class SubsampleStacking(BasePreset):
         _SHARED_PARAMS. per-конфиг diversity-параметры (max_depth,
         learning_rate, scale_pos_weight, random_seed из base_configs) не
         затрагиваются — тюнится только общая для всех конфигов часть.
+    param_space:
+        Кастомная функция `f(trial) -> dict` — search space для общей части
+        архитектуры вместо дефолтного (iterations/l2_leaf_reg/subsample/
+        min_data_in_leaf). Может как включать только часть тюнящихся
+        параметров (недостающие из early_stopping_rounds/loss_function/
+        eval_metric/verbose подставляются дефолтами), так и переопределять
+        любой из них — то, что вернула param_space, имеет приоритет над
+        дефолтами. Действует только при n_optuna_trials > 0. None → дефолтный
+        search space.
     optuna_timeout:
         Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     meta:
         Мета-модель: 'logistic', 'weighted', 'catboost'.
     calibrate:
@@ -119,7 +132,9 @@ class SubsampleStacking(BasePreset):
         n_folds: int = 5,
         base_configs: list[dict] | None = None,
         n_optuna_trials: int = 0,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         meta: str = 'logistic',
         calibrate: bool = True,
         random_seed: int = 42,
@@ -137,7 +152,9 @@ class SubsampleStacking(BasePreset):
         self.subsample_rate = subsample_rate
         self.n_folds = n_folds
         self.base_configs = base_configs
+        self.param_space = param_space
         self.optuna_timeout = optuna_timeout
+        self.optuna_verbose = optuna_verbose
         self.meta = meta
         self.calibrate = calibrate
         self.random_seed = random_seed
@@ -209,24 +226,32 @@ class SubsampleStacking(BasePreset):
         import optuna
         from catboost import CatBoostClassifier, Pool
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
         rng = np.random.default_rng(self.random_seed)
         sub_idx = self._stratified_subsample(np.arange(len(y_tr)), y_tr, rng)
         tr_pool = Pool(X_tr_feats.iloc[sub_idx], y_tr[sub_idx], cat_features=self.cat_features_)
 
-        def objective(trial: optuna.Trial) -> float:
-            params = {
+        def _default_space(trial: optuna.Trial) -> dict[str, Any]:
+            return {
                 'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
                 'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
                 'subsample': trial.suggest_float('subsample', 0.5, 1.0),
                 'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+            }
+
+        def objective(trial: optuna.Trial) -> float:
+            tunable = self.param_space(trial) if self.param_space is not None else _default_space(trial)
+            params = {
                 'early_stopping_rounds': 80,
                 'loss_function': 'Logloss',
                 'eval_metric': 'PRAUC',
                 'random_seed': self.random_seed,
                 'verbose': 0,
+                **tunable,
             }
-            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            trial.set_user_attr('cb_params', params)
+            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
             m.fit(tr_pool, eval_set=va_pool_full, verbose=False, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -240,12 +265,7 @@ class SubsampleStacking(BasePreset):
                                     pruner=make_pruner())
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        best = study.best_params
-        return {
-            'iterations': best['iterations'], 'l2_leaf_reg': best['l2_leaf_reg'],
-            'subsample': best['subsample'], 'min_data_in_leaf': best['min_data_in_leaf'],
-            'early_stopping_rounds': 80, 'loss_function': 'Logloss', 'eval_metric': 'PRAUC', 'verbose': 0,
-        }
+        return dict(study.best_trial.user_attrs['cb_params'])
 
     # ── Вспомогательные ─────────────────────────────────────────────────────
 

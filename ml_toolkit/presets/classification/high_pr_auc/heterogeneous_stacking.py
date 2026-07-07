@@ -20,6 +20,7 @@ xgboost — опциональная тяжёлая зависимость (не
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -76,9 +77,21 @@ class HeterogeneousStacking(BasePreset):
         XGBoost — бустинг-гиперпараметры, LogisticRegression — только C) вместо
         фиксированных _CBT_PARAMS/_LGB_PARAMS/_XGB_PARAMS. Каждый member тюнится
         независимо на полном train, с оценкой по val PR-AUC.
+    param_space:
+        Кастомная функция `f(name, trial) -> dict` — search space для Optuna
+        вместо дефолтного, где `name` — текущий член зоопарка ('catboost',
+        'lightgbm', 'xgboost', 'logistic'); должна сама учитывать семейство
+        алгоритма. Может как включать только часть тюнящихся параметров
+        (недостающие из _MEMBER_FIXED_EXTRAS подставляются дефолтами), так и
+        переопределять любой из них — то, что вернула param_space, имеет
+        приоритет над дефолтами. Действует только при n_optuna_trials > 0.
+        None → дефолтный search space (см. _suggest_member_params).
     optuna_timeout:
         Ограничение по времени (сек) на Optuna-поиск ОДНОГО члена зоопарка
         (суммарное время растёт с числом членов). None — без ограничения.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     calibrate:
         Применять ли изотоническую калибровку к финальным предсказаниям.
     random_seed:
@@ -104,7 +117,9 @@ class HeterogeneousStacking(BasePreset):
         meta: str = 'logistic',
         n_folds: int = 5,
         n_optuna_trials: int = 0,
+        param_space: Callable[[str, Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         calibrate: bool = True,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
@@ -124,7 +139,9 @@ class HeterogeneousStacking(BasePreset):
         self.base_zoo = base_zoo
         self.meta = meta
         self.n_folds = n_folds
+        self.param_space = param_space
         self.optuna_timeout = optuna_timeout
+        self.optuna_verbose = optuna_verbose
         self.calibrate = calibrate
         self.random_seed = random_seed
         self.cat_features = cat_features or []
@@ -219,7 +236,9 @@ class HeterogeneousStacking(BasePreset):
     # ── Optuna (по семейству алгоритмов) ─────────────────────────────────────
 
     def _suggest_member_params(self, name: str, trial: Any) -> dict[str, Any]:
-        if name == 'catboost':
+        if self.param_space is not None:
+            search = self.param_space(name, trial)
+        elif name == 'catboost':
             search = {
                 'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
                 'max_depth': trial.suggest_int('max_depth', 3, 7),
@@ -252,17 +271,19 @@ class HeterogeneousStacking(BasePreset):
             }
         else:  # logistic
             search = {'C': trial.suggest_float('C', 1e-3, 1e2, log=True)}
-        return {**search, **_MEMBER_FIXED_EXTRAS[name]}
+        return {**_MEMBER_FIXED_EXTRAS[name], **search}
 
     def _tune_member(
         self, name: str, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray,
     ) -> dict[str, Any]:
         import optuna
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         def objective(trial: optuna.Trial) -> float:
             params = self._suggest_member_params(name, trial)
+            trial.set_user_attr('cb_params', params)
             m = self._fit_member(name, X_tr, y_tr, self.random_seed, params)
             p = self._predict_member(name, m, X_va)
             return float(average_precision_score(y_va, p))
@@ -272,7 +293,7 @@ class HeterogeneousStacking(BasePreset):
                                     sampler=optuna.samplers.TPESampler(seed=self.random_seed))
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        return {**study.best_params, **_MEMBER_FIXED_EXTRAS[name]}
+        return dict(study.best_trial.user_attrs['cb_params'])
 
     # ── Мета-модели (то же семейство, что в SubsampleStacking) ──────────────
 
