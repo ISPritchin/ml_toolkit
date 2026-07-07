@@ -34,7 +34,11 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._utils import fit_calibrator
 from ml_toolkit.presets.classification._base import BasePreset
-from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
+from ml_toolkit.presets.classification._optuna_utils import (
+    CatBoostPruningCallback,
+    catboost_arch_space,
+    make_pruner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -232,16 +236,13 @@ class SubsampleStacking(BasePreset):
         sub_idx = self._stratified_subsample(np.arange(len(y_tr)), y_tr, rng)
         tr_pool = Pool(X_tr_feats.iloc[sub_idx], y_tr[sub_idx], cat_features=self.cat_features_)
 
-        def _default_space(trial: optuna.Trial) -> dict[str, Any]:
-            return {
-                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
-                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
-                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
-            }
+        _shared_keys = ('iterations', 'l2_leaf_reg', 'subsample', 'min_data_in_leaf')
 
         def objective(trial: optuna.Trial) -> float:
-            tunable = self.param_space(trial) if self.param_space is not None else _default_space(trial)
+            tunable = (
+                self.param_space(trial) if self.param_space is not None
+                else catboost_arch_space(trial, keys=_shared_keys)
+            )
             params = {
                 'early_stopping_rounds': 80,
                 'loss_function': 'Logloss',

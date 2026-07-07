@@ -30,7 +30,11 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.feature_selection.drift_filter import AdversarialDriftFilter, compute_psi
 from ml_toolkit.presets.classification._base import BasePreset
-from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
+from ml_toolkit.presets.classification._optuna_utils import (
+    CatBoostPruningCallback,
+    catboost_arch_space,
+    make_pruner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,18 +136,8 @@ class DriftRobustClassifier(BasePreset):
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-        def _default_space(trial: optuna.Trial) -> dict[str, Any]:
-            return {
-                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
-                'max_depth': trial.suggest_int('max_depth', 3, 7),
-                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
-                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
-                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
-            }
-
         def objective(trial: optuna.Trial) -> float:
-            tunable = self.param_space(trial) if self.param_space is not None else _default_space(trial)
+            tunable = self.param_space(trial) if self.param_space is not None else catboost_arch_space(trial)
             params = {
                 'loss_function': 'Logloss',
                 'eval_metric': 'PRAUC',

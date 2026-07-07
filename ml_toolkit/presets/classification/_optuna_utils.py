@@ -11,9 +11,62 @@ CatBoostPruningCallback ниже реализует тот же протокол
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import optuna
+
+# (kind, (low, high), suggest_kwargs) — единственный источник границ для
+# iterations/max_depth/learning_rate/l2_leaf_reg/subsample/min_data_in_leaf,
+# использованных с идентичными значениями в доброй дюжине ансамблевых
+# пресетов high_pr_auc (было продублировано построчно в каждом).
+_ARCH_BOUNDS: dict[str, tuple[str, tuple[float, float], dict[str, Any]]] = {
+    'iterations': ('int', (300, 1000), {'step': 100}),
+    'max_depth': ('int', (3, 7), {}),
+    'learning_rate': ('float', (0.001, 0.3), {'log': True}),
+    'l2_leaf_reg': ('float', (1e-5, 10.0), {'log': True}),
+    'subsample': ('float', (0.5, 1.0), {}),
+    'min_data_in_leaf': ('int', (1, 30), {}),
+}
+
+
+def catboost_arch_space(
+    trial: optuna.Trial,
+    custom: dict[str, Any] | None = None,
+    keys: Sequence[str] = tuple(_ARCH_BOUNDS),
+) -> dict[str, Any]:
+    """Стандартный Optuna search space для архитектурных гиперпараметров CatBoost.
+
+    `keys` ограничивает тюнящееся подмножество из iterations/max_depth/
+    learning_rate/l2_leaf_reg/subsample/min_data_in_leaf (по умолчанию — все
+    шесть; например, Stacking тюнит только 4 из них — max_depth/learning_rate
+    у него общие для всех уровней стека и не входят в этот search space).
+
+    `custom`, если задан, — результат пользовательского `param_space`:
+    любой ключ из `keys`, присутствующий в `custom`, берётся оттуда как есть
+    (без вызова trial.suggest_*); отсутствующие тюнятся дефолтным способом.
+    Так реализована per-key merge семантика part_space в части пресетов
+    (cascade/hard_negative_mining и т.п.); пресеты с full-override семантикой
+    (param_space целиком заменяет возврат этой функции) вызывают её вовсе
+    без `custom`, только когда param_space is None.
+
+    Границы параметров, отличающихся от этого набора в отдельных пресетах
+    (например, bagging_pu/co_teaching/spy_pu — более дешёвые iterations для
+    многократного бэггинга, pu_learning/precision_at_k — свои learning_rate/
+    min_data_in_leaf), — намеренные варианты и через этот helper не заданы.
+    """
+    custom = custom or {}
+    out: dict[str, Any] = {}
+    for key in keys:
+        if key in custom:
+            out[key] = custom[key]
+            continue
+        kind, bounds, kw = _ARCH_BOUNDS[key]
+        if kind == 'int':
+            out[key] = trial.suggest_int(key, *bounds, **kw)
+        else:
+            out[key] = trial.suggest_float(key, *bounds, **kw)
+    return out
 
 
 def make_pruner(n_warmup_steps: int = 10) -> optuna.pruners.MedianPruner:

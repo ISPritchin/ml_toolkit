@@ -1,0 +1,59 @@
+target-version = "py311"
+line-length = 88
+
+[lint]
+select = ["ALL"]
+ignore = [
+    # Conflicts with ruff formatter — must ignore both or neither
+    "COM812", # missing-trailing-comma
+    "ISC001", # single-line-implicit-string-concatenation
+
+    # Deprecated rules (removed in newer ruff)
+    "ANN101", # missing-type-self
+    "ANN102", # missing-type-cls
+
+    # Docstrings — enable "D" rules when the project is ready for full docs
+    "D100",   # missing-docstring-in-public-module
+    "D101",   # missing-docstring-in-public-class
+    "D102",   # missing-docstring-in-public-method
+    "D103",   # missing-docstring-in-public-function
+    "D104",   # missing-docstring-in-public-package
+    "D105",   # missing-docstring-in-magic-method
+    "D107",   # missing-docstring-in-__init__
+
+    # TODO/FIXME markers — allowed in code, just not left unresolved forever
+    "FIX002", # line-contains-todo
+    "TD002",  # missing-todo-author
+    "TD003",  # missing-todo-link
+]
+
+[lint.per-file-ignores]
+"**/tests/*.py" = [
+    "S101",    # assert — standard in pytest
+    "ANN",     # annotations — relaxed in tests
+    "PLR2004", # magic-value-comparison — expected in assertions
+    "SLF001",  # private-member-access — needed to test internals
+    "ARG001",  # unused-function-argument — fixture args are often unused
+]
+
+[lint.flake8-quotes]
+inline-quotes = 'single'
+multiline-quotes = 'single'
+docstring-quotes = 'double'
+
+[lint.isort]
+force-sort-within-sections = true
+known-first-party = ["ml_toolkit"]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[lint.pylint]
+max-args = 8
+
+[format]
+quote-style = "single"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true

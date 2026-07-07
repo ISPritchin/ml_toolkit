@@ -27,7 +27,11 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, precision_recall_curve, recall_score
 
 from ml_toolkit.presets.classification._base import BasePreset
-from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
+from ml_toolkit.presets.classification._optuna_utils import (
+    CatBoostPruningCallback,
+    catboost_arch_space,
+    make_pruner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,15 +164,7 @@ class TwoStageCascade(BasePreset):
                 return custom[key] if key in custom else suggest()
 
             params = {
-                'iterations': val('iterations', lambda: trial.suggest_int('iterations', 300, 1000, step=100)),
-                'max_depth': val('max_depth', lambda: trial.suggest_int('max_depth', 3, 7)),
-                'learning_rate': val('learning_rate',
-                    lambda: trial.suggest_float('learning_rate', 0.001, 0.3, log=True)),
-                'l2_leaf_reg': val('l2_leaf_reg',
-                    lambda: trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True)),
-                'subsample': val('subsample', lambda: trial.suggest_float('subsample', 0.5, 1.0)),
-                'min_data_in_leaf': val('min_data_in_leaf',
-                    lambda: trial.suggest_int('min_data_in_leaf', 1, 30)),
+                **catboost_arch_space(trial, custom),
                 'scale_pos_weight': val('scale_pos_weight', lambda: (
                     1.0 if is_stage2 else
                     trial.suggest_float('scale_pos_weight', 1.0, 30.0, log=True)
