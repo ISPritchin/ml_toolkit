@@ -26,6 +26,7 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,14 @@ class MultiSeedBlend(BasePreset):
         быстро после ~10 — дисперсия одного сида делится на sqrt(n_seeds)).
     base_params:
         Параметры CatBoost (без random_seed — задаётся автоматически на
-        каждый прогон). None → дефолтные.
+        каждый прогон). None → дефолтные. Игнорируется, если n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, общая архитектура (одна на все n_seeds прогонов) подбирается
+        через Optuna по val PR-AUC до запуска мультисидового цикла.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
-        Базовое зерно; прогон i получает random_seed + i.
+        Базовое зерно; прогон i получает random_seed + i. Также сид Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -73,15 +79,18 @@ class MultiSeedBlend(BasePreset):
         self,
         n_seeds: int = 7,
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         if n_seeds < 2:
             raise ValueError(f'n_seeds должен быть >= 2, получено {n_seeds}')
         self.n_seeds = n_seeds
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -90,6 +99,46 @@ class MultiSeedBlend(BasePreset):
         self.seed_scores_: list[float] = []
         self.blend_score_: float = 0.0
         self._rank_refs_: list[np.ndarray] = []
+
+    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'early_stopping_rounds': 80,
+                'random_seed': self.random_seed,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[MultiSeedBlend] Optuna: %d trials (общая архитектура для всех сидов)',
+                    self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {
+            **study.best_params,
+            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
+            'early_stopping_rounds': 80, 'random_seed': self.random_seed, 'verbose': 0,
+        }
 
     def fit(
         self,
@@ -114,13 +163,20 @@ class MultiSeedBlend(BasePreset):
         X_tr_feats = X_train[feats]
         X_va_feats = X_valid[feats]
 
+        if self.n_optuna_trials > 0:
+            tune_tr_pool = Pool(X_tr_feats, y_tr, cat_features=self.cat_features_)
+            tune_va_pool = Pool(X_va_feats, y_va, cat_features=self.cat_features_)
+            tuned_params = self._tune(tune_tr_pool, tune_va_pool, y_va)
+        else:
+            tuned_params = None
+
         self.models_ = []
         self.seed_scores_ = []
         va_raw_scores: list[np.ndarray] = []
 
         for i in range(self.n_seeds):
             seed = self.random_seed + i
-            params = {**(self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
+            params = {**(tuned_params or self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
             tr_pool = Pool(X_tr_feats, y_tr, cat_features=self.cat_features_)
             va_pool = Pool(X_va_feats, y_va, cat_features=self.cat_features_)
             m = CatBoostClassifier(**params)
@@ -150,7 +206,10 @@ class MultiSeedBlend(BasePreset):
         self.train_pred_ = np.stack(
             [rank_transform(s, ref) for s, ref in zip(tr_raw_scores, self._rank_refs_)], axis=1,
         ).mean(axis=1)
-        self.best_params_ = {'n_seeds': self.n_seeds}
+        self.best_params_ = {
+            'n_seeds': self.n_seeds,
+            'base_params': tuned_params or (self.base_params or _DEFAULT_PARAMS),
+        }
         self._model = True
         return self
 

@@ -22,6 +22,7 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,15 @@ class EasyEnsembleClassifier(BasePreset):
         'lightgbm' (по умолчанию) или 'catboost'.
     base_params:
         Гиперпараметры базовой модели. None → дефолтные для выбранного base.
+        Игнорируется, если n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, общая архитектура (одна на всех estimator'ов) подбирается через
+        Optuna по val PR-AUC на одном представительном под-бэге (undersampled как
+        и остальные estimator'ы).
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
-        Начальное зерно. Каждый estimator получает seed + i.
+        Начальное зерно. Каждый estimator получает seed + i. Также сид Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -82,17 +90,20 @@ class EasyEnsembleClassifier(BasePreset):
         neg_ratio: int = 10,
         base: str = 'catboost',
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         if base not in ('lightgbm', 'catboost'):
             raise ValueError(f"base должен быть 'lightgbm' или 'catboost', получено {base!r}")
         self.n_estimators = n_estimators
         self.neg_ratio = neg_ratio
         self.base = base
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -111,11 +122,12 @@ class EasyEnsembleClassifier(BasePreset):
         X_va: pd.DataFrame,
         y_va: np.ndarray,
         seed: int,
+        params: dict[str, Any] | None = None,
     ) -> Any:
         import lightgbm as lgb
 
-        params = {**(self.base_params or _DEFAULT_LGB_PARAMS), 'random_state': seed}
-        model = lgb.LGBMClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_LGB_PARAMS), 'random_state': seed}
+        model = lgb.LGBMClassifier(**p)
         model.fit(
             X_sub, y_sub,
             eval_set=[(X_va, y_va)],
@@ -130,11 +142,12 @@ class EasyEnsembleClassifier(BasePreset):
         X_va: pd.DataFrame,
         y_va: np.ndarray,
         seed: int,
+        params: dict[str, Any] | None = None,
     ) -> Any:
         from catboost import CatBoostClassifier, Pool
 
-        params = {**(self.base_params or _DEFAULT_CBT_PARAMS), 'random_seed': seed}
-        model = CatBoostClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_CBT_PARAMS), 'random_seed': seed}
+        model = CatBoostClassifier(**p)
         tr_pool = Pool(X_sub, y_sub, cat_features=self.cat_features_)
         va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
@@ -145,6 +158,84 @@ class EasyEnsembleClassifier(BasePreset):
             return model.predict_proba(X)[:, 1]
         from catboost import Pool
         return model.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
+
+    def _tune_cbt(self, X_sub: pd.DataFrame, y_sub: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier, Pool
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        tr_pool = Pool(X_sub, y_sub, cat_features=self.cat_features_)
+        va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'early_stopping_rounds': 80,
+                'random_seed': self.random_seed,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[EasyEnsemble] Optuna (catboost): %d trials', self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {
+            **study.best_params,
+            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
+            'early_stopping_rounds': 80, 'random_seed': self.random_seed, 'verbose': 0,
+        }
+
+    def _tune_lgb(self, X_sub: pd.DataFrame, y_sub: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        import lightgbm as lgb
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'n_estimators': trial.suggest_int('n_estimators', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 8),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'num_leaves': trial.suggest_int('num_leaves', 15, 63),
+                'min_child_samples': trial.suggest_int('min_child_samples', 5, 50),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+                'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
+                'random_state': self.random_seed,
+                'verbose': -1,
+                'n_jobs': -1,
+            }
+            m = lgb.LGBMClassifier(**params)
+            m.fit(
+                X_sub, y_sub,
+                eval_set=[(X_va, y_va)],
+                callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)],
+            )
+            p = m.predict_proba(X_va)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[EasyEnsemble] Optuna (lightgbm): %d trials', self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed))
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {**study.best_params, 'random_state': self.random_seed, 'verbose': -1, 'n_jobs': -1}
 
     # ── fit ───────────────────────────────────────────────────────────────────
 
@@ -179,6 +270,19 @@ class EasyEnsembleClassifier(BasePreset):
             self.n_estimators, self.neg_ratio, n_pos, n_neg_sample, self.base,
         )
 
+        tuned_params = None
+        if self.n_optuna_trials > 0:
+            rng0 = np.random.default_rng(self.random_seed)
+            neg_sample0 = rng0.choice(neg_idx, size=n_neg_sample, replace=False)
+            sample_idx0 = np.concatenate([pos_idx, neg_sample0])
+            rng0.shuffle(sample_idx0)
+            X_sub0 = X_tr_feats.iloc[sample_idx0].reset_index(drop=True)
+            y_sub0 = y_tr[sample_idx0]
+            tuned_params = (
+                self._tune_lgb(X_sub0, y_sub0, X_va_feats, y_va) if self.base == 'lightgbm'
+                else self._tune_cbt(X_sub0, y_sub0, X_va_feats, y_va)
+            )
+
         self.estimators_ = []
         self.estimator_scores_ = []
         va_raw_scores: list[np.ndarray] = []
@@ -194,9 +298,9 @@ class EasyEnsembleClassifier(BasePreset):
 
             seed = self.random_seed + i
             if self.base == 'lightgbm':
-                model = self._fit_one_lgb(X_sub, y_sub, X_va_feats, y_va, seed)
+                model = self._fit_one_lgb(X_sub, y_sub, X_va_feats, y_va, seed, tuned_params)
             else:
-                model = self._fit_one_cbt(X_sub, y_sub, X_va_feats, y_va, seed)
+                model = self._fit_one_cbt(X_sub, y_sub, X_va_feats, y_va, seed, tuned_params)
 
             va_score = self._predict_one(model, X_va_feats)
             ap = float(average_precision_score(y_va, va_score))
@@ -228,6 +332,9 @@ class EasyEnsembleClassifier(BasePreset):
             'n_estimators': self.n_estimators,
             'neg_ratio': self.neg_ratio,
             'base': self.base,
+            'base_params': tuned_params or (self.base_params or (
+                _DEFAULT_LGB_PARAMS if self.base == 'lightgbm' else _DEFAULT_CBT_PARAMS
+            )),
         }
         self._model = True
         return self

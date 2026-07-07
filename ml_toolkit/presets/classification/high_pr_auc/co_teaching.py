@@ -67,9 +67,17 @@ class CoTeachingClassifier(BasePreset):
     n_rounds:
         Число раундов co-teaching (рекомендуется 3-8).
     base_params:
-        Параметры CatBoost для обеих моделей. None → дефолтные.
+        Параметры CatBoost для обеих моделей. None → дефолтные. Игнорируется,
+        если n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, общая архитектура (одна на модели A и B, на всех раундах)
+        подбирается через Optuna: каждый trial обучает пару моделей на полном
+        train (как раунд 0) и оценивается по val PR-AUC ансамбля.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
-        Модель A получает random_seed, модель B — random_seed + 1.
+        Модель A получает random_seed, модель B — random_seed + 1. Также сид
+        Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -88,11 +96,13 @@ class CoTeachingClassifier(BasePreset):
         forget_rate: float = 0.2,
         n_rounds: int = 5,
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         if not 0.0 <= forget_rate < 1.0:
             raise ValueError(f'forget_rate должен быть в [0, 1), получено {forget_rate}')
         if n_rounds < 1:
@@ -100,6 +110,7 @@ class CoTeachingClassifier(BasePreset):
         self.forget_rate = forget_rate
         self.n_rounds = n_rounds
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -109,17 +120,49 @@ class CoTeachingClassifier(BasePreset):
         self.ensemble_scores_: list[float] = []
         self.keep_fraction_history_: list[float] = []
 
-    def _fit_one(self, X: pd.DataFrame, y: np.ndarray, seed: int) -> Any:
+    def _fit_one(
+        self, X: pd.DataFrame, y: np.ndarray, seed: int, params: dict[str, Any] | None = None,
+    ) -> Any:
         from catboost import CatBoostClassifier, Pool
 
-        params = {**(self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
-        m = CatBoostClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
+        m = CatBoostClassifier(**p)
         m.fit(Pool(X, y, cat_features=self.cat_features_), verbose=False)
         return m
 
     def _predict(self, model: Any, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
         return model.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
+
+    def _tune(self, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 200, 800, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'verbose': 0,
+            }
+            m_a = self._fit_one(X_tr, y_tr, self.random_seed, params)
+            m_b = self._fit_one(X_tr, y_tr, self.random_seed + 1, params)
+            blend = 0.5 * (self._predict(m_a, X_va) + self._predict(m_b, X_va))
+            return float(average_precision_score(y_va, blend))
+
+        logger.info('[CoTeaching] Optuna: %d trials (общая архитектура для A/B на всех раундах)',
+                    self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed))
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {**study.best_params, 'loss_function': 'Logloss', 'eval_metric': 'PRAUC', 'verbose': 0}
 
     def fit(
         self,
@@ -146,8 +189,10 @@ class CoTeachingClassifier(BasePreset):
         logger.info('[CoTeaching] n_rounds=%d  forget_rate=%.2f  n_train=%d',
                     self.n_rounds, self.forget_rate, n)
 
-        model_a = self._fit_one(X_tr, y_tr, self.random_seed)
-        model_b = self._fit_one(X_tr, y_tr, self.random_seed + 1)
+        tuned_params = self._tune(X_tr, y_tr, X_va, y_va) if self.n_optuna_trials > 0 else None
+
+        model_a = self._fit_one(X_tr, y_tr, self.random_seed, tuned_params)
+        model_b = self._fit_one(X_tr, y_tr, self.random_seed + 1, tuned_params)
 
         self.round_scores_a_ = [float(average_precision_score(y_va, self._predict(model_a, X_va)))]
         self.round_scores_b_ = [float(average_precision_score(y_va, self._predict(model_b, X_va)))]
@@ -185,8 +230,8 @@ class CoTeachingClassifier(BasePreset):
             small_b = _small_loss_stratified(loss_b, keep_frac)  # B считает эти примеры "чистыми"
 
             # Перекрёстное обновление: A учится на выборе B, B учится на выборе A.
-            model_a = self._fit_one(X_tr.iloc[small_b], y_tr[small_b], self.random_seed + 2 * t)
-            model_b = self._fit_one(X_tr.iloc[small_a], y_tr[small_a], self.random_seed + 2 * t + 1)
+            model_a = self._fit_one(X_tr.iloc[small_b], y_tr[small_b], self.random_seed + 2 * t, tuned_params)
+            model_b = self._fit_one(X_tr.iloc[small_a], y_tr[small_a], self.random_seed + 2 * t + 1, tuned_params)
 
             proba_a = self._predict(model_a, X_va)
             proba_b = self._predict(model_b, X_va)
@@ -210,6 +255,7 @@ class CoTeachingClassifier(BasePreset):
             'forget_rate': self.forget_rate,
             'n_rounds': self.n_rounds,
             'final_keep_fraction': self.keep_fraction_history_[-1],
+            'base_params': tuned_params or (self.base_params or _DEFAULT_PARAMS),
         }
         logger.info('[CoTeaching] Итог: ensemble val PR-AUC=%.4f (init=%.4f, delta=%.4f)',
                     self.ensemble_scores_[-1], self.ensemble_scores_[0],

@@ -34,6 +34,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +68,16 @@ class AnomalyBlendClassifier(BasePreset):
     n_if_estimators:
         Число деревьев Isolation Forest. Больше → стабильнее, медленнее.
     supervised_params:
-        Параметры CatBoost. None → дефолтные.
+        Параметры CatBoost. None → дефолтные. Игнорируется, если n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, параметры supervised CatBoost подбираются через Optuna по val
+        PR-AUC (до alpha-блендинга с IF) вместо supervised_params/дефолтных.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     n_alpha_steps:
         Количество значений alpha при поиске [0, 1]. Дефолт: 51.
     random_seed:
-        Зерно для IF и CatBoost.
+        Зерно для IF, CatBoost и Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -93,14 +99,17 @@ class AnomalyBlendClassifier(BasePreset):
         self,
         n_if_estimators: int = 200,
         supervised_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         n_alpha_steps: int = 51,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=supervised_params, n_optuna_trials=n_optuna_trials)
         self.n_if_estimators = n_if_estimators
         self.supervised_params = supervised_params
+        self.optuna_timeout = optuna_timeout
         self.n_alpha_steps = n_alpha_steps
         self.random_seed = random_seed
         self.cat_features = cat_features or []
@@ -116,6 +125,7 @@ class AnomalyBlendClassifier(BasePreset):
         self._sup_model: Any = None
         self._if_lo: float = 0.0
         self._if_hi: float = 1.0
+        self.best_supervised_params_: dict[str, Any] | None = None
 
     # ── Isolation Forest ──────────────────────────────────────────────────────
 
@@ -144,12 +154,55 @@ class AnomalyBlendClassifier(BasePreset):
     ) -> Any:
         from catboost import CatBoostClassifier, Pool
 
-        params = {**(self.supervised_params or _DEFAULT_CBT_PARAMS), 'random_seed': self.random_seed}
-        model = CatBoostClassifier(**params)
         tr_pool = Pool(X_tr, y_tr, cat_features=self.cat_features_)
         va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
+        if self.n_optuna_trials > 0:
+            params = self._tune(tr_pool, va_pool, y_va)
+        else:
+            params = {**(self.supervised_params or _DEFAULT_CBT_PARAMS), 'random_seed': self.random_seed}
+        model = CatBoostClassifier(**params)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
+        self.best_supervised_params_ = params
         return model
+
+    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'early_stopping_rounds': 100,
+                'random_seed': self.random_seed,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[AnomalyBlend] Optuna: %d trials (supervised CatBoost)', self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {
+            **study.best_params,
+            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
+            'early_stopping_rounds': 100, 'random_seed': self.random_seed, 'verbose': 0,
+        }
 
     def _sup_score(self, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
@@ -249,6 +302,7 @@ class AnomalyBlendClassifier(BasePreset):
             'n_if_estimators': self.n_if_estimators,
             'if_pr_auc': self.if_pr_auc_,
             'sup_pr_auc': self.sup_pr_auc_,
+            'supervised_params': self.best_supervised_params_,
         }
         self._model = True
         return self

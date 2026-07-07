@@ -33,6 +33,7 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._utils import fit_calibrator
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,15 @@ class SubsampleStacking(BasePreset):
     base_configs:
         Список dict — специфичные параметры каждой базовой модели, мёрджатся
         с _SHARED_PARAMS. None → авто-разнообразные конфиги.
+    n_optuna_trials:
+        Если > 0, общая часть архитектуры (_SHARED_PARAMS: iterations,
+        l2_leaf_reg, subsample, min_data_in_leaf) подбирается через Optuna по
+        val PR-AUC на одном представительном конфиге, вместо дефолтных
+        _SHARED_PARAMS. per-конфиг diversity-параметры (max_depth,
+        learning_rate, scale_pos_weight, random_seed из base_configs) не
+        затрагиваются — тюнится только общая для всех конфигов часть.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     meta:
         Мета-модель: 'logistic', 'weighted', 'catboost'.
     calibrate:
@@ -108,6 +118,8 @@ class SubsampleStacking(BasePreset):
         subsample_rate: float = 0.75,
         n_folds: int = 5,
         base_configs: list[dict] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         meta: str = 'logistic',
         calibrate: bool = True,
         random_seed: int = 42,
@@ -120,11 +132,12 @@ class SubsampleStacking(BasePreset):
             raise ValueError(f"n_folds должен быть >= 2, получено {n_folds}")
         if meta not in ('logistic', 'weighted', 'catboost'):
             raise ValueError(f"meta должен быть 'logistic', 'weighted' или 'catboost'")
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.n_base_models = n_base_models
         self.subsample_rate = subsample_rate
         self.n_folds = n_folds
         self.base_configs = base_configs
+        self.optuna_timeout = optuna_timeout
         self.meta = meta
         self.calibrate = calibrate
         self.random_seed = random_seed
@@ -188,6 +201,52 @@ class SubsampleStacking(BasePreset):
             return self.meta_model_.predict_proba(Pool(X_meta))[:, 1]
         raise ValueError(self.meta)
 
+    # ── Optuna (общая часть архитектуры) ─────────────────────────────────────
+
+    def _tune_shared_params(
+        self, X_tr_feats: pd.DataFrame, y_tr: np.ndarray, va_pool_full: Any, y_va: np.ndarray,
+    ) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier, Pool
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        rng = np.random.default_rng(self.random_seed)
+        sub_idx = self._stratified_subsample(np.arange(len(y_tr)), y_tr, rng)
+        tr_pool = Pool(X_tr_feats.iloc[sub_idx], y_tr[sub_idx], cat_features=self.cat_features_)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'early_stopping_rounds': 80,
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'random_seed': self.random_seed,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool_full, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool_full)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[Stacking] Optuna: %d trials (общая часть архитектуры для всех конфигов)',
+                    self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        best = study.best_params
+        return {
+            'iterations': best['iterations'], 'l2_leaf_reg': best['l2_leaf_reg'],
+            'subsample': best['subsample'], 'min_data_in_leaf': best['min_data_in_leaf'],
+            'early_stopping_rounds': 80, 'loss_function': 'Logloss', 'eval_metric': 'PRAUC', 'verbose': 0,
+        }
+
     # ── Вспомогательные ─────────────────────────────────────────────────────
 
     def _stratified_subsample(
@@ -250,8 +309,13 @@ class SubsampleStacking(BasePreset):
         self.oob_pr_aucs_ = []
         va_pool_full = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
 
+        shared_params = (
+            self._tune_shared_params(X_tr_feats, y_tr, va_pool_full, y_va)
+            if self.n_optuna_trials > 0 else _SHARED_PARAMS
+        )
+
         for i, cfg in enumerate(configs[:self.n_base_models]):
-            params = {**_SHARED_PARAMS, **cfg}
+            params = {**shared_params, **cfg}
             logger.info('[Stacking] Конфиг %d/%d  cfg=%s', i + 1, self.n_base_models, cfg)
 
             # OOF: обучение на K-1 фолдах (со stratified подвыборкой внутри),
@@ -303,7 +367,8 @@ class SubsampleStacking(BasePreset):
 
         self.valid_pr_auc_ = float(average_precision_score(y_va, self.valid_pred_))
         self.best_params_ = {'meta': self.meta, 'n_base_models': self.n_base_models,
-                             'subsample_rate': self.subsample_rate, 'n_folds': n_splits}
+                             'subsample_rate': self.subsample_rate, 'n_folds': n_splits,
+                             'shared_params': shared_params}
         self._model = True
 
         logger.info('[Stacking] val PR-AUC=%.4f  OOF PR-AUCs=%s',

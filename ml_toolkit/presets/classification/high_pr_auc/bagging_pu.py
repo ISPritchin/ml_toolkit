@@ -59,8 +59,17 @@ class BaggingPUClassifier(BasePreset):
         Параметры CatBoost. None → дефолтные (не PRAUC-eval_metric — на
         подвыборке из нескольких десятков объектов PRAUC/early stopping
         нестабильны, используется фиксированное iterations без eval_set).
+        Игнорируется, если n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, общая архитектура CatBoost (одна на все n_estimators бэгов)
+        подбирается через Optuna: каждый trial обучает весь ансамбль бэгов с
+        кандидатными параметрами и оценивается по val PR-AUC (без per-бэг
+        eval_set/pruning — по той же причине, что и base_params: подвыборки
+        слишком малы для честного early stopping).
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
-        Базовое зерно; estimator i получает random_seed + i.
+        Базовое зерно; estimator i получает random_seed + i. Также сид Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -78,16 +87,19 @@ class BaggingPUClassifier(BasePreset):
         n_estimators: int = 30,
         u_sample_size: int | None = None,
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         if n_estimators < 2:
             raise ValueError(f'n_estimators должен быть >= 2, получено {n_estimators}')
         self.n_estimators = n_estimators
         self.u_sample_size = u_sample_size
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -96,17 +108,63 @@ class BaggingPUClassifier(BasePreset):
         self.oob_coverage_: float = 0.0
         self.train_pu_pr_auc_: float = 0.0
 
-    def _fit_one(self, X: pd.DataFrame, y: np.ndarray, seed: int) -> Any:
+    def _fit_one(
+        self, X: pd.DataFrame, y: np.ndarray, seed: int, params: dict[str, Any] | None = None,
+    ) -> Any:
         from catboost import CatBoostClassifier, Pool
 
-        params = {**(self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
-        m = CatBoostClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
+        m = CatBoostClassifier(**p)
         m.fit(Pool(X, y, cat_features=self.cat_features_), verbose=False)
         return m
 
     def _predict(self, model: Any, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
         return model.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
+
+    def _tune(
+        self,
+        X_tr: pd.DataFrame,
+        y_tr: np.ndarray,
+        pos_idx: np.ndarray,
+        u_idx: np.ndarray,
+        u_size: int,
+        X_va: pd.DataFrame,
+        y_va: np.ndarray,
+    ) -> dict[str, Any]:
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 100, 500, step=50),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 20),
+                'loss_function': 'Logloss',
+                'eval_metric': 'AUC',
+                'verbose': 0,
+            }
+            va_probas = []
+            for i in range(self.n_estimators):
+                rng = np.random.default_rng(self.random_seed + i)
+                boot_local = rng.integers(0, len(u_idx), size=u_size)
+                sample_idx = np.concatenate([pos_idx, u_idx[boot_local]])
+                m = self._fit_one(X_tr.iloc[sample_idx], y_tr[sample_idx], self.random_seed + i, params)
+                va_probas.append(self._predict(m, X_va))
+            blend = np.mean(va_probas, axis=0)
+            return float(average_precision_score(y_va, blend))
+
+        logger.info('[BaggingPU] Optuna: %d trials (%d бэгов на trial)',
+                     self.n_optuna_trials, self.n_estimators)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed))
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {**study.best_params, 'loss_function': 'Logloss', 'eval_metric': 'AUC', 'verbose': 0}
 
     def fit(
         self,
@@ -134,6 +192,11 @@ class BaggingPUClassifier(BasePreset):
         logger.info('[BaggingPU] n_estimators=%d  n_pos=%d  n_u=%d  u_sample_size=%d',
                     self.n_estimators, n_pos, n_u, u_size)
 
+        if self.n_optuna_trials > 0:
+            tuned_params = self._tune(X_tr, y_tr, pos_idx, u_idx, u_size, X_valid[feats], y_valid.values)
+        else:
+            tuned_params = None
+
         oob_sum = np.zeros(n_u)
         oob_count = np.zeros(n_u)
         self.estimators_ = []
@@ -146,7 +209,7 @@ class BaggingPUClassifier(BasePreset):
             oob_local_mask[in_bag_local] = False
 
             sample_idx = np.concatenate([pos_idx, u_idx[boot_local]])
-            model = self._fit_one(X_tr.iloc[sample_idx], y_tr[sample_idx], self.random_seed + i)
+            model = self._fit_one(X_tr.iloc[sample_idx], y_tr[sample_idx], self.random_seed + i, tuned_params)
             self.estimators_.append(model)
 
             if oob_local_mask.any():
@@ -186,7 +249,11 @@ class BaggingPUClassifier(BasePreset):
         self.valid_pred_ = va_scores
         val_pr_auc = float(average_precision_score(y_valid.values, va_scores))
 
-        self.best_params_ = {'n_estimators': self.n_estimators, 'u_sample_size': u_size}
+        self.best_params_ = {
+            'n_estimators': self.n_estimators,
+            'u_sample_size': u_size,
+            'base_params': tuned_params or (self.base_params or _DEFAULT_PARAMS),
+        }
         self._model = True
         logger.info('[BaggingPU] OOB coverage=%.1f%%  train PU PR-AUC=%.4f  val PR-AUC=%.4f',
                     100.0 * self.oob_coverage_, self.train_pu_pr_auc_, val_pr_auc)

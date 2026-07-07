@@ -19,6 +19,7 @@ from sklearn.metrics import average_precision_score
 from ml_toolkit.losses import FocalLoss as _FocalLoss
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,16 @@ class BoostedEnsemble(BasePreset):
         'mean', 'rank', 'weighted' (Optuna по val), 'power' (alpha по val).
     base_params:
         Общие параметры CatBoost (iterations, max_depth и т.д.).
-        Конфиги из loss_configs переопределяют эти параметры.
+        Конфиги из loss_configs переопределяют эти параметры. Игнорируется, если
+        n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, общая часть архитектуры (base_params: iterations, max_depth,
+        learning_rate, l2_leaf_reg, subsample, min_data_in_leaf) подбирается через
+        Optuna по val PR-AUC на первом конфиге ансамбля (Logloss, scale_pos_weight=1.0),
+        вместо дефолтных base_params. per-конфиг разнообразие (loss_function,
+        scale_pos_weight, random_seed из loss_configs) не затрагивается.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
         Зерно Optuna sampler'а для averaging='weighted'/'power' (подбор весов/alpha
         блендинга). Отдельные модели ансамбля намеренно используют разные seed'ы
@@ -130,14 +140,17 @@ class BoostedEnsemble(BasePreset):
         loss_configs: list[dict] | None = None,
         averaging: str = 'rank',
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ):
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.loss_configs = loss_configs  # None → ленивый дефолт в fit()
         self.averaging = averaging
         self.base_params = base_params or dict(DEFAULT_BASE_PARAMS)
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -146,6 +159,49 @@ class BoostedEnsemble(BasePreset):
         self._weights: np.ndarray | None = None
         self._power_alpha: float = 1.0
         self._rank_refs_: list[np.ndarray] = []
+
+    def _tune_base_params(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'early_stopping_rounds': 100,
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'scale_pos_weight': 1.0,
+                'random_seed': 42,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[BoostedEnsemble] Optuna: %d trials (общая часть base_params для всех конфигов)',
+                    self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        best = study.best_params
+        return {
+            'iterations': best['iterations'], 'max_depth': best['max_depth'],
+            'learning_rate': best['learning_rate'], 'l2_leaf_reg': best['l2_leaf_reg'],
+            'subsample': best['subsample'], 'min_data_in_leaf': best['min_data_in_leaf'],
+            'early_stopping_rounds': 100, 'eval_metric': 'PRAUC',
+        }
 
     def fit(
         self,
@@ -169,11 +225,16 @@ class BoostedEnsemble(BasePreset):
         va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
         loss_configs = self.loss_configs or _default_loss_configs()
 
+        base_params = self.base_params
+        if self.n_optuna_trials > 0:
+            tr_pool_full = Pool(X_train[feats], y_tr, cat_features=self.cat_features_)
+            base_params = self._tune_base_params(tr_pool_full, va_pool, y_va)
+
         tr_probas, va_probas = [], []
         self.models_ = []
 
         for i, cfg in enumerate(loss_configs):
-            params = {**self.base_params, **cfg}
+            params = {**base_params, **cfg}
             # CatBoost требует eval_metric при кастомном loss_function
             if not isinstance(params.get('loss_function', 'Logloss'), str):
                 params.setdefault('eval_metric', 'AUC')
@@ -198,7 +259,7 @@ class BoostedEnsemble(BasePreset):
 
         self.valid_pred_ = self._blend(va_probas, y_va, fit_blend=True)
         self.train_pred_ = self._blend(tr_probas, fit_blend=False)
-        self.best_params_ = {'averaging': self.averaging, 'n_models': len(self.models_)}
+        self.best_params_ = {'averaging': self.averaging, 'n_models': len(self.models_), 'base_params': base_params}
         self._model = True  # sentinel for _check_fitted
 
         logger.info('[BoostedEnsemble] Ансамбль val PR-AUC=%.4f',

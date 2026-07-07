@@ -49,6 +49,13 @@ _XGB_PARAMS: dict[str, Any] = {
 
 _DEFAULT_ZOO = ['catboost', 'lightgbm', 'xgboost', 'logistic']
 
+_MEMBER_FIXED_EXTRAS: dict[str, dict[str, Any]] = {
+    'catboost': {'loss_function': 'Logloss', 'eval_metric': 'PRAUC', 'verbose': 0},
+    'lightgbm': {'verbose': -1, 'n_jobs': -1},
+    'xgboost': {'eval_metric': 'aucpr', 'n_jobs': -1, 'use_label_encoder': False},
+    'logistic': {},
+}
+
 
 class HeterogeneousStacking(BasePreset):
     """Стек CatBoost + LightGBM + XGBoost + LogisticRegression на честном OOF.
@@ -63,10 +70,19 @@ class HeterogeneousStacking(BasePreset):
         — то же семейство мета-моделей).
     n_folds:
         Число фолдов честного OOF.
+    n_optuna_trials:
+        Если > 0, архитектура КАЖДОГО члена зоопарка подбирается через Optuna
+        отдельно (свой search space на семейство алгоритмов: CatBoost/LightGBM/
+        XGBoost — бустинг-гиперпараметры, LogisticRegression — только C) вместо
+        фиксированных _CBT_PARAMS/_LGB_PARAMS/_XGB_PARAMS. Каждый member тюнится
+        независимо на полном train, с оценкой по val PR-AUC.
+    optuna_timeout:
+        Ограничение по времени (сек) на Optuna-поиск ОДНОГО члена зоопарка
+        (суммарное время растёт с числом членов). None — без ограничения.
     calibrate:
         Применять ли изотоническую калибровку к финальным предсказаниям.
     random_seed:
-        Зерно всех членов зоопарка, StratifiedKFold и мета-модели.
+        Зерно всех членов зоопарка, StratifiedKFold, мета-модели и Optuna sampler'ов.
 
     Атрибуты после fit::
 
@@ -87,12 +103,14 @@ class HeterogeneousStacking(BasePreset):
         base_zoo: list[str] | None = None,
         meta: str = 'logistic',
         n_folds: int = 5,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         calibrate: bool = True,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         base_zoo = base_zoo or list(_DEFAULT_ZOO)
         unknown = set(base_zoo) - {'catboost', 'lightgbm', 'xgboost', 'logistic'}
         if unknown:
@@ -106,6 +124,7 @@ class HeterogeneousStacking(BasePreset):
         self.base_zoo = base_zoo
         self.meta = meta
         self.n_folds = n_folds
+        self.optuna_timeout = optuna_timeout
         self.calibrate = calibrate
         self.random_seed = random_seed
         self.cat_features = cat_features or []
@@ -119,9 +138,9 @@ class HeterogeneousStacking(BasePreset):
 
     # ── Члены зоопарка ────────────────────────────────────────────────────────
 
-    def _fit_catboost(self, X, y, X_num, seed):
+    def _fit_catboost(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
         from catboost import CatBoostClassifier, Pool
-        m = CatBoostClassifier(**{**_CBT_PARAMS, 'random_seed': seed})
+        m = CatBoostClassifier(**{**(params or _CBT_PARAMS), 'random_seed': seed})
         m.fit(Pool(X, y, cat_features=self.cat_features_), verbose=False)
         return m
 
@@ -129,9 +148,9 @@ class HeterogeneousStacking(BasePreset):
         from catboost import Pool
         return m.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
 
-    def _fit_lightgbm(self, X, y, X_num, seed):
+    def _fit_lightgbm(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
         import lightgbm as lgb
-        m = lgb.LGBMClassifier(**{**_LGB_PARAMS, 'random_state': seed})
+        m = lgb.LGBMClassifier(**{**(params or _LGB_PARAMS), 'random_state': seed})
         cat_idx = [c for c in self.cat_features_ if c in X.columns]
         Xp = prep_cat_features(X, list(X.columns), self.cat_features_)
         m.fit(Xp, y, categorical_feature=cat_idx or 'auto')
@@ -141,9 +160,9 @@ class HeterogeneousStacking(BasePreset):
         Xp = prep_cat_features(X, list(X.columns), self.cat_features_)
         return m.predict_proba(Xp)[:, 1]
 
-    def _fit_xgboost(self, X, y, X_num, seed):
+    def _fit_xgboost(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
         import xgboost as xgb
-        m = xgb.XGBClassifier(**{**_XGB_PARAMS, 'random_state': seed, 'enable_categorical': True})
+        m = xgb.XGBClassifier(**{**(params or _XGB_PARAMS), 'random_state': seed, 'enable_categorical': True})
         Xp = prep_cat_features(X, list(X.columns), self.cat_features_)
         return m.fit(Xp, y)
 
@@ -151,7 +170,7 @@ class HeterogeneousStacking(BasePreset):
         Xp = prep_cat_features(X, list(X.columns), self.cat_features_)
         return m.predict_proba(Xp)[:, 1]
 
-    def _build_linear_pipeline(self):
+    def _build_linear_pipeline(self, C: float = 1.0):
         from sklearn.compose import ColumnTransformer
         from sklearn.impute import SimpleImputer
         from sklearn.linear_model import LogisticRegression
@@ -172,10 +191,10 @@ class HeterogeneousStacking(BasePreset):
                 ('onehot', OneHotEncoder(handle_unknown='ignore')),
             ]), cat_cols))
         pre = ColumnTransformer(transformers)
-        return Pipeline([('pre', pre), ('clf', LogisticRegression(max_iter=2000, C=1.0))])
+        return Pipeline([('pre', pre), ('clf', LogisticRegression(max_iter=2000, C=C))])
 
-    def _fit_logistic(self, X, y, X_num, seed):
-        pipe = self._build_linear_pipeline()
+    def _fit_logistic(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
+        pipe = self._build_linear_pipeline(C=(params or {}).get('C', 1.0))
         pipe.fit(X, y)
         return pipe
 
@@ -191,11 +210,69 @@ class HeterogeneousStacking(BasePreset):
         'xgboost': '_predict_xgboost', 'logistic': '_predict_logistic',
     }
 
-    def _fit_member(self, name: str, X, y, seed: int):
-        return getattr(self, self._FIT_DISPATCH[name])(X, y, None, seed)
+    def _fit_member(self, name: str, X, y, seed: int, params: dict[str, Any] | None = None):
+        return getattr(self, self._FIT_DISPATCH[name])(X, y, None, seed, params)
 
     def _predict_member(self, name: str, model: Any, X) -> np.ndarray:
         return getattr(self, self._PREDICT_DISPATCH[name])(model, X, None)
+
+    # ── Optuna (по семейству алгоритмов) ─────────────────────────────────────
+
+    def _suggest_member_params(self, name: str, trial: Any) -> dict[str, Any]:
+        if name == 'catboost':
+            search = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+            }
+        elif name == 'lightgbm':
+            search = {
+                'n_estimators': trial.suggest_int('n_estimators', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 8),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'num_leaves': trial.suggest_int('num_leaves', 15, 63),
+                'min_child_samples': trial.suggest_int('min_child_samples', 5, 50),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+                'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
+            }
+        elif name == 'xgboost':
+            search = {
+                'n_estimators': trial.suggest_int('n_estimators', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 8),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+                'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
+            }
+        else:  # logistic
+            search = {'C': trial.suggest_float('C', 1e-3, 1e2, log=True)}
+        return {**search, **_MEMBER_FIXED_EXTRAS[name]}
+
+    def _tune_member(
+        self, name: str, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray,
+    ) -> dict[str, Any]:
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = self._suggest_member_params(name, trial)
+            m = self._fit_member(name, X_tr, y_tr, self.random_seed, params)
+            p = self._predict_member(name, m, X_va)
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[HeteroStacking] Optuna (%s): %d trials', name, self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed))
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {**study.best_params, **_MEMBER_FIXED_EXTRAS[name]}
 
     # ── Мета-модели (то же семейство, что в SubsampleStacking) ──────────────
 
@@ -286,17 +363,25 @@ class HeterogeneousStacking(BasePreset):
         self.base_models_ = {}
         self.oob_pr_aucs_ = {}
 
+        tuned_member_params: dict[str, dict[str, Any] | None] = {
+            name: (self._tune_member(name, X_tr_feats, y_tr, X_va_feats, y_va) if self.n_optuna_trials > 0 else None)
+            for name in zoo
+        }
+
         for i, name in enumerate(zoo):
             logger.info('[HeteroStacking] Член зоопарка %d/%d: %s', i + 1, len(zoo), name)
+            member_params = tuned_member_params[name]
             for tr_idx_f, te_idx_f in folds:
-                m_f = self._fit_member(name, X_tr_feats.iloc[tr_idx_f], y_tr[tr_idx_f], self.random_seed)
+                m_f = self._fit_member(
+                    name, X_tr_feats.iloc[tr_idx_f], y_tr[tr_idx_f], self.random_seed, member_params
+                )
                 oof_matrix[te_idx_f, i] = self._predict_member(name, m_f, X_tr_feats.iloc[te_idx_f])
 
             oof_auc = float(average_precision_score(y_tr, oof_matrix[:, i]))
             self.oob_pr_aucs_[name] = oof_auc
             logger.info('[HeteroStacking] %s  OOF PR-AUC=%.4f', name, oof_auc)
 
-            m_final = self._fit_member(name, X_tr_feats, y_tr, self.random_seed)
+            m_final = self._fit_member(name, X_tr_feats, y_tr, self.random_seed, member_params)
             self.base_models_[name] = m_final
             va_matrix[:, i] = self._predict_member(name, m_final, X_va_feats)
 
@@ -315,8 +400,14 @@ class HeterogeneousStacking(BasePreset):
             self.valid_pred_ = raw_va
         self.train_pred_ = self._meta_predict(oof_matrix)
 
+        default_params = {'catboost': _CBT_PARAMS, 'lightgbm': _LGB_PARAMS, 'xgboost': _XGB_PARAMS, 'logistic': {'C': 1.0}}
         self.valid_pr_auc_ = float(average_precision_score(y_va, self.valid_pred_))
-        self.best_params_ = {'meta': self.meta, 'zoo': zoo, 'n_folds': n_splits}
+        self.best_params_ = {
+            'meta': self.meta, 'zoo': zoo, 'n_folds': n_splits,
+            'member_params': {
+                name: (tuned_member_params[name] or default_params[name]) for name in zoo
+            },
+        }
         self._model = True
 
         logger.info('[HeteroStacking] val PR-AUC=%.4f  OOF PR-AUCs=%s',

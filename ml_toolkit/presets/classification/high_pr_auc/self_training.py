@@ -33,6 +33,7 @@ import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,14 @@ class SelfTrainingBooster(BasePreset):
         Максимальное число pseudo-positives как кратное числу реальных позитивов.
         Защита от лавинного добавления «мусора» в поздних раундах.
     base_params:
-        Параметры CatBoost. None → дефолтные.
+        Параметры CatBoost. None → дефолтные. Игнорируется, если n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, общая архитектура (одна на все раунды) подбирается через
+        Optuna по val PR-AUC на раунде 0 (оригинальные данные, без pseudo-labels).
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
-        Зерно CatBoost.
+        Зерно CatBoost и Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -92,16 +98,19 @@ class SelfTrainingBooster(BasePreset):
         pseudo_weight: float = 0.3,
         max_pseudo_ratio: float = 2.0,
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         self.n_rounds = n_rounds
         self.threshold = threshold
         self.pseudo_weight = pseudo_weight
         self.max_pseudo_ratio = max_pseudo_ratio
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -119,11 +128,12 @@ class SelfTrainingBooster(BasePreset):
         w_tr: np.ndarray,
         X_va: pd.DataFrame,
         y_va: np.ndarray,
+        params: dict[str, Any] | None = None,
     ) -> Any:
         from catboost import CatBoostClassifier, Pool
 
-        params = {**(self.base_params or _DEFAULT_PARAMS), 'random_seed': self.random_seed}
-        model = CatBoostClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_PARAMS), 'random_seed': self.random_seed}
+        model = CatBoostClassifier(**p)
         tr_pool = Pool(X_tr, y_tr, cat_features=self.cat_features_, weight=w_tr)
         va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
@@ -134,6 +144,48 @@ class SelfTrainingBooster(BasePreset):
 
         pool = Pool(X, cat_features=self.cat_features_)
         return model.predict_proba(pool)[:, 1]
+
+    def _tune(self, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier, Pool
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        tr_pool = Pool(X_tr, y_tr, cat_features=self.cat_features_)
+        va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'early_stopping_rounds': 80,
+                'random_seed': self.random_seed,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[SelfTraining] Optuna: %d trials (архитектура для всех раундов)',
+                    self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {
+            **study.best_params,
+            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
+            'early_stopping_rounds': 80, 'random_seed': self.random_seed, 'verbose': 0,
+        }
 
     # ── fit ───────────────────────────────────────────────────────────────────
 
@@ -174,9 +226,11 @@ class SelfTrainingBooster(BasePreset):
         self.round_scores_ = []
         self.pseudo_added_ = []
 
+        tuned_params = self._tune(X_tr_feats, y_tr, X_va_feats, y_va) if self.n_optuna_trials > 0 else None
+
         # ── Раунд 0: обучение на оригинальных данных ─────────────────────────
         logger.info('[SelfTraining] Раунд 0 / %d (baseline)', self.n_rounds)
-        model = self._train_model(X_tr_feats, y_tr, w_tr, X_va_feats, y_va)
+        model = self._train_model(X_tr_feats, y_tr, w_tr, X_va_feats, y_va, tuned_params)
         va_proba = self._predict(model, X_va_feats)
         pr_auc = float(average_precision_score(y_va, va_proba))
         self.round_scores_.append(pr_auc)
@@ -236,7 +290,7 @@ class SelfTrainingBooster(BasePreset):
             )
             self.pseudo_added_.append(n_to_add)
 
-            model = self._train_model(X_tr_feats, y_tr, w_tr, X_va_feats, y_va)
+            model = self._train_model(X_tr_feats, y_tr, w_tr, X_va_feats, y_va, tuned_params)
             va_proba = self._predict(model, X_va_feats)
             pr_auc = float(average_precision_score(y_va, va_proba))
             self.round_scores_.append(pr_auc)
@@ -254,6 +308,7 @@ class SelfTrainingBooster(BasePreset):
             'threshold': self.threshold_used_,
             'pseudo_weight': self.pseudo_weight,
             'total_pseudo_added': total_pseudo,
+            'base_params': tuned_params or (self.base_params or _DEFAULT_PARAMS),
         }
         logger.info(
             '[SelfTraining] Итог: val PR-AUC=%.4f (baseline=%.4f, delta=%.4f)  '

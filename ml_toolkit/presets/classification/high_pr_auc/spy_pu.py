@@ -57,9 +57,16 @@ class SpyPUClassifier(BasePreset):
         Процент шпионов, которым разрешено оказаться ниже порога RN
         (контролируемая цена ошибки; рекомендуется 5-15).
     base_params:
-        Параметры CatBoost (обе стадии). None → дефолтные.
+        Параметры CatBoost (обе стадии). None → дефолтные. Игнорируется, если
+        n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, общая архитектура (обе стадии) подбирается через Optuna: каждый
+        trial целиком прогоняет stage1 (поиск RN) + stage2 (P vs RN) с
+        кандидатными параметрами и оценивается по val PR-AUC финальной модели.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
-        Зерно выбора шпионов и обеих моделей.
+        Зерно выбора шпионов, обеих моделей и Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -80,11 +87,13 @@ class SpyPUClassifier(BasePreset):
         spy_frac: float = 0.1,
         spy_threshold_pct: float = 5.0,
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         if not 0.0 < spy_frac < 0.5:
             raise ValueError(f'spy_frac должен быть в (0, 0.5), получено {spy_frac}')
         if not 0.0 < spy_threshold_pct < 100.0:
@@ -92,6 +101,7 @@ class SpyPUClassifier(BasePreset):
         self.spy_frac = spy_frac
         self.spy_threshold_pct = spy_threshold_pct
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -101,17 +111,69 @@ class SpyPUClassifier(BasePreset):
         self.n_spies_: int = 0
         self.stage1_pr_auc_: float = 0.0
 
-    def _fit_one(self, X: pd.DataFrame, y: np.ndarray, seed: int) -> Any:
+    def _fit_one(
+        self, X: pd.DataFrame, y: np.ndarray, seed: int, params: dict[str, Any] | None = None,
+    ) -> Any:
         from catboost import CatBoostClassifier, Pool
 
-        params = {**(self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
-        m = CatBoostClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
+        m = CatBoostClassifier(**p)
         m.fit(Pool(X, y, cat_features=self.cat_features_), verbose=False)
         return m
 
     def _predict(self, model: Any, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
         return model.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
+
+    def _tune(
+        self,
+        X_tr: pd.DataFrame,
+        y_tr: np.ndarray,
+        pos_idx: np.ndarray,
+        u_idx: np.ndarray,
+        spy_idx: np.ndarray,
+        X_va: pd.DataFrame,
+        y_va: np.ndarray,
+    ) -> dict[str, Any]:
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        stage1_pos_idx = np.setdiff1d(pos_idx, spy_idx, assume_unique=True)
+        stage1_neg_idx = np.concatenate([u_idx, spy_idx])
+        stage1_idx = np.concatenate([stage1_pos_idx, stage1_neg_idx])
+        y_stage1 = np.concatenate([np.ones(len(stage1_pos_idx)), np.zeros(len(stage1_neg_idx))])
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 100, 600, step=50),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'AUC',
+                'verbose': 0,
+            }
+            m1 = self._fit_one(X_tr.iloc[stage1_idx], y_stage1, self.random_seed, params)
+            spy_scores = self._predict(m1, X_tr.iloc[spy_idx])
+            u_scores = self._predict(m1, X_tr.iloc[u_idx])
+            threshold = float(np.percentile(spy_scores, self.spy_threshold_pct))
+            rn_idx = u_idx[u_scores < threshold]
+            if len(rn_idx) == 0:
+                rn_idx = u_idx
+            stage2_idx = np.concatenate([pos_idx, rn_idx])
+            m2 = self._fit_one(X_tr.iloc[stage2_idx], y_tr[stage2_idx], self.random_seed + 1, params)
+            p = self._predict(m2, X_va)
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[SpyPU] Optuna: %d trials (обе стадии на trial)', self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed))
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {**study.best_params, 'loss_function': 'Logloss', 'eval_metric': 'AUC', 'verbose': 0}
 
     def fit(
         self,
@@ -139,6 +201,11 @@ class SpyPUClassifier(BasePreset):
         spy_idx = rng.choice(pos_idx, size=n_spies, replace=False)
         self.n_spies_ = n_spies
 
+        tuned_params = (
+            self._tune(X_tr, y_tr, pos_idx, u_idx, spy_idx, X_valid[feats], y_valid.values)
+            if self.n_optuna_trials > 0 else None
+        )
+
         # Стадия 1: P\spies (label=1) vs U+spies (label=0).
         stage1_pos_idx = np.setdiff1d(pos_idx, spy_idx, assume_unique=True)
         stage1_neg_idx = np.concatenate([u_idx, spy_idx])
@@ -146,7 +213,7 @@ class SpyPUClassifier(BasePreset):
         y_stage1 = np.concatenate([
             np.ones(len(stage1_pos_idx)), np.zeros(len(stage1_neg_idx)),
         ])
-        model1 = self._fit_one(X_tr.iloc[stage1_idx], y_stage1, self.random_seed)
+        model1 = self._fit_one(X_tr.iloc[stage1_idx], y_stage1, self.random_seed, tuned_params)
 
         spy_scores = self._predict(model1, X_tr.iloc[spy_idx])
         u_scores = self._predict(model1, X_tr.iloc[u_idx])
@@ -171,11 +238,12 @@ class SpyPUClassifier(BasePreset):
         # Стадия 2: обычный supervised P vs RN.
         stage2_idx = np.concatenate([pos_idx, rn_idx])
         y_stage2 = y_tr[stage2_idx]
-        self._model = self._fit_one(X_tr.iloc[stage2_idx], y_stage2, self.random_seed + 1)
+        self._model = self._fit_one(X_tr.iloc[stage2_idx], y_stage2, self.random_seed + 1, tuned_params)
         self.best_params_ = {
             'spy_frac': self.spy_frac,
             'spy_threshold_pct': self.spy_threshold_pct,
             'n_reliable_negative': self.n_reliable_negative_,
+            'base_params': tuned_params or (self.base_params or _DEFAULT_PARAMS),
         }
 
         X_va = X_valid[feats]

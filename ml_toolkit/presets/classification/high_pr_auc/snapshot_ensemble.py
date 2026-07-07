@@ -26,6 +26,7 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._utils import fit_calibrator
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +55,18 @@ class SnapshotEnsembleClassifier(BasePreset):
         По умолчанию [0.4, 0.6, 0.8, 1.0]. Совпадающие после округления доли
         схлопываются в один снэпшот (не задваиваются в среднем).
     base_params:
-        Параметры единственного обучаемого CatBoost. None → дефолтные.
+        Параметры единственного обучаемого CatBoost. None → дефолтные. Игнорируется,
+        если n_optuna_trials > 0 (параметры в этом случае ищутся Optuna).
+    n_optuna_trials:
+        Если > 0, параметры CatBoost подбираются через Optuna (по val PR-AUC,
+        с MedianPruner) вместо base_params/дефолтных.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     calibrate:
         Применять ли изотоническую калибровку к итоговым (усреднённым по
         снэпшотам) вероятностям.
     random_seed:
-        Зерно CatBoost.
+        Зерно CatBoost и Optuna sampler'а.
 
     Атрибуты после fit::
 
@@ -78,6 +85,8 @@ class SnapshotEnsembleClassifier(BasePreset):
         self,
         snapshot_fracs: list[float] | None = None,
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         calibrate: bool = True,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
@@ -88,9 +97,10 @@ class SnapshotEnsembleClassifier(BasePreset):
             raise ValueError("snapshot_fracs не может быть пустым.")
         if any(not 0.0 < f <= 1.0 for f in fracs):
             raise ValueError(f"Все snapshot_fracs должны быть в (0, 1], получено {fracs}")
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         self.snapshot_fracs = fracs
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.calibrate = calibrate
         self.random_seed = random_seed
         self.cat_features = cat_features or []
@@ -99,6 +109,47 @@ class SnapshotEnsembleClassifier(BasePreset):
         self.tree_counts_: list[int] = []
         self.snapshot_scores_: list[float] = []
         self.ensemble_score_: float = 0.0
+
+    # ── Optuna ──────────────────────────────────────────────────────────────
+
+    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'early_stopping_rounds': 100,
+                'random_seed': self.random_seed,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[Snapshot] Optuna: %d trials', self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {
+            **study.best_params,
+            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
+            'early_stopping_rounds': 100, 'random_seed': self.random_seed, 'verbose': 0,
+        }
 
     def fit(
         self,
@@ -122,7 +173,10 @@ class SnapshotEnsembleClassifier(BasePreset):
         tr_pool = Pool(X_train[feats], y_tr, cat_features=self.cat_features_)
         va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
 
-        params = {**(self.base_params or _DEFAULT_BASE_PARAMS), 'random_seed': self.random_seed}
+        if self.n_optuna_trials > 0:
+            params = self._tune(tr_pool, va_pool, y_va)
+        else:
+            params = {**(self.base_params or _DEFAULT_BASE_PARAMS), 'random_seed': self.random_seed}
         self._model = CatBoostClassifier(**params)
         self._model.fit(tr_pool, eval_set=va_pool, verbose=False)
 
@@ -158,7 +212,11 @@ class SnapshotEnsembleClassifier(BasePreset):
             self.valid_pred_ = raw_va
             self.train_pred_ = raw_tr
 
-        self.best_params_ = {'snapshot_fracs': self.snapshot_fracs, 'tree_counts': self.tree_counts_}
+        self.best_params_ = {
+            'base_params': params,
+            'snapshot_fracs': self.snapshot_fracs,
+            'tree_counts': self.tree_counts_,
+        }
         return self
 
     def _snapshot_proba(self, X: pd.DataFrame) -> np.ndarray:

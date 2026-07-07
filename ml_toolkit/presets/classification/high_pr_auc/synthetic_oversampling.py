@@ -31,6 +31,7 @@ import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.presets.classification._base import BasePreset
+from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +110,15 @@ class SyntheticOversamplingClassifier(BasePreset):
     base:
         'catboost' (по умолчанию) или 'lightgbm'.
     base_params:
-        Гиперпараметры базовой модели. None → дефолтные.
+        Гиперпараметры базовой модели. None → дефолтные. Игнорируется, если
+        n_optuna_trials > 0.
+    n_optuna_trials:
+        Если > 0, архитектура базовой модели подбирается через Optuna по val
+        PR-AUC на уже аугментированном (после SMOTE/ADASYN) train.
+    optuna_timeout:
+        Ограничение по времени (сек) на весь Optuna-поиск. None — без ограничения.
     random_seed:
-        Зерно для sampler и модели.
+        Зерно для sampler, модели и Optuna sampler'а.
 
     Замечание о cat_features:
         SMOTE интерполирует непрерывные значения — для категориальных признаков
@@ -133,17 +140,20 @@ class SyntheticOversamplingClassifier(BasePreset):
         sampling_strategy: float | str = 0.1,
         base: str = 'catboost',
         base_params: dict[str, Any] | None = None,
+        n_optuna_trials: int = 0,
+        optuna_timeout: int | None = None,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        super().__init__(params=None, n_optuna_trials=0)
+        super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         if base not in ('catboost', 'lightgbm'):
             raise ValueError(f"base должен быть 'catboost' или 'lightgbm', получено {base!r}")
         self.method = method
         self.sampling_strategy = sampling_strategy
         self.base = base
         self.base_params = base_params
+        self.optuna_timeout = optuna_timeout
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -245,13 +255,20 @@ class SyntheticOversamplingClassifier(BasePreset):
 
         X_va_feats = X_valid[feats]
 
+        tuned_params = None
+        if self.n_optuna_trials > 0:
+            tuned_params = (
+                self._tune_cbt(X_aug, y_resampled, X_va_feats, y_va) if self.base == 'catboost'
+                else self._tune_lgb(X_aug, y_resampled, X_va_feats, y_va)
+            )
+
         if self.base == 'catboost':
             self._model, self.train_pred_, self.valid_pred_ = self._fit_catboost(
-                X_aug, y_resampled, X_va_feats, y_va
+                X_aug, y_resampled, X_va_feats, y_va, tuned_params
             )
         else:
             self._model, self.train_pred_, self.valid_pred_ = self._fit_lgb(
-                X_aug, y_resampled, X_va_feats, y_va
+                X_aug, y_resampled, X_va_feats, y_va, tuned_params
             )
 
         pr_auc = float(average_precision_score(y_va, self.valid_pred_))
@@ -262,6 +279,9 @@ class SyntheticOversamplingClassifier(BasePreset):
             'sampling_strategy': self.sampling_strategy,
             'base': self.base,
             'n_synthetic': self.n_synthetic_,
+            'base_params': tuned_params or (self.base_params or (
+                _DEFAULT_CBT_PARAMS if self.base == 'catboost' else _DEFAULT_LGB_PARAMS
+            )),
         }
         return self
 
@@ -271,11 +291,12 @@ class SyntheticOversamplingClassifier(BasePreset):
         y_aug: np.ndarray,
         X_va: pd.DataFrame,
         y_va: np.ndarray,
+        params: dict[str, Any] | None = None,
     ) -> tuple[Any, np.ndarray, np.ndarray]:
         from catboost import CatBoostClassifier, Pool
 
-        params = {**(self.base_params or _DEFAULT_CBT_PARAMS), 'random_seed': self.random_seed}
-        model = CatBoostClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_CBT_PARAMS), 'random_seed': self.random_seed}
+        model = CatBoostClassifier(**p)
         tr_pool = Pool(X_aug, y_aug, cat_features=self.cat_features_)
         va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
@@ -291,11 +312,12 @@ class SyntheticOversamplingClassifier(BasePreset):
         y_aug: np.ndarray,
         X_va: pd.DataFrame,
         y_va: np.ndarray,
+        params: dict[str, Any] | None = None,
     ) -> tuple[Any, np.ndarray, np.ndarray]:
         import lightgbm as lgb
 
-        params = {**(self.base_params or _DEFAULT_LGB_PARAMS), 'random_state': self.random_seed}
-        model = lgb.LGBMClassifier(**params)
+        p = {**(params or self.base_params or _DEFAULT_LGB_PARAMS), 'random_state': self.random_seed}
+        model = lgb.LGBMClassifier(**p)
         model.fit(
             X_aug, y_aug,
             eval_set=[(X_va, y_va)],
@@ -306,6 +328,84 @@ class SyntheticOversamplingClassifier(BasePreset):
             model.predict_proba(X_aug)[:, 1],
             model.predict_proba(X_va)[:, 1],
         )
+
+    def _tune_cbt(self, X_aug: pd.DataFrame, y_aug: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        from catboost import CatBoostClassifier, Pool
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        tr_pool = Pool(X_aug, y_aug, cat_features=self.cat_features_)
+        va_pool = Pool(X_va, y_va, cat_features=self.cat_features_)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
+                'loss_function': 'Logloss',
+                'eval_metric': 'PRAUC',
+                'early_stopping_rounds': 80,
+                'random_seed': self.random_seed,
+                'verbose': 0,
+            }
+            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            m = CatBoostClassifier(**params)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+            pruning_cb.check_pruned()
+            p = m.predict_proba(va_pool)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[SyntheticOversampling] Optuna (catboost): %d trials', self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed),
+                                    pruner=make_pruner())
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {
+            **study.best_params,
+            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
+            'early_stopping_rounds': 80, 'random_seed': self.random_seed, 'verbose': 0,
+        }
+
+    def _tune_lgb(self, X_aug: pd.DataFrame, y_aug: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
+        import optuna
+        import lightgbm as lgb
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = {
+                'n_estimators': trial.suggest_int('n_estimators', 300, 1000, step=100),
+                'max_depth': trial.suggest_int('max_depth', 3, 8),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+                'num_leaves': trial.suggest_int('num_leaves', 15, 63),
+                'min_child_samples': trial.suggest_int('min_child_samples', 5, 50),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+                'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
+                'random_state': self.random_seed,
+                'verbose': -1,
+                'n_jobs': -1,
+            }
+            m = lgb.LGBMClassifier(**params)
+            m.fit(
+                X_aug, y_aug,
+                eval_set=[(X_va, y_va)],
+                callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)],
+            )
+            p = m.predict_proba(X_va)[:, 1]
+            return float(average_precision_score(y_va, p))
+
+        logger.info('[SyntheticOversampling] Optuna (lightgbm): %d trials', self.n_optuna_trials)
+        study = optuna.create_study(direction='maximize',
+                                    sampler=optuna.samplers.TPESampler(seed=self.random_seed))
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
+                       show_progress_bar=False)
+        return {**study.best_params, 'random_state': self.random_seed, 'verbose': -1, 'n_jobs': -1}
 
     # ── predict ───────────────────────────────────────────────────────────────
 
