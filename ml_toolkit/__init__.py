@@ -3,14 +3,17 @@
 
 Конкретные бизнес-задачи, которые собирают эти примитивы в решение одной
 проблемы (сборка датасетов, фиксированный набор входных/выходных данных),
-живут в `tasks/`, а не здесь — см. `tasks/__init__.py`.
+живут в отдельных sibling-проектах (например, `auto_kkp_classification`),
+подключающих `ml_toolkit` как обычную (editable path) зависимость — а не
+здесь и не в подпакете этого репозитория.
 
 Сами модули используют `logging.getLogger(__name__)` без хендлеров (стандартная
 гигиена для библиотечного кода - конфигурировать вывод должен потребитель, а
 не сам пакет при импорте). Чтобы увидеть логи в Jupyter/скрипте, вызовите
 `configure_logging()` один раз после импорта. Обратите внимание: это покрывает
-только логи `ml_toolkit.*` - для логов из `tasks/` есть отдельный
-`tasks.configure_logging()`.
+только логи `ml_toolkit.*` - у каждого бизнес-проекта своя одноимённая
+`configure_logging()` для его собственного логгера (см., например,
+`cltv_dataset_builder.configure_logging()` в `auto_kkp_classification`).
 """
 
 import logging
@@ -38,11 +41,11 @@ def configure_logging(level: int = logging.INFO, fmt: str | None = None) -> None
     Example:
         ```python
         from ml_toolkit import configure_logging
-        from tasks import configure_logging as configure_tasks_logging
-        configure_logging()             # логи ml_toolkit.* (генерический движок и т.п.)
-        configure_tasks_logging()       # логи tasks.* (бизнес-пайплайны)
+        from cltv_dataset_builder import configure_logging as configure_task_logging
+        configure_logging()          # логи ml_toolkit.* (генерический движок и т.п.)
+        configure_task_logging()     # логи cltv_dataset_builder.* (бизнес-пайплайн)
 
-        from tasks.auto_kkp_classification import build_feature_datasets
+        from cltv_dataset_builder import build_feature_datasets
         build_feature_datasets(...)  # теперь логи видны
         ```
     """

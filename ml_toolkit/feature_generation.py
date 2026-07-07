@@ -100,7 +100,6 @@ from typing import Any
 
 import numpy as np
 import polars as pl
-import polars.selectors as cs
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -384,28 +383,6 @@ def _temp_working_dir(tmp_dir: Path | str | None):
         p = Path(tmp_dir)
         p.mkdir(parents=True, exist_ok=True)
         yield p
-
-
-def _make_row_mask(
-    df: pl.DataFrame,
-    ts_col: str,
-    min_ts: Any | None,
-    max_ts: Any | None,
-) -> np.ndarray | None:
-    """Возвращает булеву numpy-маску строк, попадающих в диапазон [min_ts, max_ts].
-
-    Используется, чтобы не хранить в памяти строки вне выходного диапазона при
-    сборке итоговых датасетов. Если оба параметра None — возвращает None
-    (фильтрация не нужна).
-    """
-    if min_ts is None and max_ts is None:
-        return None
-    expr = pl.lit(True)
-    if min_ts is not None:
-        expr = expr & (pl.col(ts_col) >= min_ts)
-    if max_ts is not None:
-        expr = expr & (pl.col(ts_col) <= max_ts)
-    return df.select(expr.alias("_m"))["_m"].to_numpy()
 
 
 def _pearson_excluding_both_zero(left: np.ndarray, right: np.ndarray) -> float:
@@ -724,98 +701,6 @@ def _build_output_from_parquets(
             del chunk
 
 
-def _generate_dataset_with_accepted_features(
-    df: pl.DataFrame,
-    entity_col: str,
-    ts_col: str,
-    product_cols: list[str],
-    product_col_transformers: dict[str, list[tuple[str, Any, dict]]],
-    accepted_cols: list[str],
-    out_path: Path,
-    min_ts: Any | None = None,
-    max_ts: Any | None = None,
-    name: str = "dataset",
-) -> None:
-    """Наваривает признаки для датасета и записывает результат на диск без материализации.
-
-    Используется вторым (и последующими) вызовом в паре с `select_features`/
-    `generate_feature_groups`: отбор (корреляционный фильтр или сам `feature_spec`)
-    произошёл на другом датасете и вернул accepted_cols — здесь применяется тот же
-    набор без повторной фильтрации, чтобы оба датасета имели идентичную схему фич.
-
-    Если заданы min_ts / max_ts, маска строк вычисляется после единственной
-    сортировки и применяется при накоплении массивов — строки вне диапазона
-    не занимают память. Трансформеры прогоняются по полной истории (нельзя
-    вернуть часть кортежа из @nb.njit функции). Результат пишется напрямую
-    через pq.write_table без промежуточного pl.DataFrame.
-
-    Args:
-        df: Датасет (eager).
-        entity_col: Имя колонки-идентификатора сущности.
-        ts_col: Имя колонки с датой конца месяца.
-        product_cols: Имена product-колонок (= list(product_col_transformers)).
-        product_col_transformers: {product_col: [(feature_name, module, params), ...]}.
-        accepted_cols: Принятые фичи — определяют схему выходного датасета.
-        out_path: Путь для записи результата (parquet).
-        min_ts: Нижняя граница по ts_col (включительно). None — без ограничения.
-        max_ts: Верхняя граница по ts_col (включительно). None — без ограничения.
-        name: Метка для логов/tqdm (например, имя датасета в вызывающей задаче).
-    """
-    accepted_set = set(accepted_cols)
-    if _is_already_sorted(df, entity_col, ts_col):
-        df_sorted = df
-    else:
-        logger.info("(%s) Данные не отсортированы — запускаем sort([%s, %s])", name, entity_col, ts_col)
-        df_sorted = df.sort([entity_col, ts_col])
-
-    row_mask = _make_row_mask(df_sorted, ts_col, min_ts, max_ts)
-    if row_mask is not None:
-        logger.info(
-            "(%s) Фильтр ts_key [%s, %s]: %d из %d строк попадут в выход",
-            name, min_ts, max_ts, int(row_mask.sum()), len(row_mask),
-        )
-
-    entity_codes = (
-        df_sorted.select(pl.col(entity_col).rle_id().alias("_ec"))["_ec"]
-        .to_numpy()
-        .astype(np.int64)
-    )
-    position_within_entity = compute_position_within_entity(entity_codes)
-    del entity_codes
-
-    accepted_arrays: dict[str, np.ndarray] = {}
-
-    for product_col in tqdm(product_cols, desc=f"Наварка фич ({name})", unit="product"):
-        product_values = df_sorted[product_col].to_numpy().astype(np.float64)
-        for transformer_name, module, params in product_col_transformers[product_col]:
-            arrays, suffixes = module.compute(product_values, position_within_entity, params)
-            for suffix, arr in zip(suffixes, arrays):
-                col = _col_name(product_col, transformer_name, suffix)
-                if col in accepted_set:
-                    arr_f32 = np.asarray(arr, dtype=np.float32)
-                    accepted_arrays[col] = arr_f32[row_mask] if row_mask is not None else arr_f32
-
-    logger.info("(%s) наварено %d принятых признаков", name, len(accepted_arrays))
-
-    base = df_sorted.select([entity_col, ts_col] + product_cols).with_columns(
-        cs.float().cast(pl.Float32)
-    )
-    if row_mask is not None:
-        base = base.filter(pl.Series(row_mask))
-
-    col_arrays: dict[str, pa.Array] = {col: base[col].to_arrow() for col in base.columns}
-    del base, df_sorted
-
-    for col in accepted_cols:
-        col_arrays[col] = pa.array(accepted_arrays.pop(col), type=pa.float32())
-
-    ordered = [entity_col, ts_col] + product_cols + accepted_cols
-    table = pa.table({col: col_arrays[col] for col in ordered})
-    del col_arrays
-    pq.write_table(table, out_path)
-    logger.info("(%s) записан: %s", name, out_path)
-
-
 def generate_feature_groups(
     df: pl.DataFrame | pl.LazyFrame,
     entity_column_name: str,
@@ -1060,6 +945,7 @@ def apply_feature_groups(
     out_path: Path | str,
     min_output_ts_key: Any | None = None,
     max_output_ts_key: Any | None = None,
+    tmp_dir: Path | str | None = None,
     name: str = "dataset",
 ) -> None:
     """Наваривает для `df` только уже отобранные `accepted_cols` и пишет на диск.
@@ -1074,6 +960,17 @@ def apply_feature_groups(
     между парными вызовами. Не запускает корреляционный фильтр — это не его роль,
     фильтрация уже отражена в `accepted_cols`.
 
+    Терминальная для `df` функция и по устройству симметрична
+    `generate_feature_groups`: Phase A наваривает ВСЕ кандидатские фичи
+    `feature_spec` на диск (`_generate_candidate_features_to_parquets`, стриминг
+    column-at-a-time — ни весь `df`, ни весь набор кандидатов не оказываются в
+    Python-памяти одновременно), Phase B (корреляционный фильтр) не запускается —
+    вместо него сразу используется готовый `accepted_cols`, Phase C
+    (`_build_output_from_parquets`) стримит результат в `out_path` row group за
+    row group. `pl.LazyFrame` на входе никогда не коллектится целиком: сортируется
+    и пишется в temp-parquet через `sink_parquet` — ровно тот же путь, что и в
+    `generate_feature_groups`.
+
     Args:
         df: Датасет (eager или lazy) на уровне (entity_column_name,
             ts_column_name) с product-колонками.
@@ -1086,6 +983,8 @@ def apply_feature_groups(
         out_path: Путь для итогового parquet-файла.
         min_output_ts_key: Нижняя граница по ts_column_name (включительно).
         max_output_ts_key: Верхняя граница по ts_column_name (включительно).
+        tmp_dir: Путь для временных parquet-файлов с кандидатами фич.
+            None → системная temp-директория (удаляется автоматически по выходу).
         name: Метка для логов/tqdm (например, имя датасета в вызывающей задаче).
 
     Raises:
@@ -1094,6 +993,8 @@ def apply_feature_groups(
             встретилось неизвестное имя трансформера, если резолв колонок дал
             имя вне схемы `df`, или если один и тот же (колонка, трансформер)
             запрошен с разными параметрами в разных группах `feature_spec`.
+        KeyError: Если `feature_spec` не покрывает какую-то колонку из
+            `accepted_cols` (см. описание выше).
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1101,21 +1002,35 @@ def apply_feature_groups(
     product_col_transformers = _resolve_feature_spec(df, feature_spec)
     product_cols = list(product_col_transformers)
 
-    if isinstance(df, pl.LazyFrame):
-        df = df.collect()
+    with _temp_working_dir(tmp_dir) as work_dir:
+        if isinstance(df, pl.LazyFrame):
+            _sorted_tmp = work_dir / f"_{name}.parquet"
+            df.sort([entity_column_name, ts_column_name]).sink_parquet(_sorted_tmp, row_group_size=_ROW_GROUP_SIZE)
+            df = _sorted_tmp
 
-    _generate_dataset_with_accepted_features(
-        df=df,
-        entity_col=entity_column_name,
-        ts_col=ts_column_name,
-        product_cols=product_cols,
-        product_col_transformers=product_col_transformers,
-        accepted_cols=accepted_cols,
-        out_path=out_path,
-        min_ts=min_output_ts_key,
-        max_ts=max_output_ts_key,
-        name=name,
-    )
+        base_path, _n_rows, _candidate_cols, col_to_file = _generate_candidate_features_to_parquets(
+            df=df,
+            entity_col=entity_column_name,
+            ts_col=ts_column_name,
+            product_cols=product_cols,
+            product_col_transformers=product_col_transformers,
+            tmp_dir=work_dir,
+            name=name,
+        )
+        del df
+
+        _build_output_from_parquets(
+            base_path=base_path,
+            entity_col=entity_column_name,
+            ts_col=ts_column_name,
+            product_cols=product_cols,
+            accepted_cols=accepted_cols,
+            col_to_file=col_to_file,
+            out_path=out_path,
+            min_ts=min_output_ts_key,
+            max_ts=max_output_ts_key,
+        )
+        logger.info("(%s) записан: %s", name, out_path)
 
 
 def apply_selected_features(
@@ -1129,6 +1044,7 @@ def apply_selected_features(
     max_output_ts_key: Any | None = None,
     transformer_names: list[str] | None = None,
     preset: Path | str | dict | None = None,
+    tmp_dir: Path | str | None = None,
     name: str = "dataset",
 ) -> None:
     """Наваривает для `df` только уже отобранные `accepted_cols` и пишет на диск.
@@ -1156,6 +1072,8 @@ def apply_selected_features(
             параметры трансформеров разойдутся между датасетами.
         preset: Пресет параметров трансформеров (см. `select_features`). Должен
             совпадать с тем, что передавалось в парный `select_features`.
+        tmp_dir: Путь для временных parquet-файлов с кандидатами фич.
+            None → системная temp-директория (удаляется автоматически по выходу).
         name: Метка для логов/tqdm (например, имя датасета в вызывающей задаче).
 
     Raises:
@@ -1173,5 +1091,6 @@ def apply_selected_features(
         out_path=out_path,
         min_output_ts_key=min_output_ts_key,
         max_output_ts_key=max_output_ts_key,
+        tmp_dir=tmp_dir,
         name=name,
     )
