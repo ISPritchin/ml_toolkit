@@ -110,6 +110,31 @@ _RAW_LIB_CLASS_TO_NAME: dict[str, str] = {
     'XGBClassifier': 'xgboost', 'XGBRegressor': 'xgboost',
 }
 
+# ml_toolkit.presets.classification.high_pr_auc — пресеты-обёртки/ансамбли, где
+# self._model — sentinel (True) или tuple подмоделей, а не «сырая» библиотечная
+# модель, так что _RAW_LIB_CLASS_TO_NAME не срабатывает. Даём им читаемое имя для
+# заголовков графиков/report()/repr() вместо 'unknown' — это не влияет на
+# supports_shap_/supports_intrinsic_ (эти имена не входят ни в _TREE_NAMES/
+# _LINEAR_NAMES, ни в ALL_INTERPRETABLE, так что SHAP/intrinsic для них по-прежнему
+# корректно недоступны). Пресеты с одной «сырой» подмоделью внутри (HardNegativeMiner,
+# PrecisionAtKClassifier, SnapshotEnsembleClassifier, ...) сюда не входят — для них
+# имя уже резолвится через фолбэк на inner_cls ниже, что и даёт им SHAP.
+_PRESET_CLASS_TO_NAME: dict[str, str] = {
+    'BoostedEnsemble': 'boosted_ensemble',
+    'TwoStageCascade': 'two_stage_cascade',
+    'EasyEnsembleClassifier': 'easy_ensemble',
+    'CalibratedWrapper': 'calibrated_wrapper',
+    'ThresholdMovingCV': 'threshold_moving',
+    'AnomalyBlendClassifier': 'anomaly_blend',
+    'FeatureBaggingEnsemble': 'feature_bagging',
+    'CoTeachingClassifier': 'co_teaching',
+    'BaggingPUClassifier': 'bagging_pu',
+    'HeterogeneousStacking': 'heterogeneous_stacking',
+    'MultiSeedBlend': 'multi_seed_blend',
+    'GreedyForwardEnsembleSelection': 'greedy_ensemble_selection',
+    'SubsampleStacking': 'subsample_stacking',
+}
+
 
 def _detect_name(model: BaseModel) -> str:
     cls_name = type(model).__name__
@@ -129,6 +154,9 @@ def _detect_name(model: BaseModel) -> str:
         # определяем тип по нему, а не по имени обёртки.
         inner_cls = type(getattr(model, '_model', None)).__name__
         name = _RAW_LIB_CLASS_TO_NAME.get(inner_cls, 'unknown')
+
+    if name == 'unknown':
+        name = _PRESET_CLASS_TO_NAME.get(cls_name, 'unknown')
 
     return name
 
@@ -227,13 +255,19 @@ class ModelExplainer:
 
     # ── core: importance ────────────────────────────────────────────────────────
 
-    def feature_importance(self, method: str = 'auto', n_repeats: int = 5) -> pd.Series:
+    def feature_importance(
+        self, method: str = 'auto', n_repeats: int = 5, verbose: bool = False,
+    ) -> pd.Series:
         """Важность признаков в виде pd.Series (по убыванию).
 
         Args:
             method: 'auto' | 'gain' | 'shap' | 'permutation' | 'coef'
                     'auto' — выбирает лучший доступный метод автоматически.
             n_repeats: Число повторений для permutation importance.
+            verbose: Показывать tqdm-прогресс по признакам, пока считается
+                permutation importance (n_features × n_repeats вызовов predict —
+                может быть медленно). Не влияет на gain/shap/coef — там нет
+                итеративного цикла, показывать нечего.
 
         Returns:
             pd.Series с именами признаков в индексе, отсортированный по убыванию.
@@ -241,11 +275,11 @@ class ModelExplainer:
         cache_key = f'{method}_{n_repeats}'
         if cache_key in self._importance_cache:
             return self._importance_cache[cache_key]
-        result = self._compute_importance(method, n_repeats)
+        result = self._compute_importance(method, n_repeats, verbose)
         self._importance_cache[cache_key] = result
         return result
 
-    def _compute_importance(self, method: str, n_repeats: int) -> pd.Series:
+    def _compute_importance(self, method: str, n_repeats: int, verbose: bool = False) -> pd.Series:
         feats = self.feature_names_
         name = self.model_name_
 
@@ -282,7 +316,8 @@ class ModelExplainer:
         # permutation importance — работает для любой модели
         if method in ('permutation', 'auto'):
             raw = _permutation_importance(
-                self._predict_fn, feats, self.X_valid, self.y_valid, self.task, n_repeats
+                self._predict_fn, feats, self.X_valid, self.y_valid, self.task, n_repeats,
+                verbose=verbose,
             )
             return pd.Series(raw, index=feats, name='importance').sort_values(ascending=False)
 
@@ -420,6 +455,7 @@ class ModelExplainer:
         top_n: int = 30,
         method: str = 'auto',
         save_path: str | Path | None = None,
+        verbose: bool = False,
     ) -> plt.Figure:
         """Bar chart важности признаков + SHAP beeswarm (для tree-моделей).
 
@@ -427,13 +463,15 @@ class ModelExplainer:
             top_n:     Число признаков в bar chart.
             method:    Метод расчёта (см. feature_importance).
             save_path: Если задан — сохраняет PNG.
+            verbose:   Прогресс-бар tqdm на время расчёта permutation importance
+                       (см. feature_importance). Не влияет на gain/shap/coef.
 
         Returns:
             matplotlib Figure.
         """
         from ml_toolkit.model_explainer.feature_importance import _draw_bar, _try_shap_plot  # noqa: PLC0415
 
-        imp = self.feature_importance(method=method)
+        imp = self.feature_importance(method=method, verbose=verbose)
         n_show = min(top_n, len(imp))
         fig_h = max(6.0, n_show * 0.36 + 2.5)
         imp_label = self._imp_label(method)

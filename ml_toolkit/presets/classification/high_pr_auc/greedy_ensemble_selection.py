@@ -127,6 +127,7 @@ class GreedyForwardEnsembleSelection(BasePreset):
         _, _, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         y_va = y_valid.values
         n_models = len(self.model_library)
+        self.selected_features_ = list(X_valid.columns)
 
         va_matrix = np.stack([_get_proba(m, X_valid) for m in self.model_library], axis=1)
         single_scores = [float(average_precision_score(y_va, va_matrix[:, j])) for j in range(n_models)]

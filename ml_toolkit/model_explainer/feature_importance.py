@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, mean_absolute_error
+from tqdm import tqdm
 
 from ml_toolkit.models import ALL_TREE_NAMES as _TREE_MODELS, LIGHTGBM_VARIANTS as _LIGHTGBM_VARIANTS, SKLEARN_TREE_NAMES as _SKLEARN_TREE_MODELS
 
@@ -223,11 +224,15 @@ def _permutation_importance(
     y_val: pd.Series,
     task: str,
     n_repeats: int = 5,
+    verbose: bool = False,
 ) -> np.ndarray:
     """Permutation importance для моделей без встроенного механизма.
 
     Для регрессии: ΔMae = MAE_permuted − MAE_base  (выше → признак важнее).
     Для классификации: ΔPR-AUC = PR-AUC_base − PR-AUC_permuted  (выше → важнее).
+
+    verbose: показывать tqdm-прогресс по признакам (n_features × n_repeats
+        вызовов predict_fn — может быть медленно на больших моделях/выборках).
     """
     X_work = X_val[feature_names].copy()
     base_pred = predict_fn(X_work)
@@ -242,7 +247,7 @@ def _permutation_importance(
 
     rng = np.random.default_rng(42)
     deltas = np.zeros((len(feature_names), n_repeats), dtype=float)
-    for fi, feat in enumerate(feature_names):
+    for fi, feat in enumerate(tqdm(feature_names, desc='permutation importance', disable=not verbose)):
         original = X_work[feat].values.copy()
         for rep in range(n_repeats):
             X_work[feat] = rng.permutation(original)
