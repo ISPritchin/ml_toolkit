@@ -24,10 +24,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 def _make_prep() -> Pipeline:
@@ -66,6 +65,7 @@ class RuleFitRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[RULEFIT Reg] features=%d', len(self._num_feats_))
@@ -97,7 +97,7 @@ class RuleFitRegressor(BaseModel):
                 return metric_fn(y_va, m.predict(X_va))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = {**study.best_params, 'random_state': 42}
             logger.info('[RULEFIT Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -141,6 +141,7 @@ class RuleFitClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[RULEFIT Cls] features=%d', len(self._num_feats_))

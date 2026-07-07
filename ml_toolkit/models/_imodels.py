@@ -23,12 +23,12 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.utils.class_weight import compute_sample_weight
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 _CLS_FIRST_NAMES = frozenset({'skope_rules', 'brl', 'ripper'})
 
@@ -89,6 +89,7 @@ class IModelsRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
         name = ms.get('name', 'figs')
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
@@ -120,7 +121,7 @@ class IModelsRegressor(BaseModel):
                 return metric_fn(y_va, m.predict(X_va))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = study.best_params
             logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
 
@@ -165,6 +166,7 @@ class IModelsClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
         name = ms.get('name', 'figs')
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
@@ -173,6 +175,7 @@ class IModelsClassifier(BaseModel):
         self._prep = _make_prep()
         X_tr = self._prep.fit_transform(X_train[self._num_feats_].to_numpy(dtype=float))
         y_tr = y_train.to_numpy(dtype=int)
+        sw_tr = compute_sample_weight('balanced', y_tr)
 
         if X_valid is not None:
             X_va = self._prep.transform(X_valid[self._num_feats_].to_numpy(dtype=float))
@@ -183,9 +186,9 @@ class IModelsClassifier(BaseModel):
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
         if name == 'figs':
-            fitted_model, bp = self._fit_figs(X_tr, y_tr, X_va, y_va, metric_fn, direction)
+            fitted_model, bp = self._fit_figs(X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr)
         elif name == 'skope_rules':
-            fitted_model, bp = self._fit_skope(X_tr, y_tr, X_va, y_va, metric_fn, direction)
+            fitted_model, bp = self._fit_skope(X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr)
         elif name == 'brl':
             fitted_model, bp = self._fit_brl(X_tr, y_tr, X_va, y_va, metric_fn, direction)
         elif name == 'ripper':
@@ -202,10 +205,10 @@ class IModelsClassifier(BaseModel):
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
         return self
 
-    def _fit_figs(self, X_tr, y_tr, X_va, y_va, metric_fn, direction):
+    def _fit_figs(self, X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr):
         if self.params is not None:
             m = _make_figs_cls(self.params)
-            m.fit(X_tr, y_tr)
+            m.fit(X_tr, y_tr, sample_weight=sw_tr)
             return m, self.params
         if X_va is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')
@@ -213,21 +216,21 @@ class IModelsClassifier(BaseModel):
         def objective(trial):
             m = _make_figs_cls({'max_rules': trial.suggest_int('max_rules', 5, 30),
                                  'max_trees': trial.suggest_int('max_trees', 5, 30)})
-            m.fit(X_tr, y_tr)
+            m.fit(X_tr, y_tr, sample_weight=sw_tr)
             return metric_fn(y_va, _safe_proba(m, X_va))
 
         study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(self.model_settings), show_progress_bar=False)
         bp = study.best_params
         m = _make_figs_cls(bp)
-        m.fit(X_tr, y_tr)
+        m.fit(X_tr, y_tr, sample_weight=sw_tr)
         return m, bp
 
-    def _fit_skope(self, X_tr, y_tr, X_va, y_va, metric_fn, direction):
+    def _fit_skope(self, X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr):
         from imodels import SkopeRulesClassifier
         if self.params is not None:
             m = SkopeRulesClassifier(**self.params)
-            m.fit(X_tr, y_tr, feature_names=self._num_feats_)
+            m.fit(X_tr, y_tr, feature_names=self._num_feats_, sample_weight=sw_tr)
             return m, self.params
         if X_va is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')
@@ -236,14 +239,14 @@ class IModelsClassifier(BaseModel):
             p = {'n_estimators': trial.suggest_int('n_estimators', 5, 50),
                  'max_depth': trial.suggest_int('max_depth', 2, 5), 'random_state': 42}
             m = SkopeRulesClassifier(**p)
-            m.fit(X_tr, y_tr, feature_names=self._num_feats_)
+            m.fit(X_tr, y_tr, feature_names=self._num_feats_, sample_weight=sw_tr)
             return metric_fn(y_va, _safe_proba(m, X_va))
 
         study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(self.model_settings), show_progress_bar=False)
         bp = {**study.best_params, 'random_state': 42}
         m = SkopeRulesClassifier(**bp)
-        m.fit(X_tr, y_tr, feature_names=self._num_feats_)
+        m.fit(X_tr, y_tr, feature_names=self._num_feats_, sample_weight=sw_tr)
         return m, bp
 
     def _fit_brl(self, X_tr, y_tr, X_va, y_va, metric_fn, direction):
@@ -263,7 +266,7 @@ class IModelsClassifier(BaseModel):
             return metric_fn(y_va, _safe_proba(m, X_va))
 
         study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(self.model_settings), show_progress_bar=False)
         bp = study.best_params
         m = BayesianRuleListClassifier(**bp)
         m.fit(X_tr, y_tr, feature_names=self._num_feats_)
@@ -285,7 +288,7 @@ class IModelsClassifier(BaseModel):
             return metric_fn(y_va, _safe_proba(m, X_va))
 
         study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+        study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(self.model_settings), show_progress_bar=False)
         bp = study.best_params
         m = RIPPERClassifier(**bp)
         m.fit(X_tr, y_tr, feature_names=self._num_feats_)

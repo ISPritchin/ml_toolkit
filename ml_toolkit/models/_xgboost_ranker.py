@@ -22,7 +22,10 @@ import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import (
+    CLS_METRICS, fit_calibrator, make_xgb_pruning_callback, resolve_metric_fn,
+    resolve_pruner, resolve_timeout, set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,7 @@ class XGBoostRanker(BaseModel):
         except ImportError as err:
             raise ImportError("XGBoost не установлен. Выполните: pip install xgboost") from err
 
+        set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -148,14 +152,17 @@ class XGBoostRanker(BaseModel):
             m.fit(
                 Xtr, ytr, qid=qid_tr,
                 eval_set=[(Xva, yva)], eval_qid=[qid_va],
-                verbose=False,
+                verbose=False, callbacks=[make_xgb_pruning_callback(trial)],
             )
             cal = fit_calibrator(m.predict(Xva), yva)
             return metric_fn(yva, cal.predict(m.predict(Xva)))
 
+        ms = self.model_settings
         logger.info('[XGB Ranker] Optuna: %d trials, objective=%s', self.n_optuna_trials, rank_obj)
-        study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+        study = optuna.create_study(
+            direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+        )
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
 
         best_params = {
             **study.best_params,

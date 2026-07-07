@@ -33,10 +33,10 @@ from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
     CLS_METRICS, REG_METRICS, apply_cat_encoder, build_cat_encoder,
     calibrate_proba, fit_calibrator, resolve_metric_fn,
+    resolve_timeout, set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 _MEDIAN_QUANTILE = 0.5
 
@@ -102,6 +102,7 @@ class QuantileForestRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
             build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
@@ -129,7 +130,7 @@ class QuantileForestRegressor(BaseModel):
                 return metric_fn(y_va, pipe.predict(Xva))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = {**study.best_params, 'random_state': 42, 'n_jobs': -1}
             logger.info('[QUANTILE_FOREST Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -167,6 +168,7 @@ class QuantileForestClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
             build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
@@ -211,7 +213,7 @@ class QuantileForestClassifier(BaseModel):
                 return metric_fn(y_va, clf.predict_proba(F_va)[:, 1])
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = {**study.best_params, 'random_state': 42}
             logger.info('[QUANTILE_FOREST Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 

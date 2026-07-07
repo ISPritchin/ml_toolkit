@@ -42,10 +42,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 _LINEAR_TYPE_NAMES = frozenset({'ridge', 'elasticnet', 'huber', 'tweedie', 'quantile', 'bayesian_ridge'})
 _QUANTILE_MAX_TRAIN_ROWS = 20_000
@@ -121,6 +120,7 @@ class LinearRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         name = ms.get('name', 'ridge')
         if name not in _LINEAR_TYPE_NAMES:
@@ -170,7 +170,7 @@ class LinearRegressor(BaseModel):
                     return float('inf') if direction == 'minimize' else -float('inf')
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+            study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = study.best_params
             logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
 
@@ -209,6 +209,7 @@ class LinearClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
@@ -225,7 +226,7 @@ class LinearClassifier(BaseModel):
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
         if self.params is not None:
-            self._model = LogisticRegression(**self.params)
+            self._model = LogisticRegression(**self.params, class_weight='balanced')
             self._model.fit(X_tr_sc, y_tr)
             self.best_params_ = self.params
         else:
@@ -237,7 +238,10 @@ class LinearClassifier(BaseModel):
             def objective(trial: optuna.Trial) -> float:
                 C = trial.suggest_float('C', 1e-3, 1e2, log=True)
                 l1_ratio = trial.suggest_categorical('l1_ratio', [0.0, 1.0])
-                m = LogisticRegression(C=C, l1_ratio=l1_ratio, solver='saga', max_iter=1000, random_state=42)
+                m = LogisticRegression(
+                    C=C, l1_ratio=l1_ratio, solver='saga', max_iter=1000,
+                    class_weight='balanced', random_state=42,
+                )
                 try:
                     m.fit(X_tr_sc, y_tr)
                     return metric_fn(y_va, m.predict_proba(X_va_sc)[:, 1])
@@ -245,13 +249,13 @@ class LinearClassifier(BaseModel):
                     return -float('inf') if direction == 'maximize' else float('inf')
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = study.best_params
             logger.info('[Linear Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
             self._model = LogisticRegression(
                 C=self.best_params_.get('C', 1.0), l1_ratio=self.best_params_.get('l1_ratio', 0.0),
-                solver='saga', max_iter=2000, random_state=42,
+                solver='saga', max_iter=2000, class_weight='balanced', random_state=42,
             )
             self._model.fit(X_tr_sc, y_tr)
 

@@ -204,6 +204,54 @@ model_settings = {'name': 'catboost', 'undersample_majority': False}   # без 
 
 ---
 
+## Ограничение времени тюнинга и прунинг (`optuna_timeout` / `optuna_pruner` / `optuna_verbose`)
+
+Все адаптеры, использующие Optuna (`catboost`, `lightgbm`, `xgboost` — включая `*_ranker`-варианты
+— `tabm`, а также все sklearn-подобные адаптеры без staged-обучения: `random_forest`, `extra_trees`,
+`hist_gbm`, `quantile_forest`, `oblique_forest`, `mondrian`, `decision_tree`, `linear_tree`, `ebm`,
+`pygam`, `mars`, `rulefit`, `figs`, `skope_rules`, `brl`, `ripper`, `soft_decision_tree`,
+`locally_linear_forest`, `gaminet`, линейные модели) читают эти ключи из `model_settings`.
+
+```python
+model_settings = {
+    'name': 'catboost',
+    'optuna_timeout': 600,       # секунд на весь study.optimize; None (по умолч.) — без лимита
+    'optuna_pruner': 'hyperband',
+    'optuna_verbose': False,     # True — не форсировать WARNING-уровень логов Optuna
+}
+```
+
+### `optuna_timeout`
+
+Секунды на весь `study.optimize(...)`. Останавливает тюнинг по первому из условий:
+`n_optuna_trials` trials или истечение `optuna_timeout` — текущий trial всегда доучивается до
+конца, обрезки посреди trial не бывает. `None` (по умолчанию) — только по числу trials.
+
+### `optuna_pruner`
+
+`None` (по умолч.) → `MedianPruner()`. Строковые алиасы: `'median'`, `'hyperband'`,
+`'percentile'` (25-й перцентиль), `'successive_halving'`, `'none'` (отключает прунинг —
+`NopPruner`). Либо готовый экземпляр `optuna.pruners.BasePruner`.
+
+Прунер реально отсекает бесперспективные trials только там, где есть промежуточные отчёты о
+качестве по ходу обучения одного trial:
+
+| Адаптер | Прунинг по | Метрика отчёта |
+|---------|-------------|----------------|
+| `catboost`, `catboost_ranker` | итерациям бустинга | `eval_metric` (через колбэк, `after_iteration`) |
+| `lightgbm`, `lightgbm_ranker` | итерациям бустинга | первая метрика `eval_set` |
+| `xgboost`, `xgboost_ranker` | итерациям бустинга | первая метрика `eval_set` |
+| `tabm` | эпохам | `reg_metric`/`cls_metric` на валидации |
+| остальные (sklearn-подобные, без staged-обучения) | — | `optuna_pruner` принимается, но не подключается — прунинг не имеет смысла без промежуточных отчётов внутри trial |
+| `lama` | не через Optuna | LAMA управляет тюнингом сама; см. `model_settings['timeout']` (сек, по умолч. `n_optuna_trials * 60`) |
+
+### `optuna_verbose`
+
+`False` (по умолч.) — форсирует `optuna.logging.WARNING` на время `fit()` (глушит INFO-логи по
+каждому trial). `True` — не трогает текущий уровень логирования Optuna.
+
+---
+
 ## Сводная таблица ключей
 
 | Ключ | Тип | Где работает | По умолчанию |
@@ -216,3 +264,6 @@ model_settings = {'name': 'catboost', 'undersample_majority': False}   # без 
 | `baseline_col` | `str` | catboost, lightgbm, lama, linear | `'fee_nds_amount'` |
 | `param_space` | `Callable[[optuna.Trial], dict] \| None` | catboost, lightgbm, xgboost | `None` → дефолтное пространство |
 | `undersample_majority` | `bool` | catboost, lightgbm, xgboost (классификаторы) | `True` (catboost) / `False` (lightgbm, xgboost) |
+| `optuna_timeout` | `float \| None` (секунды) | все Optuna-адаптеры | `None` → без лимита времени |
+| `optuna_pruner` | `None \| str \| optuna.pruners.BasePruner` | все Optuna-адаптеры (реально отсекает trials только в catboost/lightgbm/xgboost/*_ranker/tabm) | `None` → `MedianPruner()` |
+| `optuna_verbose` | `bool` | все Optuna-адаптеры | `False` → форсирует WARNING-уровень логов Optuna |

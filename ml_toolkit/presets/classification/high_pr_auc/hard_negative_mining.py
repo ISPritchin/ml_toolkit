@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -62,6 +63,17 @@ class HardNegativeMiner(BasePreset):
     n_optuna_trials:
         Если > 0, параметры первого раунда ищутся через Optuna (P@K), последующие
         раунды используют найденные параметры.
+    param_space:
+        Кастомная функция `f(trial) -> dict` — переопределяет search space для
+        Optuna в раунде 0. Любой отсутствующий в возвращённом словаре ключ
+        (iterations/max_depth/learning_rate/l2_leaf_reg/subsample/
+        min_data_in_leaf/scale_pos_weight или loss_function/eval_metric/
+        early_stopping_rounds/random_seed/verbose) тюнится/подставляется
+        дефолтным способом. Действует только при n_optuna_trials > 0.
+        None → дефолтный search space.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     calibrate:
         Применять ли изотоническую калибровку к valid_pred_.
     random_seed:
@@ -82,7 +94,9 @@ class HardNegativeMiner(BasePreset):
         hard_weight: float = 4.0,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         calibrate: bool = True,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
@@ -90,6 +104,8 @@ class HardNegativeMiner(BasePreset):
     ):
         super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         self.optuna_timeout = optuna_timeout
+        self.param_space = param_space
+        self.optuna_verbose = optuna_verbose
         self.n_rounds = n_rounds
         self.hard_percentile = hard_percentile
         self.hard_weight = hard_weight
@@ -107,24 +123,35 @@ class HardNegativeMiner(BasePreset):
         import optuna
         from catboost import CatBoostClassifier
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         def objective(trial: optuna.Trial) -> float:
+            custom = self.param_space(trial) if self.param_space is not None else {}
+
+            def val(key: str, suggest: Callable[[], Any]) -> Any:
+                return custom[key] if key in custom else suggest()
+
             params = {
-                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
-                'max_depth': trial.suggest_int('max_depth', 3, 7),
-                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
-                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
-                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
-                'scale_pos_weight': trial.suggest_float('scale_pos_weight', 0.5, 20.0, log=True),
-                'loss_function': 'Logloss',
-                'eval_metric': 'PRAUC',
-                'early_stopping_rounds': 100,
-                'random_seed': self.random_seed,
-                'verbose': 0,
+                'iterations': val('iterations', lambda: trial.suggest_int('iterations', 300, 1000, step=100)),
+                'max_depth': val('max_depth', lambda: trial.suggest_int('max_depth', 3, 7)),
+                'learning_rate': val('learning_rate',
+                    lambda: trial.suggest_float('learning_rate', 0.001, 0.3, log=True)),
+                'l2_leaf_reg': val('l2_leaf_reg',
+                    lambda: trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True)),
+                'subsample': val('subsample', lambda: trial.suggest_float('subsample', 0.5, 1.0)),
+                'min_data_in_leaf': val('min_data_in_leaf',
+                    lambda: trial.suggest_int('min_data_in_leaf', 1, 30)),
+                'scale_pos_weight': val('scale_pos_weight',
+                    lambda: trial.suggest_float('scale_pos_weight', 0.5, 20.0, log=True)),
+                'loss_function': custom.get('loss_function', 'Logloss'),
+                'eval_metric': custom.get('eval_metric', 'PRAUC'),
+                'early_stopping_rounds': custom.get('early_stopping_rounds', 100),
+                'random_seed': custom.get('random_seed', self.random_seed),
+                'verbose': custom.get('verbose', 0),
             }
-            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            trial.set_user_attr('cb_params', params)
+            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
             m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -137,11 +164,7 @@ class HardNegativeMiner(BasePreset):
                                     pruner=make_pruner())
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        best = {
-            **study.best_params,
-            'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
-            'early_stopping_rounds': 100, 'random_seed': self.random_seed, 'verbose': 0,
-        }
+        best = dict(study.best_trial.user_attrs['cb_params'])
         m = CatBoostClassifier(**best)
         m.fit(tr_pool, eval_set=va_pool, verbose=False)
         return m, best

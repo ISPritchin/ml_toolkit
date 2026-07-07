@@ -20,12 +20,12 @@ import numpy as np
 import optuna
 import pandas as pd
 from sklearn.metrics import average_precision_score, mean_absolute_error
+from sklearn.utils.class_weight import compute_sample_weight
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 def _num_features(selected_features: list[str], cat_features: list[str]) -> list[str]:
@@ -70,6 +70,7 @@ class EBMRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
@@ -98,7 +99,7 @@ class EBMRegressor(BaseModel):
                 return metric_fn(y_va, m.predict(Xva))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = {**study.best_params, 'random_state': 42}
             logger.info('[EBM Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -139,6 +140,7 @@ class EBMClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
@@ -148,12 +150,13 @@ class EBMClassifier(BaseModel):
 
         Xtr = X_train[self._num_feats_]
         y_tr = y_train.to_numpy(dtype=int)
+        sw_tr = compute_sample_weight('balanced', y_tr)
 
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
         if self.params is not None:
             self._model = ExplainableBoostingClassifier(**self.params)
-            self._model.fit(Xtr, y_tr)
+            self._model.fit(Xtr, y_tr, sample_weight=sw_tr)
             self.best_params_ = self.params
         else:
             if X_valid is None:
@@ -163,16 +166,16 @@ class EBMClassifier(BaseModel):
 
             def objective(trial: optuna.Trial) -> float:
                 m = ExplainableBoostingClassifier(**_ebm_suggest(trial))
-                m.fit(Xtr, y_tr)
+                m.fit(Xtr, y_tr, sample_weight=sw_tr)
                 return metric_fn(y_va, m.predict_proba(Xva)[:, 1])
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = {**study.best_params, 'random_state': 42}
             logger.info('[EBM Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
             self._model = ExplainableBoostingClassifier(**self.best_params_)
-            self._model.fit(Xtr, y_tr)
+            self._model.fit(Xtr, y_tr, sample_weight=sw_tr)
 
         self.train_pred_ = self._model.predict_proba(Xtr)[:, 1]
         if X_valid is not None:

@@ -19,6 +19,7 @@ Stage 2 (высокая precision): обучается только на тех 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -46,6 +47,17 @@ class TwoStageCascade(BasePreset):
         Optuna-trials для Stage 1 (0 — использовать stage1_params напрямую).
     stage2_n_trials:
         Optuna-trials для Stage 2 (0 — использовать stage2_params напрямую).
+    stage1_param_space, stage2_param_space:
+        Кастомные функции `f(trial) -> dict` — переопределяют search space
+        Optuna для соответствующего этапа. Любой отсутствующий в возвращённом
+        словаре ключ (iterations/max_depth/learning_rate/l2_leaf_reg/
+        subsample/min_data_in_leaf/scale_pos_weight, или loss_function/
+        eval_metric/early_stopping_rounds/random_seed/verbose) тюнится/
+        подставляется дефолтным способом. Действуют только при
+        stageN_n_trials > 0. None → дефолтный search space.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     random_seed:
         Зерно CatBoost, Optuna sampler'а и OOF-разбиения (StratifiedKFold).
 
@@ -71,7 +83,10 @@ class TwoStageCascade(BasePreset):
         stage2_params: dict[str, Any] | None = None,
         stage1_n_trials: int = 0,
         stage2_n_trials: int = 0,
+        stage1_param_space: Callable[[Any], dict[str, Any]] | None = None,
+        stage2_param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -82,7 +97,10 @@ class TwoStageCascade(BasePreset):
         self.stage2_params = stage2_params
         self.stage1_n_trials = stage1_n_trials
         self.stage2_n_trials = stage2_n_trials
+        self.stage1_param_space = stage1_param_space
+        self.stage2_param_space = stage2_param_space
         self.optuna_timeout = optuna_timeout
+        self.optuna_verbose = optuna_verbose
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -124,32 +142,45 @@ class TwoStageCascade(BasePreset):
             'verbose': 0,
         }
 
-    def _train_with_optuna(self, CB, tr_pool, va_pool, n_trials: int, is_stage2: bool):
+    def _train_with_optuna(
+        self, CB, tr_pool, va_pool, n_trials: int, is_stage2: bool,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
+    ):
         import optuna
         from catboost import CatBoostClassifier
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
         metric_fn = average_precision_score
 
         def objective(trial: optuna.Trial) -> float:
+            custom = param_space(trial) if param_space is not None else {}
+
+            def val(key: str, suggest: Callable[[], Any]) -> Any:
+                return custom[key] if key in custom else suggest()
+
             params = {
-                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
-                'max_depth': trial.suggest_int('max_depth', 3, 7),
-                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
-                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
-                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
-                'scale_pos_weight': (
+                'iterations': val('iterations', lambda: trial.suggest_int('iterations', 300, 1000, step=100)),
+                'max_depth': val('max_depth', lambda: trial.suggest_int('max_depth', 3, 7)),
+                'learning_rate': val('learning_rate',
+                    lambda: trial.suggest_float('learning_rate', 0.001, 0.3, log=True)),
+                'l2_leaf_reg': val('l2_leaf_reg',
+                    lambda: trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True)),
+                'subsample': val('subsample', lambda: trial.suggest_float('subsample', 0.5, 1.0)),
+                'min_data_in_leaf': val('min_data_in_leaf',
+                    lambda: trial.suggest_int('min_data_in_leaf', 1, 30)),
+                'scale_pos_weight': val('scale_pos_weight', lambda: (
                     1.0 if is_stage2 else
                     trial.suggest_float('scale_pos_weight', 1.0, 30.0, log=True)
-                ),
-                'loss_function': 'Logloss',
-                'eval_metric': 'PRAUC',
-                'early_stopping_rounds': 100,
-                'random_seed': self.random_seed,
-                'verbose': 0,
+                )),
+                'loss_function': custom.get('loss_function', 'Logloss'),
+                'eval_metric': custom.get('eval_metric', 'PRAUC'),
+                'early_stopping_rounds': custom.get('early_stopping_rounds', 100),
+                'random_seed': custom.get('random_seed', self.random_seed),
+                'verbose': custom.get('verbose', 0),
             }
-            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            trial.set_user_attr('cb_params', params)
+            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
             m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -161,8 +192,7 @@ class TwoStageCascade(BasePreset):
                                     pruner=make_pruner())
         study.optimize(objective, n_trials=n_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        best = {**study.best_params, 'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
-                'early_stopping_rounds': 100, 'random_seed': self.random_seed, 'verbose': 0}
+        best = dict(study.best_trial.user_attrs['cb_params'])
         m = CatBoostClassifier(**best)
         m.fit(tr_pool, eval_set=va_pool, verbose=False)
         return m, best
@@ -254,7 +284,8 @@ class TwoStageCascade(BasePreset):
 
         if self.stage1_n_trials > 0:
             self.model1_, s1_used_params = self._train_with_optuna(
-                CatBoostClassifier, tr1, va1, self.stage1_n_trials, is_stage2=False
+                CatBoostClassifier, tr1, va1, self.stage1_n_trials, is_stage2=False,
+                param_space=self.stage1_param_space,
             )
         else:
             self.model1_ = CatBoostClassifier(**s1_params)
@@ -310,7 +341,8 @@ class TwoStageCascade(BasePreset):
 
         if self.stage2_n_trials > 0 and va2 is not None:
             self.model2_, _ = self._train_with_optuna(
-                CatBoostClassifier, tr2, va2, self.stage2_n_trials, is_stage2=True
+                CatBoostClassifier, tr2, va2, self.stage2_n_trials, is_stage2=True,
+                param_space=self.stage2_param_space,
             )
         else:
             self.model2_ = CatBoostClassifier(**s2_params)

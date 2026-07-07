@@ -23,7 +23,10 @@ import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import (
+    CLS_METRICS, fit_calibrator, make_catboost_pruning_callback, resolve_metric_fn,
+    resolve_pruner, resolve_timeout, set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,7 @@ class CatBoostRanker(BaseModel):
     ) -> "CatBoostRanker":
         _CB_Ranker, Pool = _import_catboost()
 
+        set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -149,14 +153,20 @@ class CatBoostRanker(BaseModel):
                 'early_stopping_rounds': 100,
             }
             m = _CB_Ranker(**params)
-            m.fit(tr_pool, eval_set=va_pool)
+            pruning_callback = make_catboost_pruning_callback(trial)
+            m.fit(tr_pool, eval_set=va_pool, callbacks=[pruning_callback])
+            if pruning_callback.pruned:
+                raise optuna.TrialPruned(f'Trial pruned (best iteration {m.get_best_iteration()}).')
             raw_va = m.predict(_make_rank_pool(Pool, Xva, None, cat_in_sel, group_size))
             cal = fit_calibrator(raw_va, yva)
             return metric_fn(yva, cal.predict(raw_va))
 
+        ms = self.model_settings
         logger.info('[CB Ranker] Optuna: %d trials, objective=%s', self.n_optuna_trials, rank_obj)
-        study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+        study = optuna.create_study(
+            direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+        )
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
 
         best_params = {
             **study.best_params,

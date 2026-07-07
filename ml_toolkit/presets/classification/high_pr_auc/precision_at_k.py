@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -44,6 +45,18 @@ class PrecisionAtKClassifier(BasePreset):
         Доля наблюдений для precision@K (например, 0.10 = топ 10%).
     n_optuna_trials:
         Число trials Optuna.
+    param_space:
+        Кастомная функция `f(trial) -> dict` — переопределяет search space для
+        Optuna (архитектура CatBoost и majority_fraction в одном пространстве).
+        Любой отсутствующий в возвращённом словаре ключ (majority_fraction,
+        iterations/max_depth/learning_rate/l2_leaf_reg/subsample/
+        min_data_in_leaf/random_strength/border_count/rsm, или loss_function/
+        eval_metric/early_stopping_rounds/random_seed/verbose) тюнится/
+        подставляется дефолтным способом. Действует только при
+        n_optuna_trials > 0. None → дефолтный search space.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     calibrate:
         Применять ли изотоническую калибровку к выходным вероятностям.
     random_seed:
@@ -61,7 +74,9 @@ class PrecisionAtKClassifier(BasePreset):
         self,
         k_fraction: float = 0.10,
         n_optuna_trials: int = 50,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         calibrate: bool = True,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
@@ -71,6 +86,8 @@ class PrecisionAtKClassifier(BasePreset):
             raise ValueError(f"k_fraction должен быть в (0, 1], получено {k_fraction}")
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.optuna_timeout = optuna_timeout
+        self.param_space = param_space
+        self.optuna_verbose = optuna_verbose
         self.k_fraction = k_fraction
         self.calibrate = calibrate
         self.random_seed = random_seed
@@ -90,7 +107,8 @@ class PrecisionAtKClassifier(BasePreset):
         import optuna
         from catboost import CatBoostClassifier, Pool
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
@@ -116,33 +134,45 @@ class PrecisionAtKClassifier(BasePreset):
                     self.k_fraction, max(1, int(len(y_va) * self.k_fraction)))
 
         def objective(trial: optuna.Trial) -> float:
-            majority_fraction = trial.suggest_float('majority_fraction', 0.05, 1.0)
+            custom = self.param_space(trial) if self.param_space is not None else {}
+
+            def val(key: str, suggest: Callable[[], Any]) -> Any:
+                return custom[key] if key in custom else suggest()
+
+            majority_fraction = val('majority_fraction',
+                lambda: trial.suggest_float('majority_fraction', 0.05, 1.0))
             n_keep = max(1, int(n_majority * majority_fraction))
             rng = np.random.default_rng(self.random_seed + trial.number)
             sampled_maj = rng.choice(majority_idx, size=n_keep, replace=False)
             idx = np.sort(np.concatenate([minority_idx, sampled_maj]))
 
             params = {
-                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
-                'max_depth': trial.suggest_int('max_depth', 3, 7),
-                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
-                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
-                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 50),
-                'random_strength': trial.suggest_float('random_strength', 1e-9, 10.0, log=True),
-                'border_count': trial.suggest_int('border_count', 32, 255),
-                'rsm': trial.suggest_float('rsm', 0.3, 1.0),
-                'loss_function': 'Logloss',
-                'eval_metric': 'PRAUC',
-                'verbose': 0,
-                'early_stopping_rounds': 100,
-                'random_seed': self.random_seed,
+                'iterations': val('iterations', lambda: trial.suggest_int('iterations', 300, 1000, step=100)),
+                'max_depth': val('max_depth', lambda: trial.suggest_int('max_depth', 3, 7)),
+                'learning_rate': val('learning_rate',
+                    lambda: trial.suggest_float('learning_rate', 0.001, 0.3, log=True)),
+                'l2_leaf_reg': val('l2_leaf_reg',
+                    lambda: trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True)),
+                'subsample': val('subsample', lambda: trial.suggest_float('subsample', 0.5, 1.0)),
+                'min_data_in_leaf': val('min_data_in_leaf',
+                    lambda: trial.suggest_int('min_data_in_leaf', 1, 50)),
+                'random_strength': val('random_strength',
+                    lambda: trial.suggest_float('random_strength', 1e-9, 10.0, log=True)),
+                'border_count': val('border_count', lambda: trial.suggest_int('border_count', 32, 255)),
+                'rsm': val('rsm', lambda: trial.suggest_float('rsm', 0.3, 1.0)),
+                'loss_function': custom.get('loss_function', 'Logloss'),
+                'eval_metric': custom.get('eval_metric', 'PRAUC'),
+                'verbose': custom.get('verbose', 0),
+                'early_stopping_rounds': custom.get('early_stopping_rounds', 100),
+                'random_seed': custom.get('random_seed', self.random_seed),
             }
+            trial.set_user_attr('majority_fraction', majority_fraction)
+            trial.set_user_attr('cb_params', params)
 
             trial_pool = Pool(
                 X_train[feats].iloc[idx], y_tr[idx], cat_features=self.cat_features_
             )
-            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
             m.fit(trial_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -164,23 +194,17 @@ class PrecisionAtKClassifier(BasePreset):
         # параметры. Пересчёт majority_fraction в scale_pos_weight некорректен:
         # undersampling и reweighting для деревьев не эквивалентны, и метрика
         # best_precision_at_k_ была бы измерена не у возвращаемой модели.
-        best = dict(study.best_params)
-        majority_fraction = best.pop('majority_fraction')
+        # user_attrs, а не study.best_params — иначе значения, зафиксированные
+        # кастомным param_space напрямую (не через trial.suggest_*), потерялись бы.
+        majority_fraction = study.best_trial.user_attrs['majority_fraction']
+        best = dict(study.best_trial.user_attrs['cb_params'])
         n_keep = max(1, int(n_majority * majority_fraction))
         rng = np.random.default_rng(self.random_seed + study.best_trial.number)
         sampled_maj = rng.choice(majority_idx, size=n_keep, replace=False)
         final_idx = np.sort(np.concatenate([minority_idx, sampled_maj]))
 
-        self.best_params_ = {
-            **best,
-            'majority_fraction': majority_fraction,
-            'loss_function': 'Logloss',
-            'eval_metric': 'PRAUC',
-            'early_stopping_rounds': 100,
-            'random_seed': self.random_seed,
-            'verbose': 0,
-        }
-        fit_params = {k: v for k, v in self.best_params_.items() if k != 'majority_fraction'}
+        self.best_params_ = {**best, 'majority_fraction': majority_fraction}
+        fit_params = best
 
         tr_pool = Pool(
             X_train[feats].iloc[final_idx], y_tr[final_idx], cat_features=self.cat_features_

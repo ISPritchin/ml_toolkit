@@ -24,7 +24,11 @@ from ml_toolkit.models._utils import (
     apply_multiclass_calibrators,
     fit_calibrator,
     fit_multiclass_calibrators,
+    make_catboost_pruning_callback,
     resolve_metric_fn,
+    resolve_pruner,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,6 +133,7 @@ class CatBoostRegressor(BaseModel):
     ) -> "CatBoostRegressor":
         _CB_Classifier, _CB_Regressor, Pool = _import_catboost()
 
+        set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -187,7 +192,10 @@ class CatBoostRegressor(BaseModel):
             }
             trial.set_user_attr('cb_params', params)
             m = _CB_Regressor(**params)
-            m.fit(tr_pool, eval_set=va_pool, verbose=False)
+            pruning_callback = make_catboost_pruning_callback(trial)
+            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_callback])
+            if pruning_callback.pruned:
+                raise optuna.TrialPruned(f'Trial pruned (best iteration {m.get_best_iteration()}).')
             pred = pp(X_valid, m.predict(va_pool))
             return metric_fn(y_valid.values, pred)
 
@@ -195,8 +203,11 @@ class CatBoostRegressor(BaseModel):
             '[CatBoost Reg] Optuna: %d trials, baseline=%s, custom_param_space=%s',
             self.n_optuna_trials, baseline_col, param_space is not None,
         )
-        study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+        ms = self.model_settings
+        study = optuna.create_study(
+            direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+        )
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
 
         best_params = dict(study.best_trial.user_attrs['cb_params'])
         logger.info('[CatBoost Reg] Best score=%.4f params=%s', study.best_value, best_params)
@@ -257,6 +268,7 @@ class CatBoostClassifier(BaseModel):
     ) -> "CatBoostClassifier":
         _CB_Classifier, _CB_Regressor, Pool = _import_catboost()
 
+        set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -349,7 +361,10 @@ class CatBoostClassifier(BaseModel):
             trial.set_user_attr('cb_params', params)
 
             m = _CB_Classifier(**params)
-            m.fit(trial_pool, eval_set=va_pool, verbose=False)
+            pruning_callback = make_catboost_pruning_callback(trial)
+            m.fit(trial_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_callback])
+            if pruning_callback.pruned:
+                raise optuna.TrialPruned(f'Trial pruned (best iteration {m.get_best_iteration()}).')
             raw = m.predict_proba(va_pool)
             proba = raw[:, 1] if is_binary else raw
             return metric_fn(y_valid.values, proba)
@@ -358,8 +373,10 @@ class CatBoostClassifier(BaseModel):
             '[CatBoost Cls] Optuna: %d trials, task_type=%s, custom_param_space=%s, undersample_majority=%s',
             self.n_optuna_trials, task_type, param_space is not None, undersample_majority,
         )
-        study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+        study = optuna.create_study(
+            direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+        )
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
 
         best_trial = study.best_trial
         best_params = dict(best_trial.user_attrs['cb_params'])

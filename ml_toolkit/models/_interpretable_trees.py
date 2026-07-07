@@ -26,10 +26,9 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 _MAX_LLF_TRAIN_ROWS = 2000
 
@@ -117,17 +116,27 @@ class _SoftDecisionTree:
         X_v = torch.tensor(X_val, dtype=torch.float32, device=device)
         y_v = torch.tensor(y_val, dtype=torch.float32, device=device)
 
-        loss_fn = nn.BCELoss() if is_cls else nn.L1Loss()
+        if is_cls:
+            # class_weight='balanced' эквивалент: n_samples / (n_classes * n_samples_class)
+            n_pos = float(y_t.sum().item())
+            n_neg = float(y_t.numel()) - n_pos
+            w_pos = (n_pos + n_neg) / (2.0 * max(n_pos, 1.0))
+            w_neg = (n_pos + n_neg) / (2.0 * max(n_neg, 1.0))
+            sample_weight = torch.where(y_t == 1, torch.as_tensor(w_pos, device=device), torch.as_tensor(w_neg, device=device))
+            train_loss_fn = lambda pred, target: nn.functional.binary_cross_entropy(pred, target, weight=sample_weight)
+            val_loss_fn = nn.BCELoss()  # без весов — для честного сравнения на early stopping
+        else:
+            train_loss_fn = val_loss_fn = nn.L1Loss()
         best_val, best_state, no_improve = float('inf'), None, 0
 
         for _ in range(self.n_epochs):
             net.train()
             opt.zero_grad()
-            loss_fn(net(X_t), y_t).backward()
+            train_loss_fn(net(X_t), y_t).backward()
             opt.step()
             net.eval()
             with torch.no_grad():
-                val_loss = loss_fn(net(X_v), y_v).item()
+                val_loss = val_loss_fn(net(X_v), y_v).item()
             if val_loss < best_val - 1e-7:
                 best_val, best_state, no_improve = val_loss, {k: v.clone() for k, v in net.state_dict().items()}, 0
             else:
@@ -216,6 +225,7 @@ class InterpretableTreeRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
         name = ms.get('name', 'soft_decision_tree')
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
@@ -246,7 +256,7 @@ class InterpretableTreeRegressor(BaseModel):
                     return metric_fn(y_va, sdt.predict(X_va))
 
                 study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
                 self.best_params_ = study.best_params
                 logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
                 fitted = _SoftDecisionTree(**self.best_params_)
@@ -272,7 +282,7 @@ class InterpretableTreeRegressor(BaseModel):
                     return metric_fn(y_va, llf.predict(X_va))
 
                 study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
                 self.best_params_ = study.best_params
                 logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
                 fitted = _LocallyLinearForest(**self.best_params_)
@@ -310,6 +320,7 @@ class InterpretableTreeClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
         name = ms.get('name', 'soft_decision_tree')
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
@@ -341,7 +352,7 @@ class InterpretableTreeClassifier(BaseModel):
                     return metric_fn(y_va, np.clip(sdt.predict(X_va), 0.0, 1.0))
 
                 study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
                 self.best_params_ = study.best_params
                 logger.info('[%s Cls] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
                 fitted = _SoftDecisionTree(**self.best_params_)
@@ -373,7 +384,7 @@ class InterpretableTreeClassifier(BaseModel):
                     return metric_fn(y_va, m.predict_proba(X_va)[:, 1])
 
                 study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
                 self.best_params_ = {**study.best_params, 'class_weight': 'balanced', 'random_state': 42, 'n_jobs': -1}
                 logger.info('[%s Cls] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
                 fitted = RandomForestClassifier(**self.best_params_)

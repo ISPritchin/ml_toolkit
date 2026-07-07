@@ -26,6 +26,7 @@ c ≈ mean(model.predict_proba(X_val_c[y==1])), где X_val_c — полови�
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -61,6 +62,18 @@ class PULearningClassifier(BasePreset):
         Параметры CatBoost. None → дефолтные.
     n_optuna_trials:
         Число Optuna-триалов. 0 → использовать base_params без поиска.
+    param_space:
+        Кастомная функция `f(trial) -> dict` — переопределяет search space для
+        Optuna. Любой отсутствующий в возвращённом словаре ключ (iterations/
+        max_depth/learning_rate/l2_leaf_reg/subsample/min_data_in_leaf или
+        loss_function/eval_metric/early_stopping_rounds/random_seed/verbose)
+        тюнится/подставляется дефолтным способом — можно переопределить как
+        ни одного параметра, так и часть, так и все сразу, включая
+        loss_function/eval_metric. Действует только при n_optuna_trials > 0.
+        None → дефолтный search space.
+    optuna_verbose:
+        Если True — не глушит логи Optuna. Если False (по умолчанию) —
+        форсирует WARNING на время поиска.
     c_lower_bound:
         Минимально допустимое значение c (защита от деления на очень малое).
         При c < c_lower_bound выдаётся предупреждение.
@@ -88,7 +101,9 @@ class PULearningClassifier(BasePreset):
         self,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
+        optuna_verbose: bool = False,
         c_lower_bound: float = 0.1,
         c_estimation_frac: float = 0.5,
         random_seed: int = 42,
@@ -99,6 +114,8 @@ class PULearningClassifier(BasePreset):
         if not 0.0 < c_estimation_frac < 1.0:
             raise ValueError(f'c_estimation_frac должен быть в (0, 1), получено {c_estimation_frac}')
         self.optuna_timeout = optuna_timeout
+        self.param_space = param_space
+        self.optuna_verbose = optuna_verbose
         self.base_params = base_params
         self.c_lower_bound = c_lower_bound
         self.c_estimation_frac = c_estimation_frac
@@ -116,23 +133,33 @@ class PULearningClassifier(BasePreset):
         import optuna
         from catboost import CatBoostClassifier
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         def objective(trial: optuna.Trial) -> float:
+            custom = self.param_space(trial) if self.param_space is not None else {}
+
+            def val(key: str, suggest: Callable[[], Any]) -> Any:
+                return custom[key] if key in custom else suggest()
+
             params = {
-                'iterations': trial.suggest_int('iterations', 300, 1000, step=100),
-                'max_depth': trial.suggest_int('max_depth', 3, 7),
-                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.3, log=True),
-                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
-                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-                'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 30),
-                'loss_function': 'Logloss',
-                'eval_metric': 'PRAUC',
-                'early_stopping_rounds': 80,
-                'random_seed': self.random_seed,
-                'verbose': 0,
+                'iterations': val('iterations', lambda: trial.suggest_int('iterations', 300, 1000, step=100)),
+                'max_depth': val('max_depth', lambda: trial.suggest_int('max_depth', 3, 7)),
+                'learning_rate': val('learning_rate',
+                    lambda: trial.suggest_float('learning_rate', 0.005, 0.3, log=True)),
+                'l2_leaf_reg': val('l2_leaf_reg',
+                    lambda: trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True)),
+                'subsample': val('subsample', lambda: trial.suggest_float('subsample', 0.5, 1.0)),
+                'min_data_in_leaf': val('min_data_in_leaf',
+                    lambda: trial.suggest_int('min_data_in_leaf', 1, 30)),
+                'loss_function': custom.get('loss_function', 'Logloss'),
+                'eval_metric': custom.get('eval_metric', 'PRAUC'),
+                'early_stopping_rounds': custom.get('early_stopping_rounds', 80),
+                'random_seed': custom.get('random_seed', self.random_seed),
+                'verbose': custom.get('verbose', 0),
             }
-            pruning_cb = CatBoostPruningCallback(trial, 'PRAUC')
+            trial.set_user_attr('cb_params', params)
+            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
             m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -145,14 +172,7 @@ class PULearningClassifier(BasePreset):
         )
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        best_params = {
-            **study.best_params,
-            'loss_function': 'Logloss',
-            'eval_metric': 'PRAUC',
-            'early_stopping_rounds': 80,
-            'random_seed': self.random_seed,
-            'verbose': 0,
-        }
+        best_params = dict(study.best_trial.user_attrs['cb_params'])
         model = CatBoostClassifier(**best_params)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
         self.best_params_ = best_params

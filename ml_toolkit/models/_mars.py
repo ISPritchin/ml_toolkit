@@ -24,10 +24,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, mean_absolute_error
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 def _num_features(selected_features: list[str], cat_features: list[str]) -> list[str]:
@@ -65,6 +64,7 @@ class MARSRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[MARS Reg] features=%d', len(self._num_feats_))
@@ -95,7 +95,7 @@ class MARSRegressor(BaseModel):
                 return metric_fn(y_va, m.predict(X_va))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = study.best_params
             logger.info('[MARS Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -142,6 +142,7 @@ class MARSClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[MARS Cls] features=%d', len(self._num_feats_))
@@ -158,7 +159,7 @@ class MARSClassifier(BaseModel):
             self._model = Earth(**earth_p)
             self._model.fit(X_tr, y_tr)
             X_tr_t = self._model.transform(X_tr)
-            self._clf = LogisticRegression(**clf_p, solver='lbfgs', max_iter=500, random_state=42)
+            self._clf = LogisticRegression(**clf_p, solver='lbfgs', max_iter=500, class_weight='balanced', random_state=42)
             self._clf.fit(X_tr_t, y_tr)
             self.best_params_ = self.params
         else:
@@ -173,12 +174,12 @@ class MARSClassifier(BaseModel):
                 C = trial.suggest_float('C', 1e-3, 1e2, log=True)
                 earth = Earth(max_degree=max_degree, max_terms=max_terms)
                 earth.fit(X_tr, y_tr)
-                clf = LogisticRegression(C=C, solver='lbfgs', max_iter=500, random_state=42)
+                clf = LogisticRegression(C=C, solver='lbfgs', max_iter=500, class_weight='balanced', random_state=42)
                 clf.fit(earth.transform(X_tr), y_tr)
                 return metric_fn(y_va, clf.predict_proba(earth.transform(X_va))[:, 1])
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = study.best_params
             logger.info('[MARS Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -186,7 +187,10 @@ class MARSClassifier(BaseModel):
             self._model.fit(X_tr, y_tr)
             X_tr_t = self._model.transform(X_tr)
             X_va_t = self._model.transform(X_va)
-            self._clf = LogisticRegression(C=self.best_params_['C'], solver='lbfgs', max_iter=500, random_state=42)
+            self._clf = LogisticRegression(
+                C=self.best_params_['C'], solver='lbfgs', max_iter=500,
+                class_weight='balanced', random_state=42,
+            )
             self._clf.fit(X_tr_t, y_tr)
 
         self.train_pred_ = self._clf.predict_proba(self._model.transform(X_tr))[:, 1]

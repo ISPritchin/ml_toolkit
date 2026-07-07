@@ -22,12 +22,12 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.utils.class_weight import compute_sample_weight
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 def _make_prep() -> Pipeline:
@@ -66,6 +66,7 @@ class PyGAMRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[PYGAM Reg] features=%d', len(self._num_feats_))
@@ -92,7 +93,7 @@ class PyGAMRegressor(BaseModel):
                 return metric_fn(y_va, m.predict(X_va))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, n_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, n_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = study.best_params
             logger.info('[PYGAM Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -135,6 +136,7 @@ class PyGAMClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[PYGAM Cls] features=%d', len(self._num_feats_))
@@ -142,12 +144,13 @@ class PyGAMClassifier(BaseModel):
         self._prep = _make_prep()
         X_tr = self._prep.fit_transform(X_train[self._num_feats_].to_numpy(dtype=float))
         y_tr = y_train.to_numpy(dtype=int)
+        w_tr = compute_sample_weight('balanced', y_tr)
 
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
         n_trials = min(self.n_optuna_trials, 10) if len(self._num_feats_) > 50 else self.n_optuna_trials
 
         if self.params is not None:
-            self._model = LogisticGAM(**self.params).fit(X_tr, y_tr)
+            self._model = LogisticGAM(**self.params).fit(X_tr, y_tr, weights=w_tr)
             self.best_params_ = self.params
         else:
             if X_valid is None:
@@ -157,15 +160,15 @@ class PyGAMClassifier(BaseModel):
 
             def objective(trial: optuna.Trial) -> float:
                 lam = trial.suggest_float('lam', 1e-5, 1e3, log=True)
-                m = LogisticGAM(lam=lam).fit(X_tr, y_tr)
+                m = LogisticGAM(lam=lam).fit(X_tr, y_tr, weights=w_tr)
                 return metric_fn(y_va, m.predict_proba(X_va))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, n_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, n_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = study.best_params
             logger.info('[PYGAM Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
-            self._model = LogisticGAM(lam=self.best_params_.get('lam', 0.6)).fit(X_tr, y_tr)
+            self._model = LogisticGAM(lam=self.best_params_.get('lam', 0.6)).fit(X_tr, y_tr, weights=w_tr)
 
         self.train_pred_ = np.asarray(self._model.predict_proba(X_tr))
         if X_valid is not None:

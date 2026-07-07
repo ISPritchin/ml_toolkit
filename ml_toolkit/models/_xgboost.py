@@ -14,11 +14,11 @@ from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._undersampling import UndersampleSampler
 from ml_toolkit.models._utils import (
     CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features,
-    fit_calibrator, prep_cat_features, resolve_metric_fn,
+    fit_calibrator, make_xgb_pruning_callback, prep_cat_features, resolve_metric_fn,
+    resolve_pruner, resolve_timeout, set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 _prep = prep_cat_features
 
@@ -63,6 +63,7 @@ class XGBoostRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
         has_cat = bool(self.cat_features_)
 
         # XGBoost uses category dtype — no OrdinalEncoder stored
@@ -95,15 +96,22 @@ class XGBoostRegressor(BaseModel):
                 }
                 trial.set_user_attr('xgb_params', params)
                 m = xgb.XGBRegressor(**params)
-                m.fit(Xtr, y_tr, eval_set=[(Xva, y_va)], verbose=False)
+                m.fit(
+                    Xtr, y_tr, eval_set=[(Xva, y_va)], verbose=False,
+                    callbacks=[make_xgb_pruning_callback(trial)],
+                )
                 return metric_fn(y_va, m.predict(Xva))
 
             logger.info(
                 '[XGBoost Reg] Optuna: %d trials, custom_param_space=%s',
                 self.n_optuna_trials, param_space is not None,
             )
-            study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+            study = optuna.create_study(
+                direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+            )
+            study.optimize(
+                objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False,
+            )
             self.best_params_ = dict(study.best_trial.user_attrs['xgb_params'])
             logger.info('[XGBoost Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -145,6 +153,7 @@ class XGBoostClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
         has_cat = bool(self.cat_features_)
 
         Xtr = _prep(X_train, self.selected_features_, self.cat_features_)
@@ -190,15 +199,22 @@ class XGBoostClassifier(BaseModel):
                 }
                 trial.set_user_attr('xgb_params', params)
                 m = xgb.XGBClassifier(**params)
-                m.fit(Xtr_trial, ytr_trial, eval_set=[(Xva, y_va)], verbose=False)
+                m.fit(
+                    Xtr_trial, ytr_trial, eval_set=[(Xva, y_va)], verbose=False,
+                    callbacks=[make_xgb_pruning_callback(trial)],
+                )
                 return metric_fn(y_va, m.predict_proba(Xva)[:, 1])
 
             logger.info(
                 '[XGBoost Cls] Optuna: %d trials, custom_param_space=%s, undersample_majority=%s',
                 self.n_optuna_trials, param_space is not None, undersample_majority,
             )
-            study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+            study = optuna.create_study(
+                direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+            )
+            study.optimize(
+                objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False,
+            )
 
             best_trial = study.best_trial
             self.best_params_ = dict(best_trial.user_attrs['xgb_params'])

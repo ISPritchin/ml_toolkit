@@ -21,10 +21,9 @@ from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostin
 from sklearn.metrics import average_precision_score, mean_absolute_error
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
 
 logger = logging.getLogger(__name__)
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 _SK_VERSION = tuple(int(x) for x in sklearn.__version__.split('.')[:2])
 _SUPPORTS_CAT = _SK_VERSION >= (1, 2)
@@ -83,6 +82,7 @@ class HistGBMRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
@@ -111,7 +111,7 @@ class HistGBMRegressor(BaseModel):
                 return metric_fn(y_va, m.predict(X_va))
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = {**study.best_params, 'random_state': 42, 'loss': 'absolute_error', **extra}
             logger.info('[HIST_GBM Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
@@ -148,6 +148,7 @@ class HistGBMClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
@@ -176,7 +177,7 @@ class HistGBMClassifier(BaseModel):
                 return metric_fn(y_va, m.predict_proba(X_va)[:, 1])
 
             study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
             self.best_params_ = {**study.best_params, 'random_state': 42, **extra}
             logger.info('[HIST_GBM Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 

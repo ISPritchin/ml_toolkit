@@ -30,11 +30,13 @@ from sklearn.preprocessing import OrdinalEncoder, QuantileTransformer
 
 from collections.abc import Callable
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn
+from ml_toolkit.models._utils import (
+    CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn,
+    resolve_pruner, resolve_timeout, set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 # ─── preprocessing ────────────────────────────────────────────────────────────
@@ -216,19 +218,30 @@ def _run_training(
     postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
     metric_fn: Callable | None = None,
     direction: str | None = None,
+    trial: optuna.Trial | None = None,
 ) -> tuple[Any, float]:
     """Train one TabM model, return (best_model, best_val_score)."""
     model = _make_model(tabm, n_num, cat_cardinalities, d_out, k, d_block, n_blocks, dropout, device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    loss_fn = nn.functional.mse_loss if task_type == 'regression' else nn.functional.binary_cross_entropy_with_logits
+    if task_type == 'regression':
+        loss_fn = nn.functional.mse_loss
+    else:
+        # балансировка классов: вес положительного класса = n_neg / n_pos (аналог
+        # class_weight='balanced' у sklearn), считается один раз по всей обучающей выборке.
+        n_pos = float(y_tr.sum().item())
+        n_neg = float(y_tr.numel()) - n_pos
+        pos_weight = torch.tensor(n_neg / max(n_pos, 1.0), device=device)
+
+        def loss_fn(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+            return nn.functional.binary_cross_entropy_with_logits(pred, target, pos_weight=pos_weight)
 
     _init_dir = direction if direction is not None else ('minimize' if task_type == 'regression' else 'maximize')
     best_score = float('inf') if _init_dir == 'minimize' else -float('inf')
     best_state: dict = deepcopy(model.state_dict())  # always have a valid fallback
     no_improve = 0
 
-    for _ in range(n_epochs):
+    for epoch in range(n_epochs):
         _train_epoch(model, data_tr, y_tr, optimizer, loss_fn, batch_size)
 
         raw_va = _predict_raw(model, data_va)
@@ -249,6 +262,11 @@ def _run_training(
             _dir = direction if direction is not None else 'maximize'
             score = float(_cls_fn(y_va_np, pred_va_safe))
             improved = np.isfinite(score) and (score < best_score if _dir == 'minimize' else score > best_score)
+
+        if trial is not None:
+            trial.report(score, step=epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned(f'Trial pruned at epoch {epoch}.')
 
         if improved:
             best_score = score
@@ -310,6 +328,7 @@ class TabMRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._device = _resolve_device(ms.get('device', 'auto'))
         n_epochs_trial = int(ms.get('n_epochs_per_trial', 150))
@@ -359,11 +378,15 @@ class TabMRegressor(BaseModel):
 
             def objective(trial: optuna.Trial) -> float:
                 p = _tabm_optuna_params(trial)
-                _, score = _run_training(tabm, n_num, card, 1, **p, n_epochs=n_epochs_trial, **_kw)
+                _, score = _run_training(tabm, n_num, card, 1, **p, n_epochs=n_epochs_trial, trial=trial, **_kw)
                 return score
 
-            study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study = optuna.create_study(
+                direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+            )
+            study.optimize(
+                objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False,
+            )
             bp = study.best_params
             self.best_params_ = {**bp, 'n_epochs_final': n_epochs_final, 'patience': patience,
                                   'device': str(self._device), 'batch_size': batch_size}
@@ -416,6 +439,7 @@ class TabMClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
+        set_optuna_verbosity(ms)
 
         self._device = _resolve_device(ms.get('device', 'auto'))
         n_epochs_trial = int(ms.get('n_epochs_per_trial', 100))
@@ -462,11 +486,15 @@ class TabMClassifier(BaseModel):
 
             def objective(trial: optuna.Trial) -> float:
                 p = _tabm_optuna_params(trial)
-                _, score = _run_training(tabm, n_num, card, 1, **p, n_epochs=n_epochs_trial, **_kw)
+                _, score = _run_training(tabm, n_num, card, 1, **p, n_epochs=n_epochs_trial, trial=trial, **_kw)
                 return score
 
-            study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), show_progress_bar=False)
+            study = optuna.create_study(
+                direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+            )
+            study.optimize(
+                objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False,
+            )
             bp = study.best_params
             self.best_params_ = {**bp, 'n_epochs_final': n_epochs_final, 'patience': patience,
                                   'device': str(self._device), 'batch_size': batch_size}
@@ -532,6 +560,7 @@ def train_regression(
     except ImportError as err:
         raise ImportError('tabm not installed. Run: pip install tabm') from err
 
+    set_optuna_verbosity(model_settings)
     device = _resolve_device(model_settings.get('device', 'auto'))
     n_epochs_trial = int(model_settings.get('n_epochs_per_trial', 150))
     n_epochs_final = int(model_settings.get('n_epochs_final', 1000))
@@ -575,13 +604,17 @@ def train_regression(
             y_tr=y_tr, y_va_np=y_va_np, y_stats=y_stats,
             n_epochs=n_epochs_trial, patience=patience, batch_size=batch_size,
             device=device, X_valid_full=X_valid, postprocess_fn=postprocess_fn,
-            metric_fn=metric_fn, direction=direction,
+            metric_fn=metric_fn, direction=direction, trial=trial,
         )
         return score
 
     logger.info('[TabM Reg] Optuna: %d trials', n_optuna_trials)
-    study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-    study.optimize(objective, n_trials=n_optuna_trials, show_progress_bar=False)
+    study = optuna.create_study(
+        direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(model_settings),
+    )
+    study.optimize(
+        objective, n_trials=n_optuna_trials, timeout=resolve_timeout(model_settings), show_progress_bar=False,
+    )
     logger.info('[TabM Reg] Best: score=%.4f params=%s', study.best_value, study.best_params)
 
     bp = study.best_params
@@ -654,6 +687,7 @@ def train_classification(
         raise ImportError('tabm not installed. Run: pip install tabm') from err
 
     cfg = model_settings or {}
+    set_optuna_verbosity(cfg)
     device = _resolve_device(cfg.get('device', 'auto'))
     n_epochs_trial = int(cfg.get('n_epochs_per_trial', 100))
     n_epochs_final = int(cfg.get('n_epochs_final', 1000))
@@ -695,13 +729,15 @@ def train_classification(
             y_tr=y_tr, y_va_np=y_va_np, y_stats=None,
             n_epochs=n_epochs_trial, patience=patience, batch_size=batch_size,
             device=device, X_valid_full=X_valid,
-            metric_fn=metric_fn, direction=direction,
+            metric_fn=metric_fn, direction=direction, trial=trial,
         )
         return score
 
     logger.info('[TabM Cls] Optuna: %d trials', n_optuna_trials)
-    study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-    study.optimize(objective, n_trials=n_optuna_trials, show_progress_bar=False)
+    study = optuna.create_study(
+        direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(cfg),
+    )
+    study.optimize(objective, n_trials=n_optuna_trials, timeout=resolve_timeout(cfg), show_progress_bar=False)
     logger.info('[TabM Cls] Best: score=%.4f params=%s', study.best_value, study.best_params)
 
     bp = study.best_params

@@ -20,7 +20,10 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._undersampling import UndersampleSampler
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, prep_cat_features, resolve_metric_fn
+from ml_toolkit.models._utils import (
+    CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, make_lgb_pruning_callback,
+    prep_cat_features, resolve_metric_fn, resolve_pruner, resolve_timeout, set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +125,7 @@ class LightGBMRegressor(BaseModel):
         except ImportError as err:
             raise ImportError('LightGBM not installed. Run: pip install lightgbm') from err
 
+        set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -188,7 +192,7 @@ class LightGBMRegressor(BaseModel):
             m.fit(
                 Xtr, resid_tr, eval_set=[(Xva, resid_va)],
                 categorical_feature=cat_in_sel or 'auto',
-                callbacks=_lgb_callbacks(boosting_type),
+                callbacks=[*_lgb_callbacks(boosting_type), make_lgb_pruning_callback(trial)],
             )
             pred = pp(X_valid, m.predict(Xva) + (baseline_va if baseline_va is not None else 0))
             return metric_fn(y_valid.values, pred)
@@ -197,8 +201,11 @@ class LightGBMRegressor(BaseModel):
             '[LGB Reg] Optuna: %d trials, baseline=%s, custom_param_space=%s',
             self.n_optuna_trials, baseline_col, param_space is not None,
         )
-        study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+        ms = self.model_settings
+        study = optuna.create_study(
+            direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+        )
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
 
         best_trial = study.best_trial
         best_params = dict(best_trial.user_attrs['lgb_params'])
@@ -274,6 +281,7 @@ class LightGBMClassifier(BaseModel):
         except ImportError as err:
             raise ImportError('LightGBM not installed. Run: pip install lightgbm') from err
 
+        set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -351,7 +359,7 @@ class LightGBMClassifier(BaseModel):
             m.fit(
                 Xtr_trial, ytr_trial, eval_set=[(Xva, y_valid)],
                 categorical_feature=cat_in_sel or 'auto',
-                callbacks=_lgb_callbacks(boosting_type),
+                callbacks=[*_lgb_callbacks(boosting_type), make_lgb_pruning_callback(trial)],
             )
             return metric_fn(y_valid.values, m.predict_proba(Xva)[:, 1])
 
@@ -359,8 +367,11 @@ class LightGBMClassifier(BaseModel):
             '[LGB Cls] Optuna: %d trials, custom_param_space=%s, undersample_majority=%s',
             self.n_optuna_trials, param_space is not None, undersample_majority,
         )
-        study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-        study.optimize(objective, n_trials=self.n_optuna_trials, show_progress_bar=False)
+        ms = self.model_settings
+        study = optuna.create_study(
+            direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+        )
+        study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
 
         best_trial = study.best_trial
         best_params = dict(best_trial.user_attrs['lgb_params'])

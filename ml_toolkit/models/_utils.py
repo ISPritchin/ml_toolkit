@@ -283,6 +283,134 @@ def encode_cat_features(
     )
 
 
+def set_optuna_verbosity(model_settings: dict[str, Any]) -> None:
+    """Форсирует WARNING-уровень логов Optuna для текущего тюнинга, если не запрошено иначе.
+
+    model_settings['optuna_verbose']: bool = False — при True не трогает
+    текущий уровень логирования Optuna (даёт увидеть прогресс триалов снаружи).
+    Раньше verbosity форсировался безусловно на уровне модуля (при импорте
+    ml_toolkit.models._*), без возможности отключить и вне привязки к
+    конкретному вызову fit() — вызывайте это в начале fit(), а не полагайтесь
+    на импорт модуля.
+    """
+    import optuna
+    if not model_settings.get('optuna_verbose', False):
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+
+def resolve_timeout(model_settings: dict[str, Any]) -> float | None:
+    """Возвращает model_settings['optuna_timeout'] (секунды) для study.optimize(timeout=...).
+
+    None (по умолчанию) — без ограничения по времени, тюнинг идёт n_optuna_trials trials.
+    При заданном timeout Optuna останавливается по первому из условий: n_trials или timeout
+    (текущий trial всегда доучивается до конца — обрезки посреди trial не бывает).
+    """
+    timeout = model_settings.get('optuna_timeout')
+    return float(timeout) if timeout is not None else None
+
+
+def resolve_pruner(model_settings: dict[str, Any]) -> Any:
+    """Резолвит optuna.pruners.BasePruner из model_settings['optuna_pruner'].
+
+    None (по умолчанию) → MedianPruner() — тот же дефолт, который Optuna сама подставляет
+    при create_study(pruner=None). str → 'median' / 'hyperband' / 'percentile' /
+    'successive_halving' / 'none' (алиас NopPruner, отключает прунинг). Готовый экземпляр
+    optuna.pruners.BasePruner передаётся как есть.
+
+    Прунер реально отсекает бесперспективные trials только там, где objective вызывает
+    trial.report()/should_prune() на каждой итерации обучения — в этом пакете это
+    XGBoost/LightGBM/CatBoost (+ их ranker-варианты, см. make_*_pruning_callback ниже) и TabM
+    (по эпохам). Для моделей без промежуточных отчётов (sklearn-адаптеры без staged-обучения:
+    RandomForest, decision_tree, MARS, EBM, GAM, RuleFit и т.п.) прунер не подключается вовсе.
+    """
+    import optuna
+    spec = model_settings.get('optuna_pruner')
+    if spec is None:
+        return optuna.pruners.MedianPruner()
+    if isinstance(spec, optuna.pruners.BasePruner):
+        return spec
+    if isinstance(spec, str):
+        named: dict[str, Callable[[], Any]] = {
+            'median': optuna.pruners.MedianPruner,
+            'hyperband': optuna.pruners.HyperbandPruner,
+            'percentile': lambda: optuna.pruners.PercentilePruner(25.0),
+            'successive_halving': optuna.pruners.SuccessiveHalvingPruner,
+            'none': optuna.pruners.NopPruner,
+        }
+        if spec not in named:
+            raise ValueError(
+                f'Неизвестный optuna_pruner={spec!r}. Доступные: {sorted(named)}. '
+                f'Для произвольного пруnера передайте экземпляр optuna.pruners.BasePruner.'
+            )
+        return named[spec]()
+    raise TypeError(
+        f'optuna_pruner должен быть None, str или optuna.pruners.BasePruner, '
+        f'получено {type(spec).__name__!r}'
+    )
+
+
+def make_xgb_pruning_callback(trial: Any) -> Any:
+    """XGBoost TrainingCallback: trial.report()/should_prune() на каждой итерации бустинга.
+
+    Ожидает ровно один eval_set (как во всех Optuna-objective этого пакета) — метрика
+    берётся по первому найденному ключу в evals_log, без завязки на конкретное имя
+    eval_metric. xgboost.callback.TrainingCallback — чистый Python, поэтому optuna.TrialPruned
+    доходит до study.optimize без оборачивания сторонним исключением.
+    """
+    import optuna
+    import xgboost as xgb
+
+    class _XGBPruningCallback(xgb.callback.TrainingCallback):
+        def after_iteration(self, model: Any, epoch: int, evals_log: Any) -> bool:
+            valid_log = next(iter(evals_log.values()))
+            value = next(iter(valid_log.values()))[-1]
+            trial.report(value, step=epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned(f'Trial pruned at iteration {epoch}.')
+            return False
+
+    return _XGBPruningCallback()
+
+
+def make_lgb_pruning_callback(trial: Any) -> Callable[[Any], None]:
+    """LightGBM callback: см. make_xgb_pruning_callback — тот же report()/should_prune(),
+    берёт первую строку env.evaluation_result_list (в этом пакете objective всегда передаёт
+    ровно один eval_set с одной метрикой)."""
+    import optuna
+
+    def _callback(env: Any) -> None:
+        _, _, value, _ = env.evaluation_result_list[0]
+        trial.report(value, step=env.iteration)
+        if trial.should_prune():
+            raise optuna.TrialPruned(f'Trial pruned at iteration {env.iteration}.')
+
+    _callback.order = 30
+    return _callback
+
+
+def make_catboost_pruning_callback(trial: Any) -> Any:
+    """CatBoost callback: см. make_xgb_pruning_callback. CatBoost оборачивает любое исключение,
+    поднятое внутри after_iteration, в catboost.CatBoostError (Cython-граница) — optuna.TrialPruned
+    там не долетел бы до study.optimize нераспознанным. Вместо этого after_iteration возвращает
+    False (штатная остановка обучения по колбэку) и взводит self.pruned; вызывающий objective
+    обязан проверить callback.pruned сразу после m.fit(...) и поднять optuna.TrialPruned вручную.
+    """
+    class _CatBoostPruningCallback:
+        def __init__(self) -> None:
+            self.pruned = False
+
+        def after_iteration(self, info: Any) -> bool:
+            metrics = info.metrics.get('validation', next(iter(info.metrics.values())))
+            value = next(iter(metrics.values()))[-1]
+            trial.report(value, step=info.iteration)
+            if trial.should_prune():
+                self.pruned = True
+                return False
+            return True
+
+    return _CatBoostPruningCallback()
+
+
 def resolve_metric_fn(
     model_settings: dict[str, Any],
     key: str,
