@@ -25,6 +25,7 @@ calc_ders_multi'т target), и декодируются обратно в predic
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -88,11 +89,15 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         random_seed: int,
         cat_features: list[str] | None,
         selected_features: list[str] | None,
+        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        optuna_verbose: bool = False,
     ) -> None:
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.loss_params = dict(loss_params)
         self.base_params = base_params
         self.optuna_timeout = optuna_timeout
+        self.param_space = param_space
+        self.optuna_verbose = optuna_verbose
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -131,26 +136,51 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
     def _tune(self, tr_pool: Any, va_pool: Any, n_classes: int) -> tuple[Any, dict]:
         import optuna
 
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        if not self.optuna_verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
         esr = _DEFAULT_ARCH_PARAMS['early_stopping_rounds']
         loss_keys = list(self._loss_spec.param_bounds)
 
         def objective(trial: optuna.Trial) -> float:
+            # custom — то, что вернула кастомная param_space (может покрывать
+            # loss-параметры, архитектурные параметры или и то, и другое сразу;
+            # частично или полностью). Всё, чего в custom нет, тюнится дефолтным
+            # search space (loss — по self._loss_spec.param_bounds, архитектура —
+            # по фиксированным границам ниже).
+            custom = self.param_space(trial) if self.param_space is not None else {}
+
             loss_p = {
-                k: trial.suggest_float(k, *self._loss_spec.param_bounds[k])
+                k: (custom[k] if k in custom else trial.suggest_float(k, *self._loss_spec.param_bounds[k]))
                 for k in loss_keys
             }
+
+            def arch_val(key: str, suggest: Callable[[], Any]) -> Any:
+                return custom[key] if key in custom else suggest()
+
             arch_p = {
-                'iterations':        trial.suggest_int('iterations', 300, 1000, step=100),
-                'max_depth':         trial.suggest_int('max_depth', 3, 7),
-                'learning_rate':     trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
-                'l2_leaf_reg':       trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
-                'subsample':         trial.suggest_float('subsample', 0.5, 1.0),
-                'min_data_in_leaf':  trial.suggest_int('min_data_in_leaf', 1, 30),
-                'early_stopping_rounds': esr,
-                'random_seed': self.random_seed,
-                'verbose': 0,
+                'iterations': arch_val('iterations',
+                    lambda: trial.suggest_int('iterations', 300, 1000, step=100)),
+                'max_depth': arch_val('max_depth',
+                    lambda: trial.suggest_int('max_depth', 3, 7)),
+                'learning_rate': arch_val('learning_rate',
+                    lambda: trial.suggest_float('learning_rate', 0.01, 0.2, log=True)),
+                'l2_leaf_reg': arch_val('l2_leaf_reg',
+                    lambda: trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True)),
+                'subsample': arch_val('subsample',
+                    lambda: trial.suggest_float('subsample', 0.5, 1.0)),
+                'min_data_in_leaf': arch_val('min_data_in_leaf',
+                    lambda: trial.suggest_int('min_data_in_leaf', 1, 30)),
+                'early_stopping_rounds': custom.get('early_stopping_rounds', esr),
+                'random_seed': custom.get('random_seed', self.random_seed),
+                'verbose': custom.get('verbose', 0),
             }
+            # study.best_params содержит только то, что реально прошло через
+            # trial.suggest_*; параметры, зафиксированные custom как голое
+            # значение (не suggest), туда не попадут — поэтому сохраняем
+            # собранные loss_p/arch_p целиком через user_attr и забираем их
+            # из best_trial после оптимизации, а не реконструируем из best_params.
+            trial.set_user_attr('loss_p', loss_p)
+            trial.set_user_attr('arch_p', arch_p)
             pruning_cb = CatBoostPruningCallback(trial, _EVAL_METRIC)
             m = self._fit_model(tr_pool, va_pool, arch_p, loss_p, n_classes, callbacks=[pruning_cb])
             pruning_cb.check_pruned()
@@ -162,23 +192,24 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
             sampler=optuna.samplers.TPESampler(seed=self.random_seed),
             pruner=make_pruner(),
         )
-        study.enqueue_trial({
-            **self.loss_params,
-            'iterations':       _DEFAULT_ARCH_PARAMS['iterations'],
-            'max_depth':        _DEFAULT_ARCH_PARAMS['max_depth'],
-            'learning_rate':    _DEFAULT_ARCH_PARAMS['learning_rate'],
-            'l2_leaf_reg':       _DEFAULT_ARCH_PARAMS['l2_leaf_reg'],
-            'subsample':        _DEFAULT_ARCH_PARAMS['subsample'],
-            'min_data_in_leaf': _DEFAULT_ARCH_PARAMS['min_data_in_leaf'],
-        })
+        # Безопасно только для дефолтного search space (см. binary _custom_loss_base.py
+        # для подробного объяснения) — при кастомном param_space пропускаем enqueue
+        # целиком, иначе дефолтные значения, оказавшиеся вне новых границ, могут
+        # случайно "выиграть" trial и молча испортить результат тюнинга.
+        if self.param_space is None:
+            study.enqueue_trial({
+                **self.loss_params,
+                'iterations':       _DEFAULT_ARCH_PARAMS['iterations'],
+                'max_depth':        _DEFAULT_ARCH_PARAMS['max_depth'],
+                'learning_rate':    _DEFAULT_ARCH_PARAMS['learning_rate'],
+                'l2_leaf_reg':       _DEFAULT_ARCH_PARAMS['l2_leaf_reg'],
+                'subsample':        _DEFAULT_ARCH_PARAMS['subsample'],
+                'min_data_in_leaf': _DEFAULT_ARCH_PARAMS['min_data_in_leaf'],
+            })
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
-        best = study.best_params
-        best_loss = {k: best[k] for k in loss_keys}
-        best_arch = {k: v for k, v in best.items() if k not in loss_keys}
-        best_arch['early_stopping_rounds'] = esr
-        best_arch['random_seed'] = self.random_seed
-        best_arch['verbose'] = 0
+        best_loss = dict(study.best_trial.user_attrs['loss_p'])
+        best_arch = dict(study.best_trial.user_attrs['arch_p'])
         model = self._fit_model(tr_pool, va_pool, best_arch, best_loss, n_classes)
         return model, {**best_loss, **best_arch}
 
