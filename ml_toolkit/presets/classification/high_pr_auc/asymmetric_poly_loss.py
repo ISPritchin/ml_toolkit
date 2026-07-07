@@ -62,6 +62,7 @@ class AsymmetricPolyLossClassifier(_CustomLossClassifierBase):
 
         model = AsymmetricPolyLossClassifier(gamma_pos=0, gamma_neg=4, eps1=2.0)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

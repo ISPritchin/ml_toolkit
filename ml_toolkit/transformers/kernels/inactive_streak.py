@@ -32,12 +32,13 @@ Example:
     в текущем мес. v=0 → current = 1
     исторический максимум серии нулей = 2
     → inactive_streak__current = 1,  inactive_streak__max = 2
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "inactive_streak"
+FEATURE = 'inactive_streak'
 
 
 @nb.njit(cache=True)
@@ -55,8 +56,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
             cur = 0
         else:
             cur += 1
-            if cur > longest:
-                longest = cur
+            longest = max(longest, cur)
         current_streak[row_idx] = cur
         max_streak[row_idx] = longest
     return current_streak, max_streak
@@ -65,4 +65,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
     cur, mx = _kernel(values, position)
-    return [cur, mx], ["current", "max"]
+    return [cur, mx], ['current', 'max']

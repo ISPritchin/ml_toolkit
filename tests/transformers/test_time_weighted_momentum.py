@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("time_weighted_momentum", values, params)
+    return run_transformer('time_weighted_momentum', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,25 +16,25 @@ def test_known_value():
     # [10,20,30,40,50,60] w=6: diffs all=10, offsets 1..5
     # sum(offset*diff) = 10+20+30+40+50=150; sum_v=210
     # result = 150/210 ≈ 0.7143
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(150 / 210, abs=1e-4)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(150 / 210, abs=1e-4)
 
 
 def test_constant_series_zero_momentum():
     # All diffs=0 → numerator=0 → momentum=0
-    arrs, sfxs = _run([40, 40, 40, 40, 40, 40], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([40, 40, 40, 40, 40, 40], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_all_zeros_zero_momentum():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert abs(_get(arrs, sfxs, "w6")[-1]) < 1e-3
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert abs(_get(arrs, sfxs, 'w6')[-1]) < 1e-3
 
 
 def test_declining_series_negative_momentum():
     # [60,50,40,30,20,10]: diffs all=-10, recent diffs weighted more → negative momentum
-    arrs, sfxs = _run([60, 50, 40, 30, 20, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] < 0
+    arrs, sfxs = _run([60, 50, 40, 30, 20, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] < 0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

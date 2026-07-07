@@ -43,6 +43,7 @@ Example:
     → burstiness__peak_mean_w6  = 40/15 = 2.667
     → burstiness__peak_med_w6   = 40/20 = 2.0
     → burstiness__burst_count_w6 = 2,  burst_dur_w6 = 1.5
+
 """
 
 import numba as nb
@@ -57,7 +58,7 @@ from .._windowing import (
     sorted_median,
 )
 
-FEATURE = "burstiness"
+FEATURE = 'burstiness'
 
 
 @nb.njit(cache=True)
@@ -74,8 +75,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
     max_w = 1
     for j in range(n_w):
-        if windows[j] > max_w:
-            max_w = windows[j]
+        max_w = max(max_w, windows[j])
     sorted_buf = np.empty(max_w)
     burst_durs = np.zeros(max_w)
 
@@ -87,8 +87,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             v_max = product_values[row_idx - ws + 1]
             for offset in range(1, ws):
                 vv = product_values[row_idx - ws + 1 + offset]
-                if vv > v_max:
-                    v_max = vv
+                v_max = max(v_max, vv)
 
             fill_window_sorted(sorted_buf, product_values, row_idx, ws)
             median = sorted_median(sorted_buf, ws)
@@ -146,16 +145,16 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     pm, pmed, gm, bc, bd, bcv, cs = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(pm[j]);  suffixes.append(f"peak_mean_w{w}")
-        arrays.append(pmed[j]); suffixes.append(f"peak_med_w{w}")
-        arrays.append(gm[j]);  suffixes.append(f"gap_mean_w{w}")
-        arrays.append(bc[j]);  suffixes.append(f"burst_count_w{w}")
-        arrays.append(bd[j]);  suffixes.append(f"burst_dur_w{w}")
-        arrays.append(bcv[j]); suffixes.append(f"burst_cv_w{w}")
-        arrays.append(cs[j]);  suffixes.append(f"calm_share_w{w}")
+    for j, w in enumerate(params['windows']):
+        arrays.append(pm[j]);  suffixes.append(f'peak_mean_w{w}')
+        arrays.append(pmed[j]); suffixes.append(f'peak_med_w{w}')
+        arrays.append(gm[j]);  suffixes.append(f'gap_mean_w{w}')
+        arrays.append(bc[j]);  suffixes.append(f'burst_count_w{w}')
+        arrays.append(bd[j]);  suffixes.append(f'burst_dur_w{w}')
+        arrays.append(bcv[j]); suffixes.append(f'burst_cv_w{w}')
+        arrays.append(cs[j]);  suffixes.append(f'calm_share_w{w}')
     return arrays, suffixes

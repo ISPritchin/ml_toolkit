@@ -25,8 +25,8 @@ n_rounds) — ранние раунды почти не фильтруют (мо
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -100,6 +100,7 @@ class CoTeachingClassifier(BasePreset):
 
         model = CoTeachingClassifier(forget_rate=0.2, n_rounds=5)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     def __init__(
@@ -190,7 +191,7 @@ class CoTeachingClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'CoTeachingClassifier':
+    ) -> CoTeachingClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )

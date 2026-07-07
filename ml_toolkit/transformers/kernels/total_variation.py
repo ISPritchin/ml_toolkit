@@ -35,6 +35,7 @@ Example:
     mean = 180/6 = 30
     TV_norm = 80 / 30 = 2.667
     → total_variation__w6 = 80,  norm_w6 = 2.667
+
 """
 
 import numba as nb
@@ -42,7 +43,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
-FEATURE = "total_variation"
+FEATURE = 'total_variation'
 
 
 @nb.njit(cache=True)
@@ -67,13 +68,13 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out_tv, out_tv_norm = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(out_tv[j])
-        suffixes.append(f"w{w}")
+        suffixes.append(f'w{w}')
         arrays.append(out_tv_norm[j])
-        suffixes.append(f"norm_w{w}")
+        suffixes.append(f'norm_w{w}')
     return arrays, suffixes

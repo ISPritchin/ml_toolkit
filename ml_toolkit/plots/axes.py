@@ -14,6 +14,7 @@ def symmetrize_ylim(
 
     Args:
         margin: относительный отступ сверху и снизу (доля от диапазона).
+
     """
     yl = ax.get_ylim()
     half = max(abs(yl[0] - center), abs(yl[1] - center))
@@ -34,6 +35,7 @@ def log_axis(
         axis:  'x' | 'y' | 'both'.
         subs:  позиции minor-тиков; авто если None.
         fmt:   'auto' — без научной нотации | 'sci' — оставить как есть.
+
     """
     _subs = subs or (2, 3, 4, 5, 6, 7, 8, 9)
 

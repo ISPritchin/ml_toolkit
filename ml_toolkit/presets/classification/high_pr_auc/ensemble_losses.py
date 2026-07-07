@@ -9,8 +9,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -155,6 +155,7 @@ class BoostedEnsemble(BasePreset):
         model = BoostedEnsemble(averaging='rank')
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -187,8 +188,8 @@ class BoostedEnsemble(BasePreset):
         self._rank_refs_: list[np.ndarray] = []
 
     def _tune_base_params(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -234,7 +235,7 @@ class BoostedEnsemble(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'BoostedEnsemble':
+    ) -> BoostedEnsemble:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)

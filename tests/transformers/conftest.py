@@ -1,7 +1,6 @@
 """Общие fixtures и helpers для тестов трансформеров."""
 
 import numpy as np
-import pytest
 
 from ml_toolkit.transformers import TRANSFORMERS
 from ml_toolkit.transformers._windowing import compute_position_within_entity
@@ -15,6 +14,7 @@ def compute_entity_positions(n: int) -> np.ndarray:
 
     Returns:
         np.ndarray int64 с позициями [0, 1, 2, ..., n-1] для одной сущности.
+
     """
     return compute_position_within_entity(np.zeros(n, dtype=np.int64))
 
@@ -34,6 +34,7 @@ def run_transformer(
     Returns:
         Кортеж (arrays, suffixes) как если бы вызвали
         mod.compute(values, position, params).
+
     """
     mod = TRANSFORMERS[transformer_name]
     pos = compute_entity_positions(len(values))
@@ -57,6 +58,7 @@ def get_feature_output(
 
     Raises:
         ValueError: Если суффикс не найден в suffixes.
+
     """
     try:
         idx = suffixes.index(suffix)
@@ -68,4 +70,4 @@ def get_feature_output(
 
 
 # Экспортируем для удобства импорта в тестах
-__all__ = ["compute_entity_positions", "run_transformer", "get_feature_output"]
+__all__ = ['compute_entity_positions', 'get_feature_output', 'run_transformer']

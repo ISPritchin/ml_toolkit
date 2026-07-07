@@ -31,6 +31,7 @@ Example:
     min_w = min(окна) = 5
     max_w = max(окна) = 80
     → rolling_min_max__min_w6 = 5,  max_w6 = 80  (диапазон 5..80)
+
 """
 
 import numba as nb
@@ -38,7 +39,7 @@ import numpy as np
 
 from .._windowing import compute_window_min_and_max, resolve_window_size
 
-FEATURE = "rolling_min_max"
+FEATURE = 'rolling_min_max'
 
 
 @nb.njit(cache=True)
@@ -59,13 +60,13 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out_min, out_max = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(out_min[j])
-        suffixes.append(f"min_w{w}")
+        suffixes.append(f'min_w{w}')
         arrays.append(out_max[j])
-        suffixes.append(f"max_w{w}")
+        suffixes.append(f'max_w{w}')
     return arrays, suffixes

@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("value_clustering", values, params)
+    return run_transformer('value_clustering', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,28 +14,28 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_top1_share():
     # [10,10,10,10,10,50] w=6: total=100, top1=50 → share=0.5
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "top1_share_w6")[-1] == pytest.approx(0.5, abs=1e-4)
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'top1_share_w6')[-1] == pytest.approx(0.5, abs=1e-4)
 
 
 def test_known_herfindahl():
     # [10,10,10,10,10,50] w=6: total=100
     # herf = 5*(10/100)² + (50/100)² = 5*0.01 + 0.25 = 0.30
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "herfindahl_w6")[-1] == pytest.approx(0.3, abs=1e-4)
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'herfindahl_w6')[-1] == pytest.approx(0.3, abs=1e-4)
 
 
 def test_uniform_distribution_minimum_herfindahl():
     # [10,10,10,10,10,10] w=6: each share=1/6 → herf=6*(1/6)²=1/6≈0.1667
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "herfindahl_w6")[-1] == pytest.approx(1 / 6, abs=1e-4)
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'herfindahl_w6')[-1] == pytest.approx(1 / 6, abs=1e-4)
 
 
 def test_all_zeros_no_clustering():
     # total=0 → skip computation → all outputs=0
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "top1_share_w6")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "herfindahl_w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'top1_share_w6')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'herfindahl_w6')[-1] == pytest.approx(0.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

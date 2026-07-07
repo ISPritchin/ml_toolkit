@@ -42,6 +42,7 @@ Example:
     знаки противоположны → flag = 1
     slope_change = slope_now − slope_ago = −10 − 10 = −20
     → trend_flip__flag = 1,  slope_change_lag6_w6 = −20  (разворот вниз)
+
 """
 
 import numba as nb
@@ -49,7 +50,7 @@ import numpy as np
 
 from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size
 
-FEATURE = "trend_flip"
+FEATURE = 'trend_flip'
 
 
 @nb.njit(cache=True)
@@ -86,13 +87,13 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"lag_window_pairs": [[6, 6], [12, 12]]} — ключ обязателен."""
-    pairs = params["lag_window_pairs"]
+    pairs = params['lag_window_pairs']
     lags = np.array([p[0] for p in pairs], dtype=np.int64)
     windows = np.array([p[1] for p in pairs], dtype=np.int64)
     flip, slope_ch = _kernel(values, position, lags, windows)
     arrays = [flip]
-    suffixes = ["flag"]
+    suffixes = ['flag']
     for j, p in enumerate(pairs):
         arrays.append(slope_ch[j])
-        suffixes.append(f"slope_change_lag{p[0]}_w{p[1]}")
+        suffixes.append(f'slope_change_lag{p[0]}_w{p[1]}')
     return arrays, suffixes

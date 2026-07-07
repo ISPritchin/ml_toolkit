@@ -32,6 +32,7 @@ Example:
     log1p(|v|) = ln11, ln21, ln41, ln81 ≈ 2.398, 3.045, 3.714, 4.394
     OLS-наклон по точкам (i=0..3, log_v) = 0.666/мес
     → log_slope__w4 = 0.666  (≈ устойчивый экспоненциальный рост)
+
 """
 
 import numba as nb
@@ -39,7 +40,7 @@ import numpy as np
 
 from .._windowing import fit_linear_trend_slope, resolve_window_size
 
-FEATURE = "log_slope"
+FEATURE = 'log_slope'
 
 
 @nb.njit(cache=True)
@@ -57,8 +58,8 @@ def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, windows:
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     # log1p считается один раз на колонку (векторно), а не в каждом окне заново
     log_values = np.log1p(np.abs(values))
     out = _kernel(log_values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

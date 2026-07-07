@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("entropy", values, params)
+    return run_transformer('entropy', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,25 +14,25 @@ def _get(arrays, suffixes, suffix):
 
 def test_uniform_distribution_max_entropy():
     # [10,10,10,10] w=4: all equal shares → entropy=1.0 (maximum)
-    arrs, sfxs = _run([10, 10, 10, 10], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(1.0, abs=1e-4)
+    arrs, sfxs = _run([10, 10, 10, 10], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(1.0, abs=1e-4)
 
 
 def test_single_nonzero_entropy_zero():
     # [0,0,0,10] w=4: only one nonzero → p=1 → -p*ln(p)=0 → entropy=0
-    arrs, sfxs = _run([0, 0, 0, 10], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([0, 0, 0, 10], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_all_zeros_entropy_zero():
-    arrs, sfxs = _run([0, 0, 0, 0], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([0, 0, 0, 0], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_nonuniform_entropy_between_zero_and_one():
     # [10,10,10,70] w=4: non-uniform → 0 < entropy < 1
-    arrs, sfxs = _run([10, 10, 10, 70], {"windows": [4]})
-    val = _get(arrs, sfxs, "w4")[-1]
+    arrs, sfxs = _run([10, 10, 10, 70], {'windows': [4]})
+    val = _get(arrs, sfxs, 'w4')[-1]
     assert 0.0 < val < 1.0
 
 def test_with_mixed_zeros():

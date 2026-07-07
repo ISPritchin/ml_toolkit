@@ -40,6 +40,7 @@ Example:
     ratio_w6_w24 = 35/35 = 1.0
     horizon_spread = ln(50/35) = 0.357
     → cross_window_momentum__ratio_w1_w3 = 1.2, ratio_w3_w6 = 1.429, horizon_spread = 0.357
+
 """
 
 import numba as nb
@@ -47,7 +48,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
-FEATURE = "cross_window_momentum"
+FEATURE = 'cross_window_momentum'
 
 
 @nb.njit(cache=True)
@@ -96,5 +97,5 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     r13, r36, r624, aa, ad, hs = _kernel(values, position)
     return (
         [r13, r36, r624, aa, ad, hs],
-        ["ratio_w1_w3", "ratio_w3_w6", "ratio_w6_w24", "all_accel", "all_decel", "horizon_spread"],
+        ['ratio_w1_w3', 'ratio_w3_w6', 'ratio_w6_w24', 'all_accel', 'all_decel', 'horizon_spread'],
     )

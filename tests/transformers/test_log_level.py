@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("log_level", values, params)
+    return run_transformer('log_level', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,26 +14,26 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_value():
     # [10,20,30,40,50,60] w=6: mean=35, log_level=log1p(35)=ln(36)
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(math.log1p(35), abs=1e-4)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(math.log1p(35), abs=1e-4)
 
 
 def test_all_zeros_log_level_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_constant_series_log_level():
     # [50]*6: mean=50, log_level=log1p(50)
-    arrs, sfxs = _run([50, 50, 50, 50, 50, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(math.log1p(50), abs=1e-4)
+    arrs, sfxs = _run([50, 50, 50, 50, 50, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(math.log1p(50), abs=1e-4)
 
 
 def test_log_level_increases_with_mean():
     # Higher mean → higher log_level
-    arrs1, sfxs1 = _run([10] * 6, {"windows": [6]})
-    arrs2, sfxs2 = _run([100] * 6, {"windows": [6]})
-    assert _get(arrs1, sfxs1, "w6")[-1] < _get(arrs2, sfxs2, "w6")[-1]
+    arrs1, sfxs1 = _run([10] * 6, {'windows': [6]})
+    arrs2, sfxs2 = _run([100] * 6, {'windows': [6]})
+    assert _get(arrs1, sfxs1, 'w6')[-1] < _get(arrs2, sfxs2, 'w6')[-1]
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

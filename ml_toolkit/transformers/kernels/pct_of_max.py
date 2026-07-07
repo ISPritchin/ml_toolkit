@@ -32,6 +32,7 @@ Example:
     hi = max(окна) = 90
     pct_of_max = v[t] / hi = 45 / 90
     → pct_of_max__w6 = 0.5  (текущий мес. — половина пикового)
+
 """
 
 import numba as nb
@@ -39,7 +40,7 @@ import numpy as np
 
 from .._windowing import compute_window_min_and_max, resolve_window_size, safe_ratio
 
-FEATURE = "pct_of_max"
+FEATURE = 'pct_of_max'
 
 
 @nb.njit(cache=True)
@@ -59,6 +60,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

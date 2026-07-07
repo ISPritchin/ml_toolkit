@@ -12,8 +12,8 @@ Locally Linear Forest: RandomForest proximity weights + локальная Ridge
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -26,7 +26,14 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +71,7 @@ class _SoftDecisionTree:
         self._is_cls = False
 
     def _build_net(self, n_features: int, is_cls: bool) -> Any:
-        import torch.nn as nn
+        from torch import nn
 
         depth = self.depth
         n_inner = 2**depth - 1
@@ -103,8 +110,7 @@ class _SoftDecisionTree:
 
     def fit(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, is_cls: bool = False) -> None:
         import torch
-        import torch.nn as nn
-        import torch.optim as optim
+        from torch import nn, optim
 
         self._is_cls = is_cls
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -174,7 +180,7 @@ class _LocallyLinearForest:
         self._y_tr: np.ndarray | None = None
         self._leaves_tr: np.ndarray | None = None
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> '_LocallyLinearForest':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> _LocallyLinearForest:
         if len(X) > _MAX_LLF_TRAIN_ROWS:
             rng = np.random.default_rng(42)
             idx = rng.choice(len(X), size=_MAX_LLF_TRAIN_ROWS, replace=False)
@@ -220,7 +226,7 @@ class InterpretableTreeRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'InterpretableTreeRegressor':
+    ) -> InterpretableTreeRegressor:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
@@ -262,31 +268,30 @@ class InterpretableTreeRegressor(BaseModel):
                 fitted = _SoftDecisionTree(**self.best_params_)
                 fitted.fit(X_tr, y_tr, X_va, y_va, is_cls=False)
 
-        else:  # locally_linear_forest
-            if self.params is not None:
-                fitted = _LocallyLinearForest(**self.params)
-                fitted.fit(X_tr, y_tr)
-                self.best_params_ = self.params
-            else:
-                if X_va is None:
-                    raise ValueError('X_valid обязателен при params=None (режим Optuna)')
+        elif self.params is not None:
+            fitted = _LocallyLinearForest(**self.params)
+            fitted.fit(X_tr, y_tr)
+            self.best_params_ = self.params
+        else:
+            if X_va is None:
+                raise ValueError('X_valid обязателен при params=None (режим Optuna)')
 
-                def objective(trial: optuna.Trial) -> float:  # type: ignore[misc]
-                    llf = _LocallyLinearForest(
-                        n_estimators=trial.suggest_int('n_estimators', 50, 300, step=50),
-                        max_depth=trial.suggest_int('max_depth', 3, 15),
-                        n_neighbors=trial.suggest_int('n_neighbors', 20, 200, step=20),
-                        ridge_alpha=trial.suggest_float('ridge_alpha', 0.01, 100.0, log=True),
-                    )
-                    llf.fit(X_tr, y_tr)
-                    return metric_fn(y_va, llf.predict(X_va))
+            def objective(trial: optuna.Trial) -> float:  # type: ignore[misc]
+                llf = _LocallyLinearForest(
+                    n_estimators=trial.suggest_int('n_estimators', 50, 300, step=50),
+                    max_depth=trial.suggest_int('max_depth', 3, 15),
+                    n_neighbors=trial.suggest_int('n_neighbors', 20, 200, step=20),
+                    ridge_alpha=trial.suggest_float('ridge_alpha', 0.01, 100.0, log=True),
+                )
+                llf.fit(X_tr, y_tr)
+                return metric_fn(y_va, llf.predict(X_va))
 
-                study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
-                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
-                self.best_params_ = study.best_params
-                logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
-                fitted = _LocallyLinearForest(**self.best_params_)
-                fitted.fit(X_tr, y_tr)
+            study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
+            self.best_params_ = study.best_params
+            logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
+            fitted = _LocallyLinearForest(**self.best_params_)
+            fitted.fit(X_tr, y_tr)
 
         self._model = fitted
         self.train_pred_ = self._model.predict(X_tr)
@@ -315,7 +320,7 @@ class InterpretableTreeClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'InterpretableTreeClassifier':
+    ) -> InterpretableTreeClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])

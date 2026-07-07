@@ -30,6 +30,7 @@ Example:
     running_max = max(10, 30, 20, 25) = 30
     distance = (v[t] − running_max) / running_max = (25 − 30)/30 = −0.1667
     → distance_to_global_max = −0.167  (на ~17% ниже исторического пика)
+
 """
 
 import numba as nb
@@ -37,7 +38,7 @@ import numpy as np
 
 from .._windowing import safe_ratio
 
-FEATURE = "distance_to_global_max"
+FEATURE = 'distance_to_global_max'
 
 
 @nb.njit(cache=True)
@@ -49,12 +50,11 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
         if position_within_entity[row_idx] == 0:
             running_max = product_values[row_idx]
         v = product_values[row_idx]
-        if v > running_max:
-            running_max = v
+        running_max = max(running_max, v)
         out[row_idx] = safe_ratio(v - running_max, running_max)
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
-    return [_kernel(values, position)], [""]
+    return [_kernel(values, position)], ['']

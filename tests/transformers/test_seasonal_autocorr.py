@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("seasonal_autocorr", values, params)
+    return run_transformer('seasonal_autocorr', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -16,33 +17,33 @@ def test_bimonthly_pattern_even_odd():
     # [10,30,10,30,10,30]: even positions=10, odd positions=30
     # even_odd = 10/30 ≈ 0.333
     arrs, sfxs = _run([10, 30, 10, 30, 10, 30])
-    assert _get(arrs, sfxs, "even_odd_w12")[-1] == pytest.approx(10 / 30, abs=1e-4)
+    assert _get(arrs, sfxs, 'even_odd_w12')[-1] == pytest.approx(10 / 30, abs=1e-4)
 
 
 def test_constant_series_even_odd_one():
     # All equal → even_mean = odd_mean → even_odd ≈ 1.0
     arrs, sfxs = _run([20] * 12)
-    assert _get(arrs, sfxs, "even_odd_w12")[-1] == pytest.approx(1.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'even_odd_w12')[-1] == pytest.approx(1.0, abs=1e-3)
 
 
 def test_lag6_positive_for_semiannual_pattern():
     # Perfect semi-annual: same values every 6 months → high lag6 autocorr
     series = [10, 20, 30, 40, 50, 60, 10, 20, 30, 40, 50, 60]
     arrs, sfxs = _run(series)
-    assert _get(arrs, sfxs, "lag6")[-1] == pytest.approx(1.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'lag6')[-1] == pytest.approx(1.0, abs=1e-3)
 
 
 def test_lag12_positive_for_annual_pattern():
     # Repeating annual pattern → lag12 autocorr high
     series = list(range(1, 13)) + list(range(1, 13))
     arrs, sfxs = _run(series)
-    assert _get(arrs, sfxs, "lag12")[-1] == pytest.approx(1.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'lag12')[-1] == pytest.approx(1.0, abs=1e-3)
 
 
 def test_no_lag12_before_12_periods():
     # lag12 is 0 before pos=12
     arrs, sfxs = _run([10] * 24)
-    assert _get(arrs, sfxs, "lag12")[11] == pytest.approx(0.0, abs=1e-6)
+    assert _get(arrs, sfxs, 'lag12')[11] == pytest.approx(0.0, abs=1e-6)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

@@ -75,6 +75,7 @@ class AsymmetricLossClassifier(_CustomLossClassifierBase):
 
         model = AsymmetricLossClassifier(gamma_pos=0, gamma_neg=4, prob_margin=0.05)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

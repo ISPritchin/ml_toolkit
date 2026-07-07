@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("trend_consistency", values, params)
+    return run_transformer('trend_consistency', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,27 +14,27 @@ def _get(arrays, suffixes, suffix):
 
 def test_perfect_linear_trend_all_ones_from_docstring():
     # [10,20,30,40,50,60]: all diffs same sign as slope → dir_consistency=1.0, r²=1.0
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "dir_consistency_w6")[-1] == pytest.approx(1.0, abs=1e-4)
-    assert _get(arrs, sfxs, "r_squared_w6")[-1] == pytest.approx(1.0, abs=1e-4)
-    assert _get(arrs, sfxs, "clean_streak_w6")[-1] == pytest.approx(5.0)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'dir_consistency_w6')[-1] == pytest.approx(1.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'r_squared_w6')[-1] == pytest.approx(1.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'clean_streak_w6')[-1] == pytest.approx(5.0)
 
 
 def test_constant_series_dir_consistency_zero():
     # slope=0 → no direction → dir_consistency=0
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "dir_consistency_w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'dir_consistency_w6')[-1] == pytest.approx(0.0)
 
 
 def test_descending_trend_dir_consistency_one():
-    arrs, sfxs = _run([60, 50, 40, 30, 20, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "dir_consistency_w6")[-1] == pytest.approx(1.0, abs=1e-4)
+    arrs, sfxs = _run([60, 50, 40, 30, 20, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'dir_consistency_w6')[-1] == pytest.approx(1.0, abs=1e-4)
 
 
 def test_r_squared_near_zero_for_noisy_series():
     # Alternating series: slope≈0, residuals large → r²≈0 or negative
-    arrs, sfxs = _run([10, 90, 10, 90, 10, 90], {"windows": [6]})
-    assert _get(arrs, sfxs, "r_squared_w6")[-1] < 0.1
+    arrs, sfxs = _run([10, 90, 10, 90, 10, 90], {'windows': [6]})
+    assert _get(arrs, sfxs, 'r_squared_w6')[-1] < 0.1
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

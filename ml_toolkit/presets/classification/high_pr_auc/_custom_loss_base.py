@@ -15,9 +15,9 @@ Python-лоссом (BoostedEnsemble, исходный AsymmetricLossClassifier)
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 import numpy as np
@@ -25,7 +25,10 @@ import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.presets.classification._base import BasePreset
-from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
+from ml_toolkit.presets.classification._optuna_utils import (
+    CatBoostPruningCallback,
+    make_pruner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +218,7 @@ class _CustomLossClassifierBase(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> '_CustomLossClassifierBase':
+    ) -> _CustomLossClassifierBase:
         from catboost import Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(

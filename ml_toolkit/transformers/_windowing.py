@@ -40,12 +40,12 @@ def compute_position_within_entity(entity_codes: np.ndarray) -> np.ndarray:
 @nb.njit(cache=True)
 def resolve_window_size(position_in_entity: int, requested: int) -> int:
     available = position_in_entity + 1
-    return requested if available >= requested else available
+    return min(requested, available)
 
 
 @nb.njit(cache=True)
 def safe_ratio(num: float, den: float) -> float:
-    """num / |den| с защитой: 0.0 при |den| <= EPS, кламп в [-RATIO_CAP, RATIO_CAP].
+    """Num / |den| с защитой: 0.0 при |den| <= EPS, кламп в [-RATIO_CAP, RATIO_CAP].
 
     Знак результата определяется числителем (как в прежней конвенции
     x / (|y| + eps)). Нулевой знаменатель трактуется как «отношение не
@@ -119,10 +119,8 @@ def compute_window_min_and_max(product_values: np.ndarray, row_idx: int, window_
     hi = lo
     for offset in range(1, window_size):
         v = product_values[row_idx - window_size + 1 + offset]
-        if v < lo:
-            lo = v
-        if v > hi:
-            hi = v
+        lo = min(lo, v)
+        hi = max(hi, v)
     return lo, hi
 
 
@@ -164,10 +162,8 @@ def sorted_quantile(sorted_buf: np.ndarray, window_size: int, q: float) -> float
     комплементарных квантилей симметричны (p25 <-> p75, p10 <-> p90).
     """
     idx = int(q * (window_size - 1))
-    if idx < 0:
-        idx = 0
-    if idx > window_size - 1:
-        idx = window_size - 1
+    idx = max(idx, 0)
+    idx = min(idx, window_size - 1)
     return sorted_buf[idx]
 
 

@@ -30,6 +30,7 @@ Example:
       t=1: v=20 > mean(10,20)=15 → run=1
       t=2: v=30 > 20 → run=2  ... t=5: v=60 > 35 → run=5
     → run_above_mean__w6 = 5  (5 месяцев подряд выше среднего)
+
 """
 
 import numba as nb
@@ -37,7 +38,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size
 
-FEATURE = "run_above_mean"
+FEATURE = 'run_above_mean'
 
 
 @nb.njit(cache=True)
@@ -61,5 +62,5 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, ref_
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"window": 12} — ключ обязателен, дефолты задаёт пресет."""
-    w = params["window"]
-    return [_kernel(values, position, w)], [f"w{w}"]
+    w = params['window']
+    return [_kernel(values, position, w)], [f'w{w}']

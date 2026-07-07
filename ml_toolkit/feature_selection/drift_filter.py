@@ -80,6 +80,7 @@ def compute_psi(
         from ml_toolkit.feature_selection.drift_filter import compute_psi
         psi_report = compute_psi(X_train, X_valid)
         print(psi_report[psi_report['drift_level'] == 'high'])
+
     """
     common = [c for c in X_train.columns if c in X_valid.columns]
     rows = []
@@ -163,6 +164,7 @@ class AdversarialDriftFilter:
         X_train_clean = adf.transform(X_train)
         X_valid_clean = adf.transform(X_valid)
         X_test_clean  = adf.transform(X_test)
+
     """
 
     def __init__(
@@ -243,7 +245,7 @@ class AdversarialDriftFilter:
         self,
         X_train: pd.DataFrame,
         X_valid: pd.DataFrame,
-    ) -> 'AdversarialDriftFilter':
+    ) -> AdversarialDriftFilter:
         """Выявить и устранить drift между X_train и X_valid.
 
         Args:
@@ -252,10 +254,11 @@ class AdversarialDriftFilter:
 
         Returns:
             self
+
         """
         common = [c for c in X_train.columns if c in X_valid.columns]
         if not common:
-            raise ValueError("X_train и X_valid не имеют общих признаков.")
+            raise ValueError('X_train и X_valid не имеют общих признаков.')
 
         X_combined = pd.concat(
             [X_train[common].reset_index(drop=True),
@@ -325,10 +328,10 @@ class AdversarialDriftFilter:
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Вернуть X без drift-признаков."""
         if not self._fitted:
-            raise RuntimeError("AdversarialDriftFilter не обучен. Вызовите fit() первым.")
+            raise RuntimeError('AdversarialDriftFilter не обучен. Вызовите fit() первым.')
         missing = [f for f in self.selected_features_ if f not in X.columns]
         if missing:
-            raise ValueError(f"В X отсутствуют признаки: {missing}")
+            raise ValueError(f'В X отсутствуют признаки: {missing}')
         return X[self.selected_features_]
 
     def fit_transform(
@@ -347,9 +350,10 @@ class AdversarialDriftFilter:
         Returns:
             DataFrame с колонками ``feature``, ``adversarial_importance``,
             ``removed_by_drift``, отсортированный по убыванию важности.
+
         """
         if not self._fitted:
-            raise RuntimeError("AdversarialDriftFilter не обучен.")
+            raise RuntimeError('AdversarialDriftFilter не обучен.')
         removed_set = set(self.removed_features_)
         imp = self.feature_importances_ if self.feature_importances_ is not None else pd.Series(dtype=float)
         rows = [

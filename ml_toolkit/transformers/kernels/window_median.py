@@ -27,6 +27,7 @@ Example:
     окно (посл. 3) = [40, 20, 30] → сортировка [20, 30, 40]
     median = sorted_buf[3//2] = sorted_buf[1] = 30
     → window_median__w3 = 30.0
+
 """
 
 import numba as nb
@@ -34,7 +35,7 @@ import numpy as np
 
 from .._windowing import fill_window_sorted, resolve_window_size, sorted_median
 
-FEATURE = "window_median"
+FEATURE = 'window_median'
 
 
 @nb.njit(cache=True)
@@ -44,8 +45,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
     out_median = np.zeros((n_w, n_rows))
     max_w = 1
     for j in range(n_w):
-        if windows[j] > max_w:
-            max_w = windows[j]
+        max_w = max(max_w, windows[j])
     sorted_buf = np.empty(max_w)
 
     for row_idx in range(n_rows):
@@ -60,11 +60,11 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [3, 6, 12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     (median,) = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(median[j])
-        suffixes.append(f"w{w}")
+        suffixes.append(f'w{w}')
     return arrays, suffixes

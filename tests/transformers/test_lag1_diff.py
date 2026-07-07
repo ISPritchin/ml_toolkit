@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("lag1_diff", values, params)
+    return run_transformer('lag1_diff', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,38 +16,38 @@ def _get(arrays, suffixes, suffix):
 def test_known_values_from_docstring():
     # [50,60,65]: diff=5, log_diff≈0.079, pct_change≈0.0833
     arrs, sfxs = _run([50, 60, 65])
-    assert _get(arrs, sfxs, "diff")[-1] == pytest.approx(5.0)
-    assert _get(arrs, sfxs, "log_diff")[-1] == pytest.approx(math.log1p(65) - math.log1p(60), abs=1e-6)
-    assert _get(arrs, sfxs, "pct_change")[-1] == pytest.approx(5 / 60, abs=1e-6)
+    assert _get(arrs, sfxs, 'diff')[-1] == pytest.approx(5.0)
+    assert _get(arrs, sfxs, 'log_diff')[-1] == pytest.approx(math.log1p(65) - math.log1p(60), abs=1e-6)
+    assert _get(arrs, sfxs, 'pct_change')[-1] == pytest.approx(5 / 60, abs=1e-6)
 
 
 def test_constant_series_all_zeros():
     arrs, sfxs = _run([30, 30, 30])
-    assert _get(arrs, sfxs, "diff")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "log_diff")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "pct_change")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'diff')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'log_diff')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'pct_change')[-1] == pytest.approx(0.0)
 
 
 def test_first_row_always_zero():
     arrs, sfxs = _run([100, 200])
-    assert _get(arrs, sfxs, "diff")[0] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "log_diff")[0] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "pct_change")[0] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'diff')[0] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'log_diff')[0] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'pct_change')[0] == pytest.approx(0.0)
 
 
 def test_transition_from_zero_to_nonzero():
     # [0,100]: diff=100, log_diff=log1p(100)-log1p(0)=log1p(100)
     # pct_change при нулевой базе не определён → 0 (раньше 100/eps ~ 1e11)
     arrs, sfxs = _run([0, 100])
-    assert _get(arrs, sfxs, "diff")[-1] == pytest.approx(100.0)
-    assert _get(arrs, sfxs, "log_diff")[-1] == pytest.approx(math.log1p(100), abs=1e-6)
-    assert _get(arrs, sfxs, "pct_change")[-1] == pytest.approx(0.0, abs=1e-9)
+    assert _get(arrs, sfxs, 'diff')[-1] == pytest.approx(100.0)
+    assert _get(arrs, sfxs, 'log_diff')[-1] == pytest.approx(math.log1p(100), abs=1e-6)
+    assert _get(arrs, sfxs, 'pct_change')[-1] == pytest.approx(0.0, abs=1e-9)
 
 
 def test_declining_series_negative_diff():
     arrs, sfxs = _run([100, 60, 30])
-    assert _get(arrs, sfxs, "diff")[-1] == pytest.approx(-30.0)
-    assert _get(arrs, sfxs, "pct_change")[-1] < 0
+    assert _get(arrs, sfxs, 'diff')[-1] == pytest.approx(-30.0)
+    assert _get(arrs, sfxs, 'pct_change')[-1] < 0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

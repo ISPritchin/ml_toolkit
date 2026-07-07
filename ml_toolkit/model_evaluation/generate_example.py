@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import base64
 import io
+from pathlib import Path
 import sys
 import textwrap
-from pathlib import Path
 
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
@@ -559,7 +560,8 @@ def _plot_to_b64_file(fn, **kwargs) -> str:
     с BytesIO это вызывает огромный размер изображения в некоторых версиях
     matplotlib. Сохранение в реальный файл обходит проблему.
     """
-    import tempfile, os
+    import os
+    import tempfile
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
         tmp = f.name
     try:

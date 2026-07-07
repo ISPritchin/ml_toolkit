@@ -43,6 +43,7 @@ Example:
     cv_ratio_w3_w6 = 0.707 / 0.5 = 1.414
     short_excess = (CV_3 − CV_12)/CV_12 = (0.707 − 0.5)/0.5 = 0.414
     → window_volatility_ratios__cv_ratio_w3_w6 = 1.414,  short_excess = 0.414
+
 """
 
 import numba as nb
@@ -50,7 +51,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
 
-FEATURE = "window_volatility_ratios"
+FEATURE = 'window_volatility_ratios'
 
 
 @nb.njit(cache=True)
@@ -95,5 +96,5 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf = _kernel(values, position)
     return (
         [cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf],
-        ["cv_ratio_w3_w6", "cv_ratio_w3_w12", "cv_ratio_w6_w24", "vol_accel", "short_excess", "regime_flag"],
+        ['cv_ratio_w3_w6', 'cv_ratio_w3_w12', 'cv_ratio_w6_w24', 'vol_accel', 'short_excess', 'regime_flag'],
     )

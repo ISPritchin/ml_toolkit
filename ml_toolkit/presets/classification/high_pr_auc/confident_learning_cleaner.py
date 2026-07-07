@@ -31,8 +31,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -110,6 +110,7 @@ class ConfidentLearningCleaner(BasePreset):
         model = ConfidentLearningCleaner(n_folds=5)
         model.fit(X_train, y_train, X_valid, y_valid)
         print(f"Удалено {len(model.removed_indices_)} подозрительных меток")
+
     """
 
     def __init__(
@@ -150,8 +151,8 @@ class ConfidentLearningCleaner(BasePreset):
     # ── OOF-вероятности ──────────────────────────────────────────────────────
 
     def _tune(self, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier, Pool
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -246,7 +247,7 @@ class ConfidentLearningCleaner(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'ConfidentLearningCleaner':
+    ) -> ConfidentLearningCleaner:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(

@@ -13,15 +13,19 @@ multiclass_imbalance/ сюда не входит — там predict_proba воз
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-import pandas as pd
 import pytest
 
 from ml_toolkit.model_explainer import ModelExplainer
 from ml_toolkit.models import CatBoostClassifier as RawCatBoostClassifier
 from ml_toolkit.presets.classification import high_pr_auc as hpa
-from tests.model_explainer.conftest import FAST_CATBOOST_PARAMS, assert_valid_contribution, assert_valid_importance
+from tests.model_explainer.conftest import (
+    FAST_CATBOOST_PARAMS,
+    assert_valid_contribution,
+    assert_valid_importance,
+)
 
 FAST = FAST_CATBOOST_PARAMS
 

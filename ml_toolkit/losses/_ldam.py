@@ -49,6 +49,7 @@ class LDAMLoss:
     beta:
         Коэффициент effective number of samples для DRW-весов (не тюнится Optuna
         в LDAMClassifier — фиксированный гиперпараметр).
+
     """
 
     def __init__(
@@ -61,7 +62,7 @@ class LDAMLoss:
         beta: float = 0.9999,
     ) -> None:
         if n_pos <= 0 or n_neg <= 0:
-            raise ValueError(f"n_pos и n_neg должны быть положительными, получено {n_pos}, {n_neg}")
+            raise ValueError(f'n_pos и n_neg должны быть положительными, получено {n_pos}, {n_neg}')
         self.n_pos = n_pos
         self.n_neg = n_neg
         self.max_margin = max_margin

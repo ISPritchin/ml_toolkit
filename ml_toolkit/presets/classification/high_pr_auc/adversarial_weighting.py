@@ -23,8 +23,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -104,6 +104,7 @@ class AdversarialValidationWeighting(BasePreset):
         model = AdversarialValidationWeighting(clip_weights=(0.2, 5.0))
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=feats)
         print(f"adversarial AUC={model.adversarial_auc_:.3f}")
+
     """
 
     def __init__(
@@ -141,8 +142,8 @@ class AdversarialValidationWeighting(BasePreset):
         return m
 
     def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -181,7 +182,7 @@ class AdversarialValidationWeighting(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'AdversarialValidationWeighting':
+    ) -> AdversarialValidationWeighting:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(

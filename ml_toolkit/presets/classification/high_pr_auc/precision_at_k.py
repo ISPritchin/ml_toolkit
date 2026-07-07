@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -17,7 +17,10 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._utils import fit_calibrator, precision_at_k
 from ml_toolkit.presets.classification._base import BasePreset
-from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
+from ml_toolkit.presets.classification._optuna_utils import (
+    CatBoostPruningCallback,
+    make_pruner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,7 @@ class PrecisionAtKClassifier(BasePreset):
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
         print(f"val P@5%: {model.best_precision_at_k_:.4f}")
+
     """
 
     def __init__(
@@ -83,7 +87,7 @@ class PrecisionAtKClassifier(BasePreset):
         selected_features: list[str] | None = None,
     ):
         if not 0.0 < k_fraction <= 1.0:
-            raise ValueError(f"k_fraction должен быть в (0, 1], получено {k_fraction}")
+            raise ValueError(f'k_fraction должен быть в (0, 1], получено {k_fraction}')
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.optuna_timeout = optuna_timeout
         self.param_space = param_space
@@ -103,9 +107,9 @@ class PrecisionAtKClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'PrecisionAtKClassifier':
-        import optuna
+    ) -> PrecisionAtKClassifier:
         from catboost import CatBoostClassifier, Pool
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)

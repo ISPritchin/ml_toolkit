@@ -5,11 +5,10 @@
 
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
+import pickle
 
 import numpy as np
-import pandas as pd
 
 from ml_toolkit.models._base import BaseModel
 
@@ -27,7 +26,7 @@ class BasePreset(BaseModel):
     def _check_fitted(self) -> None:
         if self._model is None:
             raise RuntimeError(
-                f"{type(self).__name__} не обучена — вызовите .fit() первым."
+                f'{type(self).__name__} не обучена — вызовите .fit() первым.'
             )
 
     def save(self, path: str | Path) -> None:
@@ -42,12 +41,12 @@ class BasePreset(BaseModel):
             pickle.dump(self, f)
 
     @classmethod
-    def load(cls, path: str | Path) -> 'BasePreset':
+    def load(cls, path: str | Path) -> BasePreset:
         """Загружает пресет, сохранённый через .save()."""
         with open(path, 'rb') as f:
             obj = pickle.load(f)
         if not isinstance(obj, cls):
             raise TypeError(
-                f"Файл {path!r} содержит {type(obj).__name__}, ожидался {cls.__name__}."
+                f'Файл {path!r} содержит {type(obj).__name__}, ожидался {cls.__name__}.'
             )
         return obj

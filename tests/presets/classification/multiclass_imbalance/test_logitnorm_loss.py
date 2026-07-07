@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from ml_toolkit.presets.classification.multiclass_imbalance import LogitNormLossClassifier
+from ml_toolkit.presets.classification.multiclass_imbalance import (
+    LogitNormLossClassifier,
+)
 from tests.presets.classification.multiclass_imbalance.conftest import BASE_PARAMS
 
 

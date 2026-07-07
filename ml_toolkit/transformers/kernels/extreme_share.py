@@ -34,14 +34,15 @@ Example:
     выше среднего (>15): только 40 → 1 из 6
     → extreme_share__extreme_w6 = 1/6 = 0.167
     → extreme_share__balance_w6 = 1/6 − 0.5 = −0.333
+
 """
 
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, compute_window_mean_and_std, resolve_window_size
+from .._windowing import compute_window_mean_and_std, resolve_window_size
 
-FEATURE = "extreme_share"
+FEATURE = 'extreme_share'
 
 
 @nb.njit(cache=True)
@@ -76,14 +77,14 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12], "sigma_threshold": 1.5 (опционально)}"""
-    windows = np.array(params["windows"], dtype=np.int64)
-    sigma_threshold = float(params.get("sigma_threshold", 1.5))
+    windows = np.array(params['windows'], dtype=np.int64)
+    sigma_threshold = float(params.get('sigma_threshold', 1.5))
     out_extreme, out_balance = _kernel(values, position, windows, sigma_threshold)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(out_extreme[j])
-        suffixes.append(f"extreme_w{w}")
+        suffixes.append(f'extreme_w{w}')
         arrays.append(out_balance[j])
-        suffixes.append(f"balance_w{w}")
+        suffixes.append(f'balance_w{w}')
     return arrays, suffixes

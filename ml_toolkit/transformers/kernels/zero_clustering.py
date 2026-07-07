@@ -39,6 +39,7 @@ Example:
     нулевые серии: idx1-2 (длина 2) и idx4 (длина 1) → run_count = 2, max_zero_run = 2
     последний нуль на offset=4 → last_zero_rec = (6−1) − 4 = 1
     → zero_clustering__max_zero_run_w6 = 2,  zero_run_count_w6 = 2,  last_zero_rec_w6 = 1
+
 """
 
 import numba as nb
@@ -46,7 +47,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size, safe_ratio
 
-FEATURE = "zero_clustering"
+FEATURE = 'zero_clustering'
 
 
 @nb.njit(cache=True)
@@ -87,8 +88,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                         run_count += 1
                         in_zero = True
                     cur_run += 1
-                    if cur_run > max_run:
-                        max_run = cur_run
+                    max_run = max(max_run, cur_run)
                     last_zero_ago = ws - 1 - offset
                     if offset < half:
                         zero_front += 1
@@ -123,15 +123,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     mrun, rcnt, rvl, lzr, fb, zaa = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(mrun[j]); suffixes.append(f"max_zero_run_w{w}")
-        arrays.append(rcnt[j]); suffixes.append(f"zero_run_count_w{w}")
-        arrays.append(rvl[j]);  suffixes.append(f"recent_vs_long_w{w}")
-        arrays.append(lzr[j]);  suffixes.append(f"last_zero_rec_w{w}")
-        arrays.append(fb[j]);   suffixes.append(f"front_back_w{w}")
-    arrays.append(zaa); suffixes.append("zero_after_active")
+    for j, w in enumerate(params['windows']):
+        arrays.append(mrun[j]); suffixes.append(f'max_zero_run_w{w}')
+        arrays.append(rcnt[j]); suffixes.append(f'zero_run_count_w{w}')
+        arrays.append(rvl[j]);  suffixes.append(f'recent_vs_long_w{w}')
+        arrays.append(lzr[j]);  suffixes.append(f'last_zero_rec_w{w}')
+        arrays.append(fb[j]);   suffixes.append(f'front_back_w{w}')
+    arrays.append(zaa); suffixes.append('zero_after_active')
     return arrays, suffixes

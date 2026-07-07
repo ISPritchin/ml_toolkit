@@ -12,8 +12,8 @@ EBM строит Generalized Additive Model через cyclic gradient boosting:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -23,7 +23,15 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.utils.class_weight import compute_sample_weight
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    encode_cat_features,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +68,7 @@ class EBMRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'EBMRegressor':
+    ) -> EBMRegressor:
         try:
             from interpret.glassbox import ExplainableBoostingRegressor
         except ImportError as exc:
@@ -130,7 +138,7 @@ class EBMClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'EBMClassifier':
+    ) -> EBMClassifier:
         try:
             from interpret.glassbox import ExplainableBoostingClassifier
         except ImportError as exc:

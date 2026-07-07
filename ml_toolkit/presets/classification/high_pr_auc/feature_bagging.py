@@ -13,8 +13,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -91,6 +91,7 @@ class FeatureBaggingEnsemble(BasePreset):
         model = FeatureBaggingEnsemble(n_estimators=15, feature_frac=0.6)
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -107,7 +108,7 @@ class FeatureBaggingEnsemble(BasePreset):
         selected_features: list[str] | None = None,
     ) -> None:
         if not 0.0 < feature_frac <= 1.0:
-            raise ValueError(f"feature_frac должен быть в (0, 1], получено {feature_frac}")
+            raise ValueError(f'feature_frac должен быть в (0, 1], получено {feature_frac}')
         super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         self.n_estimators = n_estimators
         self.feature_frac = feature_frac
@@ -126,8 +127,8 @@ class FeatureBaggingEnsemble(BasePreset):
         self._rank_refs_: list[np.ndarray] = []
 
     def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -167,7 +168,7 @@ class FeatureBaggingEnsemble(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'FeatureBaggingEnsemble':
+    ) -> FeatureBaggingEnsemble:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)

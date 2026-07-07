@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("client_age", values, params)
+    return run_transformer('client_age', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,7 +16,7 @@ def _get(arrays, suffixes, suffix):
 def test_young_client_flag_set():
     # pos=0,1,2 → flag=1; pos=3 → flag=0
     arrs, sfxs = _run([10, 20, 30, 40])
-    flag = _get(arrs, sfxs, "new_client_flag")
+    flag = _get(arrs, sfxs, 'new_client_flag')
     assert flag[0] == pytest.approx(1.0)
     assert flag[1] == pytest.approx(1.0)
     assert flag[2] == pytest.approx(1.0)
@@ -25,14 +26,14 @@ def test_young_client_flag_set():
 def test_normalized_age_formula():
     # months_since_start_norm = pos/(pos+12)
     arrs, sfxs = _run([10] * 13)
-    norm = _get(arrs, sfxs, "months_since_start_norm")
+    norm = _get(arrs, sfxs, 'months_since_start_norm')
     assert norm[0] == pytest.approx(0.0)          # 0/(0+12)=0
     assert norm[12] == pytest.approx(12 / 24)     # 12/(12+12)=0.5
 
 
 def test_norm_monotone_increases():
     arrs, sfxs = _run([1] * 24)
-    norm = _get(arrs, sfxs, "months_since_start_norm")
+    norm = _get(arrs, sfxs, 'months_since_start_norm')
     assert all(norm[i] <= norm[i + 1] for i in range(len(norm) - 1))
 
 def test_with_mixed_zeros():

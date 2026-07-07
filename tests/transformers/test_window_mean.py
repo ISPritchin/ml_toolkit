@@ -1,11 +1,10 @@
-import math
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("window_mean", values, params)
+    return run_transformer('window_mean', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,30 +12,30 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_mean():
     # [10,20,30,40] w=3: last 3 = [20,30,40], mean=30
-    arrs, sfxs = _run([10, 20, 30, 40], {"windows": [3]})
-    assert _get(arrs, sfxs, "w3")[-1] == pytest.approx(30.0)
+    arrs, sfxs = _run([10, 20, 30, 40], {'windows': [3]})
+    assert _get(arrs, sfxs, 'w3')[-1] == pytest.approx(30.0)
 
 
 def test_all_zeros_mean_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0], {"windows": [3]})
-    assert _get(arrs, sfxs, "w3")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0], {'windows': [3]})
+    assert _get(arrs, sfxs, 'w3')[-1] == pytest.approx(0.0)
 
 
 def test_constant_series_mean_equals_value():
-    arrs, sfxs = _run([42, 42, 42, 42], {"windows": [3]})
-    assert _get(arrs, sfxs, "w3")[-1] == pytest.approx(42.0)
+    arrs, sfxs = _run([42, 42, 42, 42], {'windows': [3]})
+    assert _get(arrs, sfxs, 'w3')[-1] == pytest.approx(42.0)
 
 
 def test_partial_window_at_start():
     # Row 0: only 1 value available → mean=v[0]
-    arrs, sfxs = _run([100, 200, 300], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[0] == pytest.approx(100.0)
+    arrs, sfxs = _run([100, 200, 300], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[0] == pytest.approx(100.0)
 
 
 def test_longer_window_includes_zeros():
     # [0,0,0,30] w=4: mean=(0+0+0+30)/4=7.5
-    arrs, sfxs = _run([0, 0, 0, 30], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(7.5)
+    arrs, sfxs = _run([0, 0, 0, 30], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(7.5)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

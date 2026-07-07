@@ -1,11 +1,10 @@
-import math
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("inactive_streak", values, params)
+    return run_transformer('inactive_streak', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,28 +14,28 @@ def _get(arrays, suffixes, suffix):
 def test_known_example_from_docstring():
     # [10,0,0,10,0]: current=1 (last zero), max=2 (prev streak of 2)
     arrs, sfxs = _run([10, 0, 0, 10, 0])
-    assert _get(arrs, sfxs, "current")[-1] == pytest.approx(1.0)
-    assert _get(arrs, sfxs, "max")[-1] == pytest.approx(2.0)
+    assert _get(arrs, sfxs, 'current')[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'max')[-1] == pytest.approx(2.0)
 
 
 def test_active_current_streak_zero():
     # [10,20,30]: always active → current=0 always
     arrs, sfxs = _run([10, 20, 30])
-    assert _get(arrs, sfxs, "current")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'current')[-1] == pytest.approx(0.0)
 
 
 def test_all_zeros_current_grows():
     # [0,0,0,0,0]: current=5, max=5 at end
     arrs, sfxs = _run([0, 0, 0, 0, 0])
-    assert _get(arrs, sfxs, "current")[-1] == pytest.approx(5.0)
-    assert _get(arrs, sfxs, "max")[-1] == pytest.approx(5.0)
+    assert _get(arrs, sfxs, 'current')[-1] == pytest.approx(5.0)
+    assert _get(arrs, sfxs, 'max')[-1] == pytest.approx(5.0)
 
 
 def test_max_remembers_historical_maximum():
     # [0,0,0,10,0]: max=3 (first run), current=1 (last zero)
     arrs, sfxs = _run([0, 0, 0, 10, 0])
-    assert _get(arrs, sfxs, "max")[-1] == pytest.approx(3.0)
-    assert _get(arrs, sfxs, "current")[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'max')[-1] == pytest.approx(3.0)
+    assert _get(arrs, sfxs, 'current')[-1] == pytest.approx(1.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

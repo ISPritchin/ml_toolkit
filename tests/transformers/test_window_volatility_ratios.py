@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("window_volatility_ratios", values, params)
+    return run_transformer('window_volatility_ratios', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,28 +16,28 @@ def _get(arrays, suffixes, suffix):
 def test_constant_series_regime_flag_zero():
     # CV=0 for all windows → regime_flag=0
     arrs, sfxs = _run([40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40])
-    assert _get(arrs, sfxs, "regime_flag")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'regime_flag')[-1] == pytest.approx(0.0)
 
 
 def test_regime_flag_when_short_very_volatile():
     # Stable long history, volatile short: CV_3 >> CV_12 → flag=1
     values = [50] * 9 + [10, 90, 10]  # 12 values; last 3 are volatile
     arrs, sfxs = _run(values)
-    assert _get(arrs, sfxs, "regime_flag")[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'regime_flag')[-1] == pytest.approx(1.0)
 
 
 def test_cv_ratio_equal_when_same_volatility():
     # For a uniform constant series, all CVs are equal → ratios≈1.0 (but =0/0 → 0/EPS)
     # In practice both CVs=0 → cv_ratio = 0/(0+EPS) ≈ 0
     arrs, sfxs = _run([20] * 12)
-    assert _get(arrs, sfxs, "cv_ratio_w3_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'cv_ratio_w3_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_vol_accel_positive_when_nesting_volatile():
     # std_3 > std_6 > std_12 → (std_3-std_6) > (std_6-std_12) → vol_accel > 0
     values = [50] * 9 + [10, 90, 10]
     arrs, sfxs = _run(values)
-    assert _get(arrs, sfxs, "vol_accel")[-1] > 0
+    assert _get(arrs, sfxs, 'vol_accel')[-1] > 0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

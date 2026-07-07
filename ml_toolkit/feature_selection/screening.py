@@ -18,7 +18,7 @@ import polars as pl
 
 logger = logging.getLogger(__name__)
 
-_NOT_FITTED = "FeatureScreener has not been fitted yet. Call fit() first."
+_NOT_FITTED = 'FeatureScreener has not been fitted yet. Call fit() first.'
 
 
 def _arrays_equal(a: np.ndarray, b: np.ndarray) -> bool:
@@ -78,7 +78,7 @@ class FeatureScreener:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def fit(self, X: pl.DataFrame, y: pl.Series | np.ndarray) -> "FeatureScreener":
+    def fit(self, X: pl.DataFrame, y: pl.Series | np.ndarray) -> FeatureScreener:
         """Вычислить статистики и применить фильтры. Возвращает self."""
         y_arr = y.to_numpy() if isinstance(y, pl.Series) else np.asarray(y)
 
@@ -101,95 +101,95 @@ class FeatureScreener:
             variance = float(non_null.cast(pl.Float64).var(ddof=0)) if n_non_null > 1 else 0.0
 
             if n_non_null > 0:
-                vc = non_null.value_counts().sort("count", descending=True)
-                quasi_constant_rate = float(vc[0, "count"]) / n_non_null
+                vc = non_null.value_counts().sort('count', descending=True)
+                quasi_constant_rate = float(vc[0, 'count']) / n_non_null
             else:
                 quasi_constant_rate = 1.0
 
             records.append({
-                "feature":             col_name,
-                "null_rate":           null_rate,
-                "variance":            variance,
-                "quasi_constant_rate": quasi_constant_rate,
-                "univariate_auc":      float("nan"),
-                "mutual_info":         float("nan"),
-                "kept":                True,
-                "removed_by":          None,
+                'feature':             col_name,
+                'null_rate':           null_rate,
+                'variance':            variance,
+                'quasi_constant_rate': quasi_constant_rate,
+                'univariate_auc':      float('nan'),
+                'mutual_info':         float('nan'),
+                'kept':                True,
+                'removed_by':          None,
             })
 
         # Стадии 1–3
         for r in records:
-            if r["null_rate"] > self.max_null_rate:
-                r["kept"] = False
-                r["removed_by"] = "high_null_rate"
-            elif r["variance"] < self.min_variance:
-                r["kept"] = False
-                r["removed_by"] = "low_variance"
-            elif r["quasi_constant_rate"] > self.max_quasi_constant_rate:
-                r["kept"] = False
-                r["removed_by"] = "quasi_constant"
+            if r['null_rate'] > self.max_null_rate:
+                r['kept'] = False
+                r['removed_by'] = 'high_null_rate'
+            elif r['variance'] < self.min_variance:
+                r['kept'] = False
+                r['removed_by'] = 'low_variance'
+            elif r['quasi_constant_rate'] > self.max_quasi_constant_rate:
+                r['kept'] = False
+                r['removed_by'] = 'quasi_constant'
 
         # Стадия 4: дубликаты (только среди пока не удалённых)
         if self.drop_duplicates:
-            surviving_idx = [i for i, r in enumerate(records) if r["kept"]]
+            surviving_idx = [i for i, r in enumerate(records) if r['kept']]
             if len(surviving_idx) > 1:
                 seen: list[np.ndarray] = []
                 for i in surviving_idx:
-                    arr = X[records[i]["feature"]].to_numpy()
+                    arr = X[records[i]['feature']].to_numpy()
                     if any(_arrays_equal(arr, s) for s in seen):
-                        records[i]["kept"] = False
-                        records[i]["removed_by"] = "duplicate"
+                        records[i]['kept'] = False
+                        records[i]['removed_by'] = 'duplicate'
                     else:
                         seen.append(arr)
 
         # AUC и MI вычисляются для всех признаков (для полноты отчёта)
         compute_mi = self.min_mutual_info is not None
         for r in records:
-            r["univariate_auc"] = self._auc(X[r["feature"]], y_arr)
+            r['univariate_auc'] = self._auc(X[r['feature']], y_arr)
             if compute_mi:
-                r["mutual_info"] = self._mutual_info(X[r["feature"]], y_arr)
+                r['mutual_info'] = self._mutual_info(X[r['feature']], y_arr)
 
         # Стадия 5: low_auc
         for r in records:
-            if not r["kept"]:
+            if not r['kept']:
                 continue
-            if r["univariate_auc"] < self.min_univariate_auc:
-                r["kept"] = False
-                r["removed_by"] = "low_auc"
+            if r['univariate_auc'] < self.min_univariate_auc:
+                r['kept'] = False
+                r['removed_by'] = 'low_auc'
 
         # Стадия 6: low_mutual_info
         if compute_mi:
             for r in records:
-                if not r["kept"]:
+                if not r['kept']:
                     continue
-                mi = r["mutual_info"]
+                mi = r['mutual_info']
                 if not np.isnan(mi) and mi < self.min_mutual_info:  # type: ignore[operator]
-                    r["kept"] = False
-                    r["removed_by"] = "low_mutual_info"
+                    r['kept'] = False
+                    r['removed_by'] = 'low_mutual_info'
 
         self._stats = pl.DataFrame(
             records,
             schema={
-                "feature":             pl.Utf8,
-                "null_rate":           pl.Float64,
-                "variance":            pl.Float64,
-                "quasi_constant_rate": pl.Float64,
-                "univariate_auc":      pl.Float64,
-                "mutual_info":         pl.Float64,
-                "kept":                pl.Boolean,
-                "removed_by":          pl.Utf8,
+                'feature':             pl.Utf8,
+                'null_rate':           pl.Float64,
+                'variance':            pl.Float64,
+                'quasi_constant_rate': pl.Float64,
+                'univariate_auc':      pl.Float64,
+                'mutual_info':         pl.Float64,
+                'kept':                pl.Boolean,
+                'removed_by':          pl.Utf8,
             },
         )
 
-        n_kept = int(self._stats["kept"].sum())
-        logger.info("FeatureScreener: оставлено %d / %d признаков", n_kept, len(self._stats))
+        n_kept = int(self._stats['kept'].sum())
+        logger.info('FeatureScreener: оставлено %d / %d признаков', n_kept, len(self._stats))
         return self
 
     @property
     def selected_features_(self) -> list[str]:
         if self._stats is None:
             raise RuntimeError(_NOT_FITTED)
-        return self._stats.filter(pl.col("kept"))["feature"].to_list()
+        return self._stats.filter(pl.col('kept'))['feature'].to_list()
 
     def report(self) -> pl.DataFrame:
         """Полная таблица статистик и причин удаления.
@@ -208,26 +208,27 @@ class FeatureScreener:
         Returns:
             ``pl.DataFrame`` с колонками ``причина`` и ``признаков``.
             Последняя строка — ``'ИТОГО удалено'``.
+
         """
         if self._stats is None:
             raise RuntimeError(_NOT_FITTED)
 
-        removed = self._stats.filter(~pl.col("kept"))
+        removed = self._stats.filter(~pl.col('kept'))
         n_removed = len(removed)
 
         if n_removed == 0:
             counts = pl.DataFrame({
-                "причина":   pl.Series([], dtype=pl.Utf8),
-                "признаков": pl.Series([], dtype=pl.Int64),
+                'причина':   pl.Series([], dtype=pl.Utf8),
+                'признаков': pl.Series([], dtype=pl.Int64),
             })
         else:
-            vc = removed["removed_by"].value_counts(sort=True)
+            vc = removed['removed_by'].value_counts(sort=True)
             counts = (
-                vc.rename({"removed_by": "причина", "count": "признаков"})
-                .with_columns(pl.col("признаков").cast(pl.Int64))
+                vc.rename({'removed_by': 'причина', 'count': 'признаков'})
+                .with_columns(pl.col('признаков').cast(pl.Int64))
             )
 
-        total = pl.DataFrame({"причина": ["ИТОГО удалено"], "признаков": [n_removed]})
+        total = pl.DataFrame({'причина': ['ИТОГО удалено'], 'признаков': [n_removed]})
         return pl.concat([counts, total])
 
     def transform(self, X: pl.DataFrame) -> pl.DataFrame:

@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("accel", values, params)
+    return run_transformer('accel', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,32 +16,32 @@ def _get(arrays, suffixes, suffix):
 def test_known_deceleration():
     # [10,15,25,30]: 30-2*25+15 = -5 (decelerating)
     arrs, sfxs = _run([10, 15, 25, 30])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(-5.0)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(-5.0)
 
 
 def test_linear_series_zero_acceleration():
     # Constant increments → second difference = 0
     arrs, sfxs = _run([10, 20, 30, 40])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(0.0)
 
 
 def test_known_acceleration():
     # [10,12,17,25]: 25-2*17+12 = 3 (accelerating)
     arrs, sfxs = _run([10, 12, 17, 25])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(3.0)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(3.0)
 
 
 def test_zero_before_history_available():
     # At pos=0 and pos=1, accel=0 (not enough history)
     arrs, sfxs = _run([10, 20, 30])
-    assert _get(arrs, sfxs, "")[0] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "")[1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, '')[0] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, '')[1] == pytest.approx(0.0)
 
 
 def test_zeros_in_series():
     # [0,0,10]: 10-2*0+0 = 10 (big acceleration from zeros)
     arrs, sfxs = _run([0, 0, 10])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(10.0)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(10.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

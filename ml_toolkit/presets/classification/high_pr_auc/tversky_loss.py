@@ -60,6 +60,7 @@ class TverskyLossClassifier(_CustomLossClassifierBase):
 
         model = TverskyLossClassifier(alpha=0.3, beta=0.7)  # штраф FN сильнее — выше recall
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

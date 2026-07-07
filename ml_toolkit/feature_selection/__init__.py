@@ -10,20 +10,20 @@
     select_features_genetic — генетический алгоритм отбора; принимает произвольный scorer.
     make_catboost_scorer    — фабрика CatBoost-скорера для select_features_genetic.
 """
-from .screening import FeatureScreener
-from .pipeline import FeatureSelectionPipeline
 from .drift_filter import AdversarialDriftFilter, compute_psi
+from .pipeline import FeatureSelectionPipeline
+from .screening import FeatureScreener
 
 __all__ = [
-    "FeatureScreener",
-    "FeatureSelectionPipeline",
-    "AdversarialDriftFilter",
-    "compute_psi",
-    "select_features_genetic",
-    "make_catboost_scorer",
+    'AdversarialDriftFilter',
+    'FeatureScreener',
+    'FeatureSelectionPipeline',
+    'compute_psi',
+    'make_catboost_scorer',
+    'select_features_genetic',
 ]
 
-_LAZY = {"select_features_genetic", "make_catboost_scorer"}
+_LAZY = {'select_features_genetic', 'make_catboost_scorer'}
 
 
 def __getattr__(name: str):
@@ -32,4 +32,4 @@ def __getattr__(name: str):
         obj = getattr(genetic, name)
         globals()[name] = obj
         return obj
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

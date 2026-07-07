@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("cross_window_momentum", values, params)
+    return run_transformer('cross_window_momentum', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -16,26 +17,26 @@ def test_all_accel_for_geometric_growth():
     # 12 values of geometric growth: each level strictly above prior windows
     values = [2 ** i for i in range(12)]  # 1,2,4,...,2048
     arrs, sfxs = _run(values)
-    assert _get(arrs, sfxs, "all_accel")[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'all_accel')[-1] == pytest.approx(1.0)
 
 
 def test_all_decel_for_geometric_decay():
     # 12 values of geometric decay
     values = [2 ** (11 - i) for i in range(12)]  # 2048,...,1
     arrs, sfxs = _run(values)
-    assert _get(arrs, sfxs, "all_decel")[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'all_decel')[-1] == pytest.approx(1.0)
 
 
 def test_ratio_w1_w3_known():
     # [10,20,30,40,50,60]: v=60, mean_w3=50 → ratio=60/50=1.2
     arrs, sfxs = _run([10, 20, 30, 40, 50, 60])
-    assert _get(arrs, sfxs, "ratio_w1_w3")[-1] == pytest.approx(1.2, abs=1e-4)
+    assert _get(arrs, sfxs, 'ratio_w1_w3')[-1] == pytest.approx(1.2, abs=1e-4)
 
 
 def test_constant_series_ratios_near_one():
     arrs, sfxs = _run([30] * 12)
-    assert _get(arrs, sfxs, "ratio_w1_w3")[-1] == pytest.approx(1.0, abs=1e-3)
-    assert _get(arrs, sfxs, "ratio_w3_w6")[-1] == pytest.approx(1.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'ratio_w1_w3')[-1] == pytest.approx(1.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'ratio_w3_w6')[-1] == pytest.approx(1.0, abs=1e-3)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

@@ -43,6 +43,7 @@ Example:
     num = 4·1375 − 70·80 = 5500 − 5600 = −100
     den = sqrt((4·1350−70²)(4·1650−80²)) = sqrt(800·200) = 316.23
     → autocorr__lag1 = −100/316.23 = −0.316  (лёгкая осцилляция)
+
 """
 
 import numba as nb
@@ -50,7 +51,7 @@ import numpy as np
 
 from .._windowing import pearson_from_sums, safe_ratio, windowed_lag_pearson
 
-FEATURE = "autocorr"
+FEATURE = 'autocorr'
 
 
 @nb.njit(cache=True)
@@ -106,5 +107,5 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
     r = _kernel(values, position)
     arrays = list(r)
-    suffixes = ["lag1", "lag2", "lag3", "lag1_w12", "lag2_w12", "partial_lag2"]
+    suffixes = ['lag1', 'lag2', 'lag3', 'lag1_w12', 'lag2_w12', 'partial_lag2']
     return arrays, suffixes

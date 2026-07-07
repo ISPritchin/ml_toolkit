@@ -37,6 +37,7 @@ Example:
     months_since_peak   = (6−1) − 1 = 4
     months_since_trough = (6−1) − 4 = 1
     → peak_trough_timing__peak_w6 = 4,  trough_w6 = 1  (дно недавно, восстановление)
+
 """
 
 import numba as nb
@@ -44,7 +45,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "peak_trough_timing"
+FEATURE = 'peak_trough_timing'
 
 
 @nb.njit(cache=True)
@@ -76,13 +77,13 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out_peak, out_trough = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(out_peak[j])
-        suffixes.append(f"peak_w{w}")
+        suffixes.append(f'peak_w{w}')
         arrays.append(out_trough[j])
-        suffixes.append(f"trough_w{w}")
+        suffixes.append(f'trough_w{w}')
     return arrays, suffixes

@@ -33,6 +33,7 @@ Example:
     lo_w = min(окна) = 5
     trough_to_current = v[t] / lo_w = 30 / 5
     → trough_to_current__w6 = 6.0  (текущий мес. в 6× выше дна окна)
+
 """
 
 import numba as nb
@@ -40,7 +41,7 @@ import numpy as np
 
 from .._windowing import compute_window_min_and_max, resolve_window_size, safe_ratio
 
-FEATURE = "trough_to_current"
+FEATURE = 'trough_to_current'
 
 
 @nb.njit(cache=True)
@@ -60,6 +61,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

@@ -25,8 +25,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -109,6 +109,7 @@ class AnomalyBlendClassifier(BasePreset):
         model.fit(X_train, y_train, X_valid, y_valid)
         print(f'alpha={model.alpha_:.2f}: sup={model.sup_pr_auc_:.4f}  '
               f'IF={model.if_pr_auc_:.4f}  blend={model.blend_pr_auc_:.4f}')
+
     """
 
     def __init__(
@@ -186,8 +187,8 @@ class AnomalyBlendClassifier(BasePreset):
         return model
 
     def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -247,7 +248,7 @@ class AnomalyBlendClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'AnomalyBlendClassifier':
+    ) -> AnomalyBlendClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )

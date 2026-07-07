@@ -71,6 +71,7 @@ class GreedyForwardEnsembleSelection(BasePreset):
         model = GreedyForwardEnsembleSelection(model_library=[m1, m2, m3, ...])
         model.fit(X_train, y_train, X_valid, y_valid)
         print(dict(zip(range(len(model.weights_)), model.weights_)))
+
     """
 
     def __init__(
@@ -123,7 +124,7 @@ class GreedyForwardEnsembleSelection(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'GreedyForwardEnsembleSelection':
+    ) -> GreedyForwardEnsembleSelection:
         _, _, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         y_va = y_valid.values
         n_models = len(self.model_library)

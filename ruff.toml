@@ -1,5 +1,5 @@
 target-version = "py311"
-line-length = 88
+line-length = 120
 
 [lint]
 select = ["ALL"]
@@ -25,6 +25,22 @@ ignore = [
     "FIX002", # line-contains-todo
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
+
+    # Docstrings/comments are written in Russian throughout — these rules
+    # flag ordinary Cyrillic as "ambiguous unicode", pure noise here
+    "RUF001", # ambiguous-unicode-character-string
+    "RUF002", # ambiguous-unicode-character-docstring
+    "RUF003", # ambiguous-unicode-character-comment
+
+    # X_train/y_valid/X/y is the deliberate numpy/pandas/sklearn ML naming
+    # convention used throughout the project, not a real naming problem
+    "N803", # invalid-argument-name
+    "N806", # non-lowercase-variable-in-function
+
+    # Local/lazy imports are an intentional pattern (see CLAUDE.md): optional
+    # heavy deps (catboost, lightgbm, optuna, ...) are imported per-call
+    # instead of at module load time
+    "PLC0415", # import-outside-top-level
 ]
 
 [lint.per-file-ignores]

@@ -36,6 +36,7 @@ Example:
     sum(v)   = 150,  sum(i·v) = 0+20+60+120+200 = 400,  sum(i²) = 30
     slope    = (5·400 − 10·150) / (5·30 − 10²) = (2000−1500)/(150−100) = 500/50 = 10.0
     → slope__w5 = 10.0  (ровный рост +10 ед/мес)
+
 """
 
 import numba as nb
@@ -43,7 +44,7 @@ import numpy as np
 
 from .._windowing import fit_linear_trend_slope, resolve_window_size
 
-FEATURE = "slope"
+FEATURE = 'slope'
 
 
 @nb.njit(cache=True)
@@ -60,14 +61,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """
-    Args:
+    """Args:
         params: {"windows": [6, 12, 24]}
+
     Returns:
         (arrays, suffixes) — по одному массиву и суффиксу на каждое окно.
+
     """
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     arrays = [out[j] for j in range(len(windows))]
-    suffixes = [f"w{w}" for w in params["windows"]]
+    suffixes = [f'w{w}' for w in params['windows']]
     return arrays, suffixes

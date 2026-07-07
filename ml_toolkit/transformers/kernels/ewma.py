@@ -35,12 +35,13 @@ Example:
     t=2: EWMA = 0.3·120 + 0.7·94  = 36 + 65.8 = 101.8
     t=3: EWMA = 0.3·90  + 0.7·101.8 = 27 + 71.26 = 98.26
     → ewma__a30 = 98.26,  ewma__diff_a30 = 90 − 98.26 = −8.26
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "ewma"
+FEATURE = 'ewma'
 
 
 @nb.njit(cache=True)
@@ -61,12 +62,12 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, alph
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"alphas": [0.3]} — ключ обязателен, дефолты задаёт пресет."""
-    alphas = params["alphas"]
+    alphas = params['alphas']
     arrays = []
     suffixes = []
     for alpha in alphas:
-        tag = f"a{int(round(alpha * 100)):02d}"
+        tag = f'a{int(round(alpha * 100)):02d}'
         ev, ed = _kernel(values, position, alpha)
         arrays.extend([ev, ed])
-        suffixes.extend([tag, f"diff_{tag}"])
+        suffixes.extend([tag, f'diff_{tag}'])
     return arrays, suffixes

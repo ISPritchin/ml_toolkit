@@ -56,6 +56,7 @@ class DiceLossClassifier(_CustomLossClassifierBase):
 
         model = DiceLossClassifier(smooth=1.0)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

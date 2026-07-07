@@ -9,8 +9,8 @@ NaN: медианная импутация через SimpleImputer внутри
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -26,9 +26,14 @@ from sklearn.pipeline import Pipeline
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
-    CLS_METRICS, REG_METRICS, apply_cat_encoder, build_cat_encoder,
-    calibrate_proba, fit_calibrator, resolve_metric_fn,
-    resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    REG_METRICS,
+    apply_cat_encoder,
+    build_cat_encoder,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +73,7 @@ class RandomForestRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'RandomForestRegressor':
+    ) -> RandomForestRegressor:
         return _fit_forest_reg(self, _SKRFRegressor, 'random_forest', X_train, y_train, X_valid, y_valid, selected_features, cat_features)
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -89,7 +94,7 @@ class RandomForestClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'RandomForestClassifier':
+    ) -> RandomForestClassifier:
         return _fit_forest_cls(self, _SKRFClassifier, 'random_forest', X_train, y_train, X_valid, y_valid, selected_features, cat_features)
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -110,7 +115,7 @@ class ExtraTreesRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'ExtraTreesRegressor':
+    ) -> ExtraTreesRegressor:
         return _fit_forest_reg(self, _SKETRegressor, 'extra_trees', X_train, y_train, X_valid, y_valid, selected_features, cat_features)
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -131,7 +136,7 @@ class ExtraTreesClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'ExtraTreesClassifier':
+    ) -> ExtraTreesClassifier:
         return _fit_forest_cls(self, _SKETClassifier, 'extra_trees', X_train, y_train, X_valid, y_valid, selected_features, cat_features)
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -304,5 +309,5 @@ def train_classification(
 
 
 def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
-    """sklearn Pipeline предоставляет feature_importances_ напрямую; predict_fn не нужна."""
-    return None
+    """Sklearn Pipeline предоставляет feature_importances_ напрямую; predict_fn не нужна."""
+    return

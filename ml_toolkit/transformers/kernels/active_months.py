@@ -30,6 +30,7 @@ Example:
     ненулевые: 10, 5, 8, 3 → 4 шт.
     нулевые:   0, 0       → 2 шт.
     → active_months__w6 = 4
+
 """
 
 import numba as nb
@@ -37,7 +38,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "active_months"
+FEATURE = 'active_months'
 
 
 @nb.njit(cache=True)
@@ -59,6 +60,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

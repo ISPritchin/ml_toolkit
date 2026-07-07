@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("local_extrema", values, params)
+    return run_transformer('local_extrema', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -18,24 +19,24 @@ def test_known_oscillating_count():
     # offset3=40: peak (>20 and >30)
     # offset4=30: trough (<40 and <50)
     # → 4 extrema
-    arrs, sfxs = _run([10, 30, 20, 40, 30, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(4.0)
+    arrs, sfxs = _run([10, 30, 20, 40, 30, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(4.0)
 
 
 def test_monotone_no_extrema():
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_constant_no_extrema():
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_single_peak_in_middle():
     # [10,10,50,10,10,10] w=6: offset2=50 is peak → 1 extremum
-    arrs, sfxs = _run([10, 10, 50, 10, 10, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([10, 10, 50, 10, 10, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(1.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

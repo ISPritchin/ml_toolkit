@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("microstructure", values, params)
+    return run_transformer('microstructure', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -20,29 +21,29 @@ def test_known_surprise_from_docstring():
     sq_dev = sum((v - mean) ** 2 for v in values) / 6
     std = math.sqrt(sq_dev)
     expected_surprise = abs(30 - mean) / std
-    arrs, sfxs = _run(values, {"windows": [6]})
-    assert _get(arrs, sfxs, "surprise_w6")[-1] == pytest.approx(expected_surprise, abs=0.01)
+    arrs, sfxs = _run(values, {'windows': [6]})
+    assert _get(arrs, sfxs, 'surprise_w6')[-1] == pytest.approx(expected_surprise, abs=0.01)
 
 
 def test_constant_series_predictability_high():
     # CV=0 → predictability=1/(1+0)=1.0
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "predictability_w6")[-1] == pytest.approx(1.0, abs=1e-3)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'predictability_w6')[-1] == pytest.approx(1.0, abs=1e-3)
 
 
 def test_constant_series_surprise_zero():
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "surprise_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'surprise_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_surprise_dir_positive_when_above_mean():
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 100], {"windows": [6]})
-    assert _get(arrs, sfxs, "surprise_dir")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 100], {'windows': [6]})
+    assert _get(arrs, sfxs, 'surprise_dir')[-1] == pytest.approx(1.0)
 
 
 def test_surprise_dir_negative_when_below_mean():
-    arrs, sfxs = _run([100, 100, 100, 100, 100, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "surprise_dir")[-1] == pytest.approx(-1.0)
+    arrs, sfxs = _run([100, 100, 100, 100, 100, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'surprise_dir')[-1] == pytest.approx(-1.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

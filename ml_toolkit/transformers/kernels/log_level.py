@@ -29,6 +29,7 @@ Example:
     mean_w = 210/6 = 35
     log_level = ln(1 + 35) = ln(36) = 3.584
     → log_level__w6 = 3.584
+
 """
 
 import numba as nb
@@ -36,7 +37,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size
 
-FEATURE = "log_level"
+FEATURE = 'log_level'
 
 
 @nb.njit(cache=True)
@@ -55,6 +56,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

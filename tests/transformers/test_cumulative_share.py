@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("cumulative_share", values, params)
+    return run_transformer('cumulative_share', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,19 +16,19 @@ def _get(arrays, suffixes, suffix):
 def test_known_share():
     # [10,20,30,40]: cum_sum=100, last share=40/100=0.4
     arrs, sfxs = _run([10, 20, 30, 40])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(0.4, abs=1e-4)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(0.4, abs=1e-4)
 
 
 def test_single_spike_after_zeros():
     # [0,0,0,10]: cum_sum=10, share=10/10=1.0
     arrs, sfxs = _run([0, 0, 0, 10])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(1.0, abs=1e-4)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(1.0, abs=1e-4)
 
 
 def test_uniform_series_decreasing_share():
     # Uniform [10,10,10,10]: shares = 1, 1/2, 1/3, 1/4
     arrs, sfxs = _run([10, 10, 10, 10])
-    result = _get(arrs, sfxs, "")
+    result = _get(arrs, sfxs, '')
     assert result[0] == pytest.approx(1.0, abs=1e-4)
     assert result[1] == pytest.approx(0.5, abs=1e-4)
     assert result[2] == pytest.approx(1 / 3, abs=1e-4)
@@ -37,7 +38,7 @@ def test_uniform_series_decreasing_share():
 def test_all_zeros_share_near_zero():
     arrs, sfxs = _run([0, 0, 0, 0])
     # 0/(|0|+EPS) ≈ 0
-    assert abs(_get(arrs, sfxs, "")[-1]) < 1e-3
+    assert abs(_get(arrs, sfxs, '')[-1]) < 1e-3
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

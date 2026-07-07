@@ -45,6 +45,7 @@ Example:
     dir_consistency = 5/5 = 1.0
     точки лежат точно на линии → ss_res = 0 → r_squared = 1.0
     → trend_consistency__dir_consistency_w6 = 1.0,  r_squared_w6 = 1.0,  clean_streak_w6 = 5
+
 """
 
 import numba as nb
@@ -52,7 +53,7 @@ import numpy as np
 
 from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size, safe_ratio
 
-FEATURE = "trend_consistency"
+FEATURE = 'trend_consistency'
 
 
 @nb.njit(cache=True)
@@ -109,8 +110,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                 d_sign = 1 if d > 0.0 else (-1 if d < 0.0 else 0)
                 if d_sign == slope_sign and slope_sign != 0:
                     cur_run += 1
-                    if cur_run > best_run:
-                        best_run = cur_run
+                    best_run = max(best_run, cur_run)
                 else:
                     cur_run = 0
             out_clean_streak[j, row_idx] = best_run
@@ -136,14 +136,14 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     dc, ns, cs, ssc, r2 = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(dc[j]);  suffixes.append(f"dir_consistency_w{w}")
-        arrays.append(ns[j]);  suffixes.append(f"noise_signal_w{w}")
-        arrays.append(cs[j]);  suffixes.append(f"clean_streak_w{w}")
-        arrays.append(ssc[j]); suffixes.append(f"sub_sign_consist_w{w}")
-        arrays.append(r2[j]);  suffixes.append(f"r_squared_w{w}")
+    for j, w in enumerate(params['windows']):
+        arrays.append(dc[j]);  suffixes.append(f'dir_consistency_w{w}')
+        arrays.append(ns[j]);  suffixes.append(f'noise_signal_w{w}')
+        arrays.append(cs[j]);  suffixes.append(f'clean_streak_w{w}')
+        arrays.append(ssc[j]); suffixes.append(f'sub_sign_consist_w{w}')
+        arrays.append(r2[j]);  suffixes.append(f'r_squared_w{w}')
     return arrays, suffixes

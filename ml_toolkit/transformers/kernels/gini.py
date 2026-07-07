@@ -36,14 +36,20 @@ Example:
       Сумма попарных = 2·(10+30+60+20+50+30) = 400
     gini = 400 / (2·4·100) = 400/800 = 0.5
     → gini__w4 = 0.50
+
 """
 
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, compute_window_sum, fill_window_sorted, resolve_window_size
+from .._windowing import (
+    EPS,
+    compute_window_sum,
+    fill_window_sorted,
+    resolve_window_size,
+)
 
-FEATURE = "gini"
+FEATURE = 'gini'
 
 
 @nb.njit(cache=True)
@@ -53,8 +59,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
     out = np.zeros((n_w, n_rows))
     max_w = 1
     for j in range(n_w):
-        if windows[j] > max_w:
-            max_w = windows[j]
+        max_w = max(max_w, windows[j])
     sorted_buf = np.empty(max_w)
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
@@ -72,6 +77,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("regime_change", values, params)
+    return run_transformer('regime_change', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -19,27 +20,27 @@ def test_known_magnitude_and_flag_from_docstring():
     var = sum((v - mean) ** 2 for v in values) / 6
     std = math.sqrt(var)
     expected_mag = abs(0 - 100) / std
-    arrs, sfxs = _run(values, {"windows": [6]})
-    assert _get(arrs, sfxs, "magnitude_w6")[-1] == pytest.approx(expected_mag, abs=0.1)
-    assert _get(arrs, sfxs, "flag_w6")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run(values, {'windows': [6]})
+    assert _get(arrs, sfxs, 'magnitude_w6')[-1] == pytest.approx(expected_mag, abs=0.1)
+    assert _get(arrs, sfxs, 'flag_w6')[-1] == pytest.approx(1.0)
 
 
 def test_constant_series_no_regime_change():
-    arrs, sfxs = _run([50] * 12, {"windows": [12]})
-    assert _get(arrs, sfxs, "flag_w12")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "magnitude_w12")[-1] == pytest.approx(0.0, abs=1e-3)
+    arrs, sfxs = _run([50] * 12, {'windows': [12]})
+    assert _get(arrs, sfxs, 'flag_w12')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'magnitude_w12')[-1] == pytest.approx(0.0, abs=1e-3)
 
 
 def test_late_vs_early_positive_for_increasing_series():
     # [10,20,30,40,50,60]: late half is higher
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "late_vs_early_w6")[-1] > 0
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'late_vs_early_w6')[-1] > 0
 
 
 def test_asymmetry_greater_than_one_when_last_above_first():
     # [10,10,10,100,100,100]: last 3 avg=100, first 3 avg=10 → asym=100/10=10
-    arrs, sfxs = _run([10, 10, 10, 100, 100, 100], {"windows": [6]})
-    assert _get(arrs, sfxs, "asymmetry_w6")[-1] == pytest.approx(10.0, abs=0.1)
+    arrs, sfxs = _run([10, 10, 10, 100, 100, 100], {'windows': [6]})
+    assert _get(arrs, sfxs, 'asymmetry_w6')[-1] == pytest.approx(10.0, abs=0.1)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

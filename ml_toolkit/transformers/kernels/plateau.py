@@ -42,6 +42,7 @@ Example:
     каждый шаг |diff| = 1 < 0.05·~100 = 5 → все 5 шагов плоские
     flat_share = 5/5 = 1.0,  longest_flat = 5
     → plateau__flat_share_w6 = 1.0,  longest_flat_w6 = 5  (полное плато)
+
 """
 
 import numba as nb
@@ -49,7 +50,7 @@ import numpy as np
 
 from .._windowing import EPS, compute_window_mean, resolve_window_size
 
-FEATURE = "plateau"
+FEATURE = 'plateau'
 
 _FLAT_THRESHOLD = 0.05  # |diff| < 5% от mean считается плоским
 
@@ -121,8 +122,7 @@ def _kernel(
                 if f:
                     flat_count += 1
                     run += 1
-                    if run > longest:
-                        longest = run
+                    longest = max(longest, run)
                 else:
                     run = 0
                 if abs(vv - mean) < near_mean_threshold * (abs(mean) + EPS):
@@ -136,18 +136,18 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12], "flat_threshold": 0.05, "near_mean_threshold": 0.10 (опционально)}"""
-    windows = np.array(params["windows"], dtype=np.int64)
-    flat_threshold = float(params.get("flat_threshold", _FLAT_THRESHOLD))
-    near_mean_threshold = float(params.get("near_mean_threshold", 0.10))
+    windows = np.array(params['windows'], dtype=np.int64)
+    flat_threshold = float(params.get('flat_threshold', _FLAT_THRESHOLD))
+    near_mean_threshold = float(params.get('near_mean_threshold', 0.10))
     flat_share, longest_flat, near_mean, cur_streak, exit_rec = _kernel(
         values, position, windows, flat_threshold, near_mean_threshold
     )
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(flat_share[j]); suffixes.append(f"flat_share_w{w}")
-        arrays.append(longest_flat[j]); suffixes.append(f"longest_flat_w{w}")
-        arrays.append(near_mean[j]); suffixes.append(f"near_mean_w{w}")
-    arrays.append(cur_streak); suffixes.append("current_flat_streak")
-    arrays.append(exit_rec);   suffixes.append("plateau_exit_recency")
+    for j, w in enumerate(params['windows']):
+        arrays.append(flat_share[j]); suffixes.append(f'flat_share_w{w}')
+        arrays.append(longest_flat[j]); suffixes.append(f'longest_flat_w{w}')
+        arrays.append(near_mean[j]); suffixes.append(f'near_mean_w{w}')
+    arrays.append(cur_streak); suffixes.append('current_flat_streak')
+    arrays.append(exit_rec);   suffixes.append('plateau_exit_recency')
     return arrays, suffixes

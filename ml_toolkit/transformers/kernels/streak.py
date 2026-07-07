@@ -32,12 +32,13 @@ Example:
     streak_up растёт: t=1→1, t=2→2, t=3→3, t=4→4
     streak_down = 0 (ни одного снижения)
     → streak__up = 4,  streak__down = 0
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "streak"
+FEATURE = 'streak'
 
 
 @nb.njit(cache=True)
@@ -58,4 +59,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
     up, down = _kernel(values, position)
-    return [up, down], ["up", "down"]
+    return [up, down], ['up', 'down']

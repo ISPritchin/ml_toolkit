@@ -43,14 +43,14 @@ from ._classification import (
     precision_at_k,
     recall_at_k,
 )
-from ._regression import REGRESSION_PRESETS, RegressionEvaluator
 from ._comparison import (
     compare_models,
     plot_model_comparison,
-    plot_model_heatmap,
     plot_model_delta,
+    plot_model_heatmap,
 )
 from ._error_analysis import ErrorAnalyzer
+from ._regression import REGRESSION_PRESETS, RegressionEvaluator
 
 __all__ = [
     # Evaluators

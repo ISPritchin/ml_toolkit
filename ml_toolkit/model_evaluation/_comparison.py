@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def compare_models(
-    evaluators: dict[str, 'BaseEvaluator'],
+    evaluators: dict[str, BaseEvaluator],
     split: str,
     metrics: list[str] | None = None,
 ) -> pd.DataFrame:
@@ -27,6 +27,7 @@ def compare_models(
 
     Returns:
         DataFrame with index=metrics, columns=model_names.
+
     """
     if not evaluators:
         raise ValueError('evaluators must not be empty')
@@ -139,7 +140,7 @@ def _save_facet(fig: Any, path: Any, n_legend_rows: int = 1) -> None:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def plot_model_comparison(
-    evaluators: dict[str, 'BaseEvaluator'],
+    evaluators: dict[str, BaseEvaluator],
     split: str,
     metrics: list[str] | None = None,
     sort_by: str | None = None,
@@ -164,6 +165,7 @@ def plot_model_comparison(
         ncols:      Columns in the facet grid (default 3).
         ax:         Existing Axes — used only when len(metrics)==1.
         path:       Output path (optional).
+
     """
     from matplotlib.patches import Patch
 
@@ -198,7 +200,7 @@ def plot_model_comparison(
 
 
 def plot_model_heatmap(
-    evaluators: dict[str, 'BaseEvaluator'],
+    evaluators: dict[str, BaseEvaluator],
     split: str,
     metrics: list[str] | None = None,
     normalize_rows: bool = True,
@@ -219,6 +221,7 @@ def plot_model_heatmap(
         normalize_rows: Normalise each metric row to [0, 1] for colour encoding.
         ax:             Existing Axes (optional).
         path:           Output path (optional).
+
     """
     df = compare_models(evaluators, split, metrics)
 
@@ -257,7 +260,7 @@ def plot_model_heatmap(
 
 
 def plot_model_delta(
-    evaluators: dict[str, 'BaseEvaluator'],
+    evaluators: dict[str, BaseEvaluator],
     ref: str,
     split: str,
     metrics: list[str] | None = None,
@@ -282,6 +285,7 @@ def plot_model_delta(
         ncols:      Columns in the facet grid (default 3).
         ax:         Existing Axes — used only when len(metrics)==1.
         path:       Output path (optional).
+
     """
     from matplotlib.patches import Patch
 

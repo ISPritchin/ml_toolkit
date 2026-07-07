@@ -44,6 +44,7 @@ Example:
     Q1 = (10+20)/2 = 15,  Q2 = (30+20)/2 = 25,  Q3 = (10+5)/2 = 7.5
     quad_proxy = (15 − 2·25 + 7.5) / 15.833 = −27.5 / 15.833 = −1.737
     → nonlinearity__quad_proxy_w6 = −1.737,  convexity_sign_w6 = −1  (пик посередине)
+
 """
 
 import numba as nb
@@ -51,7 +52,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
-FEATURE = "nonlinearity"
+FEATURE = 'nonlinearity'
 
 
 @nb.njit(cache=True)
@@ -111,14 +112,14 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     qp, cs, ma, as_, fc = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(qp[j]); suffixes.append(f"quad_proxy_w{w}")
-        arrays.append(cs[j]); suffixes.append(f"convexity_sign_w{w}")
-        arrays.append(ma[j]); suffixes.append(f"mean_accel_w{w}")
-        arrays.append(as_[j]); suffixes.append(f"accel_std_w{w}")
-        arrays.append(fc[j]); suffixes.append(f"frac_concave_w{w}")
+    for j, w in enumerate(params['windows']):
+        arrays.append(qp[j]); suffixes.append(f'quad_proxy_w{w}')
+        arrays.append(cs[j]); suffixes.append(f'convexity_sign_w{w}')
+        arrays.append(ma[j]); suffixes.append(f'mean_accel_w{w}')
+        arrays.append(as_[j]); suffixes.append(f'accel_std_w{w}')
+        arrays.append(fc[j]); suffixes.append(f'frac_concave_w{w}')
     return arrays, suffixes

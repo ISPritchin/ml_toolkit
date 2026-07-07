@@ -1,11 +1,10 @@
-import math
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("longest_active_run", values, params)
+    return run_transformer('longest_active_run', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,30 +12,30 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_longest_run():
     # [10,10,0,10,10,10] w=6: runs of length 2 and 3 → max=3
-    arrs, sfxs = _run([10, 10, 0, 10, 10, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(3.0)
+    arrs, sfxs = _run([10, 10, 0, 10, 10, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(3.0)
 
 
 def test_all_zeros_max_run_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_continuous_active_run_equals_window():
-    arrs, sfxs = _run([5, 10, 15, 20, 25, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(6.0)
+    arrs, sfxs = _run([5, 10, 15, 20, 25, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(6.0)
 
 
 def test_alternating_zeros_max_run_one():
     # [10,0,5,0,8,0] → each active run has length 1
-    arrs, sfxs = _run([10, 0, 5, 0, 8, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([10, 0, 5, 0, 8, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(1.0)
 
 
 def test_single_active_at_end():
     # [0,0,0,0,0,10]: only 1 active at end → run=1
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(1.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

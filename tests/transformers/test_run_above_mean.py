@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("run_above_mean", values, params)
+    return run_transformer('run_above_mean', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,26 +14,26 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_run():
     # [10,20,30,40,50,60] w=6: at each step v > rolling mean → run=5 at last
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"window": 6})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(5.0)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'window': 6})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(5.0)
 
 
 def test_all_equal_run_zero():
     # v==mean at each step → not >, run resets → 0
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"window": 6})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'window': 6})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_single_spike_after_zeros():
     # [0,0,0,0,0,10] w=6: mean_w6=10/6≈1.67, v=10>1.67 → run=1
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 10], {"window": 6})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 10], {'window': 6})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(1.0)
 
 
 def test_run_resets_on_dip_below_mean():
     # [10,20,30,40,5,60] w=6: v=5 < mean → run resets; then v=60 > mean → run=1
-    arrs, sfxs = _run([10, 20, 30, 40, 5, 60], {"window": 6})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([10, 20, 30, 40, 5, 60], {'window': 6})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(1.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

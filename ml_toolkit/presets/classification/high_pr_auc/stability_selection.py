@@ -15,8 +15,8 @@ CatBoost на стратифицированных бутстрэп-подвыб
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -113,6 +113,7 @@ class StabilitySelectionClassifier(BasePreset):
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         print(model.stable_features_)
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -132,7 +133,7 @@ class StabilitySelectionClassifier(BasePreset):
         selected_features: list[str] | None = None,
     ) -> None:
         if not 0.0 < freq_threshold <= 1.0:
-            raise ValueError(f"freq_threshold должен быть в (0, 1], получено {freq_threshold}")
+            raise ValueError(f'freq_threshold должен быть в (0, 1], получено {freq_threshold}')
         super().__init__(params=final_params, n_optuna_trials=n_optuna_trials)
         self.n_bootstrap = n_bootstrap
         self.top_k = top_k
@@ -151,8 +152,8 @@ class StabilitySelectionClassifier(BasePreset):
         self.stable_features_: list[str] = []
 
     def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -187,7 +188,8 @@ class StabilitySelectionClassifier(BasePreset):
     def _stratified_bootstrap(self, y: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         """Бутстрэп (с возвратом) отдельно по каждому классу — иначе редкий
         позитивный класс рискует полностью выпасть из подвыборки при сильном
-        дисбалансе."""
+        дисбалансе.
+        """
         parts = [
             rng.choice(np.where(y == cls)[0], size=int((y == cls).sum()), replace=True)
             for cls in np.unique(y)
@@ -202,7 +204,7 @@ class StabilitySelectionClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'StabilitySelectionClassifier':
+    ) -> StabilitySelectionClassifier:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
@@ -244,9 +246,9 @@ class StabilitySelectionClassifier(BasePreset):
         ]
         if not self.stable_features_:
             raise ValueError(
-                f"Ни один признак не набрал freq_threshold={self.freq_threshold} "
-                f"(top_k={top_k}, n_bootstrap={self.n_bootstrap}). "
-                "Снизьте freq_threshold или увеличьте top_k."
+                f'Ни один признак не набрал freq_threshold={self.freq_threshold} '
+                f'(top_k={top_k}, n_bootstrap={self.n_bootstrap}). '
+                'Снизьте freq_threshold или увеличьте top_k.'
             )
         preview = ', '.join(self.stable_features_[:10])
         if len(self.stable_features_) > 10:

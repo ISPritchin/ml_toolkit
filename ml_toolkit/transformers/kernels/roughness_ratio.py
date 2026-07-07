@@ -32,6 +32,7 @@ Example:
     длинное окно (все 6): TV = 0+0+0+30+30 = 60, mean = 35 → TV_norm = 1.714
     roughness_ratio = 2.0 / 1.714 = 1.167
     → roughness_ratio__w3_w6 = 1.167  (краткосрочно чуть «рваней»)
+
 """
 
 import numba as nb
@@ -39,7 +40,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
-FEATURE = "roughness_ratio"
+FEATURE = 'roughness_ratio'
 
 
 @nb.njit(cache=True)
@@ -71,7 +72,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, pair
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"pairs": [[6, 12]]}"""
-    pairs = np.array(params["pairs"], dtype=np.int64)
+    pairs = np.array(params['pairs'], dtype=np.int64)
     out = _kernel(values, position, pairs)
-    p = params["pairs"]
-    return [out[j] for j in range(len(p))], [f"w{a}_w{b}" for a, b in p]
+    p = params['pairs']
+    return [out[j] for j in range(len(p))], [f'w{a}_w{b}' for a, b in p]

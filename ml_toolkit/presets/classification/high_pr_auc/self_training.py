@@ -25,8 +25,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -105,6 +105,7 @@ class SelfTrainingBooster(BasePreset):
 
         model = SelfTrainingBooster(n_rounds=3, pseudo_weight=0.3)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     def __init__(
@@ -166,8 +167,8 @@ class SelfTrainingBooster(BasePreset):
         return model.predict_proba(pool)[:, 1]
 
     def _tune(self, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier, Pool
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -211,7 +212,7 @@ class SelfTrainingBooster(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'SelfTrainingBooster':
+    ) -> SelfTrainingBooster:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )

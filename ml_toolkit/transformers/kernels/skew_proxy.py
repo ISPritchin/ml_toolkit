@@ -33,14 +33,20 @@ Example:
     mean = 90/6 = 15,  lo = 10,  hi = 40
     skew_proxy = (mean − lo) / (hi − lo) = (15 − 10)/(40 − 10) = 5/30 = 0.167
     → skew_proxy__w6 = 0.167  (среднее ближе к минимуму — редкий всплеск)
+
 """
 
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean, compute_window_min_and_max, resolve_window_size, safe_ratio
+from .._windowing import (
+    compute_window_mean,
+    compute_window_min_and_max,
+    resolve_window_size,
+    safe_ratio,
+)
 
-FEATURE = "skew_proxy"
+FEATURE = 'skew_proxy'
 
 
 @nb.njit(cache=True)
@@ -60,6 +66,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

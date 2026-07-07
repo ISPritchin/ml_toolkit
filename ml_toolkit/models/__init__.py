@@ -64,15 +64,14 @@ Lazy imports: адаптер загружается только при вызо
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import importlib
 import logging
-from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from ml_toolkit.models._base import BaseModel
 from ml_toolkit.model_evaluation import (
     ClassificationEvaluator,
     ModelEvaluator,
@@ -82,10 +81,11 @@ from ml_toolkit.model_evaluation import (
     precision_at_k,
     recall_at_k,
 )
+from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._catboost_ranker import CatBoostRanker
 from ml_toolkit.models._lightgbm import LightGBMClassifier, LightGBMRegressor
 from ml_toolkit.models._lightgbm_ranker import LightGBMRanker
 from ml_toolkit.models._xgboost_ranker import XGBoostRanker
-from ml_toolkit.models._catboost_ranker import CatBoostRanker
 
 # Все остальные классы моделей — lazy imports через __getattr__.
 # Это позволяет импортировать ml_toolkit.models без установки optuna/torch/catboost и т.д.
@@ -254,7 +254,7 @@ ALL_TREE_NAMES: frozenset[str] = (
 
 # Некоторые имена маппятся на один и тот же модуль
 _MODULE_ALIAS: dict[str, str] = {
-    **{n: 'linear' for n in LINEAR_NAMES},
+    **dict.fromkeys(LINEAR_NAMES, 'linear'),
     'random_forest': 'forest',
     'extra_trees': 'forest',
     'hist_gbm': 'hist_gbm',
@@ -265,11 +265,11 @@ _MODULE_ALIAS: dict[str, str] = {
     'pygam': 'gam',
     'mars': 'mars',
     'rulefit': 'rulefit',
-    **{n: 'imodels' for n in IMODELS_NAMES},
+    **dict.fromkeys(IMODELS_NAMES, 'imodels'),
     'decision_tree': 'decision_tree',
     'linear_tree': 'linear_tree',
-    **{n: 'interpretable_neural' for n in INTERPRETABLE_NEURAL_NAMES},
-    **{n: 'interpretable_trees' for n in INTERPRETABLE_TREE_NAMES},
+    **dict.fromkeys(INTERPRETABLE_NEURAL_NAMES, 'interpretable_neural'),
+    **dict.fromkeys(INTERPRETABLE_TREE_NAMES, 'interpretable_trees'),
 }
 
 
@@ -284,6 +284,7 @@ def _adapter(name: str) -> Any:
 
     Raises:
         ValueError: Если `name` не входит в `_KNOWN`.
+
     """
     if name not in _KNOWN:
         raise ValueError(f'Unknown model {name!r}. Choose from: {sorted(_KNOWN)}')
@@ -323,6 +324,7 @@ def train_regression_model(
 
     Returns:
         Кортеж (model, train_pred, valid_pred, infer_pred, best_params).
+
     """
     return _adapter(name).train_regression(
         X_train=X_train, y_train=y_train,
@@ -364,6 +366,7 @@ def train_classification_model(
 
     Returns:
         Кортеж (model, train_proba, val_proba, infer_proba_calibrated, best_params).
+
     """
     return _adapter(name).train_classification(
         X_train=X_train, y_train=y_train,
@@ -392,5 +395,6 @@ def make_predict_fn(
 
     Returns:
         Функция ``f(X_df) -> np.ndarray`` или None.
+
     """
     return _adapter(name).make_predict_fn(model, task, selected_features)

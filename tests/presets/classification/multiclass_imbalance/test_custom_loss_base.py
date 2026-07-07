@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from ml_toolkit.presets.classification.multiclass_imbalance import EqualizationLossClassifier
+from ml_toolkit.presets.classification.multiclass_imbalance import (
+    EqualizationLossClassifier,
+)
 from tests.presets.classification.multiclass_imbalance.conftest import BASE_PARAMS
 
 

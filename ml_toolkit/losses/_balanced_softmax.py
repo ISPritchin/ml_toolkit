@@ -26,14 +26,15 @@ class BalancedSoftmaxLoss:
     tau:
         Сила сдвига логитов на log(class_prior). tau=1.0 — полная поправка
         (как в оригинальной статье), tau=0 — обычный softmax CE.
+
     """
 
     def __init__(self, class_counts, tau: float = 1.0) -> None:
         counts = np.asarray(class_counts, dtype=np.float64)
         if counts.ndim != 1 or counts.shape[0] < 2:
-            raise ValueError("class_counts должен быть 1D массивом длины >= 2 (n_classes)")
+            raise ValueError('class_counts должен быть 1D массивом длины >= 2 (n_classes)')
         if np.any(counts <= 0):
-            raise ValueError("все class_counts должны быть положительными")
+            raise ValueError('все class_counts должны быть положительными')
         self.class_counts = counts
         self.n_classes = counts.shape[0]
         self.tau = tau

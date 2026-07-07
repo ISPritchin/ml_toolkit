@@ -33,6 +33,7 @@ Example:
     second_half_sum = 20+20+20 = 60
     half_ratio = 60 / 30 = 2.0
     → half_ratio__w6 = 2.0  (вторая половина вдвое «тяжелее»)
+
 """
 
 import numba as nb
@@ -40,7 +41,7 @@ import numpy as np
 
 from .._windowing import compute_window_sum, resolve_window_size, safe_ratio
 
-FEATURE = "half_ratio"
+FEATURE = 'half_ratio'
 
 
 @nb.njit(cache=True)
@@ -62,6 +63,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

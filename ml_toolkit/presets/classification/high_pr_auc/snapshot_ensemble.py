@@ -17,8 +17,8 @@ seed'ы / подпространства признаков, см. FeatureBaggin
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -96,6 +96,7 @@ class SnapshotEnsembleClassifier(BasePreset):
         model = SnapshotEnsembleClassifier(snapshot_fracs=[0.5, 0.75, 1.0])
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -113,9 +114,9 @@ class SnapshotEnsembleClassifier(BasePreset):
     ) -> None:
         fracs = snapshot_fracs or [0.4, 0.6, 0.8, 1.0]
         if not fracs:
-            raise ValueError("snapshot_fracs не может быть пустым.")
+            raise ValueError('snapshot_fracs не может быть пустым.')
         if any(not 0.0 < f <= 1.0 for f in fracs):
-            raise ValueError(f"Все snapshot_fracs должны быть в (0, 1], получено {fracs}")
+            raise ValueError(f'Все snapshot_fracs должны быть в (0, 1], получено {fracs}')
         super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         self.snapshot_fracs = fracs
         self.base_params = base_params
@@ -134,8 +135,8 @@ class SnapshotEnsembleClassifier(BasePreset):
     # ── Optuna ──────────────────────────────────────────────────────────────
 
     def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -174,7 +175,7 @@ class SnapshotEnsembleClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'SnapshotEnsembleClassifier':
+    ) -> SnapshotEnsembleClassifier:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)

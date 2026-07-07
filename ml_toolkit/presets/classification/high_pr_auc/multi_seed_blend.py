@@ -17,8 +17,8 @@ Rank-avg (не среднее сырых вероятностей) — та же
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -89,6 +89,7 @@ class MultiSeedBlend(BasePreset):
         model = MultiSeedBlend(n_seeds=7)
         model.fit(X_train, y_train, X_valid, y_valid)
         print(f"single mean={np.mean(model.seed_scores_):.4f}  blend={model.blend_score_:.4f}")
+
     """
 
     def __init__(
@@ -121,8 +122,8 @@ class MultiSeedBlend(BasePreset):
         self._rank_refs_: list[np.ndarray] = []
 
     def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -162,7 +163,7 @@ class MultiSeedBlend(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'MultiSeedBlend':
+    ) -> MultiSeedBlend:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(

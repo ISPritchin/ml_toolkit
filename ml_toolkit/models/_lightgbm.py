@@ -10,8 +10,8 @@ Optuna выбирает boosting_type ∈ {gbdt, dart, goss} вместе с о�
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -21,8 +21,15 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._undersampling import UndersampleSampler
 from ml_toolkit.models._utils import (
-    CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, make_lgb_pruning_callback,
-    prep_cat_features, resolve_metric_fn, resolve_pruner, resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    make_lgb_pruning_callback,
+    prep_cat_features,
+    resolve_metric_fn,
+    resolve_pruner,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,7 +126,7 @@ class LightGBMRegressor(BaseModel):
         y_valid: Any | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "LightGBMRegressor":
+    ) -> LightGBMRegressor:
         try:
             import lightgbm as lgb
         except ImportError as err:
@@ -147,7 +154,7 @@ class LightGBMRegressor(BaseModel):
         if self.params is None:
             if Xva is None:
                 raise ValueError(
-                    "X_valid и y_valid обязательны при params=None (нужны для Optuna)"
+                    'X_valid и y_valid обязательны при params=None (нужны для Optuna)'
                 )
             self._model, self.best_params_ = self._fit_with_optuna(
                 lgb, Xtr, resid_tr, Xva, resid_va, cat_in_sel,
@@ -275,7 +282,7 @@ class LightGBMClassifier(BaseModel):
         y_valid: Any | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "LightGBMClassifier":
+    ) -> LightGBMClassifier:
         try:
             import lightgbm as lgb
         except ImportError as err:
@@ -295,7 +302,7 @@ class LightGBMClassifier(BaseModel):
         if self.params is None:
             if Xva is None:
                 raise ValueError(
-                    "X_valid и y_valid обязательны при params=None (нужны для Optuna)"
+                    'X_valid и y_valid обязательны при params=None (нужны для Optuna)'
                 )
             self._model, self.best_params_ = self._fit_with_optuna(
                 lgb, Xtr, y_train, Xva, y_valid, cat_in_sel,
@@ -463,4 +470,4 @@ def train_classification(
 
 def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
     """LightGBM поддерживает SHAP нативно; отдельная predict_fn не нужна."""
-    return None
+    return

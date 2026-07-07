@@ -36,6 +36,7 @@ Example:
       = −(−0.230 − 0.322 − 0.361 − 0.367) = 1.280
     H_norm = 1.280 / ln(4) = 1.280 / 1.386 = 0.924
     → entropy__w4 = 0.924
+
 """
 
 import numba as nb
@@ -43,7 +44,7 @@ import numpy as np
 
 from .._windowing import EPS, compute_window_sum, resolve_window_size
 
-FEATURE = "entropy"
+FEATURE = 'entropy'
 
 
 @nb.njit(cache=True)
@@ -69,6 +70,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

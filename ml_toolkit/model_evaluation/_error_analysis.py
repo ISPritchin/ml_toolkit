@@ -32,6 +32,7 @@ class ErrorAnalyzer:
         X:         Feature DataFrame aligned with y_true (same index length).
         threshold: Decision threshold. If None, automatically chosen as the
                    threshold that maximises F1 on (y_true, y_proba).
+
     """
 
     def __init__(
@@ -67,7 +68,7 @@ class ErrorAnalyzer:
             for t in ts
         ]
         best = float(ts[int(np.argmax(scores))])
-        logger.debug("Auto threshold (best F1): %.4f", best)
+        logger.debug('Auto threshold (best F1): %.4f', best)
         return best
 
     # ── Segment assignment ─────────────────────────────────────────────────────
@@ -78,13 +79,13 @@ class ErrorAnalyzer:
         pred = (self._p >= t).astype(int)
         y = self._y
         seg = np.where(
-            (y == 1) & (pred == 1), "TP",
+            (y == 1) & (pred == 1), 'TP',
             np.where(
-                (y == 1) & (pred == 0), "FN",
-                np.where((y == 0) & (pred == 1), "FP", "TN"),
+                (y == 1) & (pred == 0), 'FN',
+                np.where((y == 0) & (pred == 1), 'FP', 'TN'),
             ),
         )
-        return pd.Series(seg, index=self._X.index, name="segment")
+        return pd.Series(seg, index=self._X.index, name='segment')
 
     # ── Summary ────────────────────────────────────────────────────────────────
 
@@ -102,22 +103,22 @@ class ErrorAnalyzer:
         fn = int(((y == 1) & (pred == 0)).sum())
         tn = int(((y == 0) & (pred == 0)).sum())
 
-        prec = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
-        rec = tp / (tp + fn) if (tp + fn) > 0 else float("nan")
-        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else float("nan")
-        fn_rate = fn / (tp + fn) if (tp + fn) > 0 else float("nan")
+        prec = tp / (tp + fp) if (tp + fp) > 0 else float('nan')
+        rec = tp / (tp + fn) if (tp + fn) > 0 else float('nan')
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else float('nan')
+        fn_rate = fn / (tp + fn) if (tp + fn) > 0 else float('nan')
 
         return pd.DataFrame(
             {
-                "threshold": [round(t, 4)],
-                "TP": [tp],
-                "FP": [fp],
-                "FN": [fn],
-                "TN": [tn],
-                "precision": [round(prec, 4)],
-                "recall": [round(rec, 4)],
-                "f1": [round(f1, 4)],
-                "fn_rate": [round(fn_rate, 4)],
+                'threshold': [round(t, 4)],
+                'TP': [tp],
+                'FP': [fp],
+                'FN': [fn],
+                'TN': [tn],
+                'precision': [round(prec, 4)],
+                'recall': [round(rec, 4)],
+                'f1': [round(f1, 4)],
+                'fn_rate': [round(fn_rate, 4)],
             }
         )
 
@@ -141,28 +142,29 @@ class ErrorAnalyzer:
 
         Returns:
             DataFrame indexed by feature name with one column per segment.
+
         """
         segs = self.segments(threshold)
-        show = ["TP", "FN"] + (["FP"] if include_fp else [])
+        show = ['TP', 'FN'] + (['FP'] if include_fp else [])
 
         parts = {}
         for seg in show:
             mask = segs == seg
             n = int(mask.sum())
-            label = f"{seg} (n={n})"
+            label = f'{seg} (n={n})'
             parts[label] = self._X[mask].mean() if n > 0 else pd.Series(
                 np.nan, index=self._X.columns
             )
 
         df = pd.DataFrame(parts)
 
-        tp_col = next((c for c in df.columns if c.startswith("TP")), None)
-        fn_col = next((c for c in df.columns if c.startswith("FN")), None)
+        tp_col = next((c for c in df.columns if c.startswith('TP')), None)
+        fn_col = next((c for c in df.columns if c.startswith('FN')), None)
 
         if tp_col and fn_col:
             std = self._X.std().replace(0, np.nan)
-            df["|FN-TP|/σ"] = (df[fn_col] - df[tp_col]).abs() / std
-            df = df.dropna(subset=["|FN-TP|/σ"]).nlargest(top_n, "|FN-TP|/σ")
+            df['|FN-TP|/σ'] = (df[fn_col] - df[tp_col]).abs() / std
+            df = df.dropna(subset=['|FN-TP|/σ']).nlargest(top_n, '|FN-TP|/σ')
 
         return df
 
@@ -176,16 +178,17 @@ class ErrorAnalyzer:
 
         Returns:
             DataFrame with feature columns + '_score' and '_segment'.
+
         """
         segs = self.segments(threshold)
-        fn_mask = segs == "FN"
+        fn_mask = segs == 'FN'
         if not fn_mask.any():
-            return pd.DataFrame(columns=list(self._X.columns) + ["_score", "_segment"])
+            return pd.DataFrame(columns=list(self._X.columns) + ['_score', '_segment'])
 
         fn_df = self._X[fn_mask].copy()
-        fn_df["_score"] = self._p[fn_mask.values]
-        fn_df["_segment"] = "FN"
-        return fn_df.nsmallest(n, "_score")
+        fn_df['_score'] = self._p[fn_mask.values]
+        fn_df['_segment'] = 'FN'
+        return fn_df.nsmallest(n, '_score')
 
     # ── Plots ──────────────────────────────────────────────────────────────────
 
@@ -205,16 +208,16 @@ class ErrorAnalyzer:
         import matplotlib.pyplot as plt
 
         segs = self.segments(threshold)
-        tp_mask = (segs == "TP").values
-        fn_mask = (segs == "FN").values
+        tp_mask = (segs == 'TP').values
+        fn_mask = (segs == 'FN').values
         n_tp, n_fn = int(tp_mask.sum()), int(fn_mask.sum())
         t = threshold if threshold is not None else self.threshold
 
         if n_fn == 0:
-            logger.warning("No FN at threshold=%.4f — nothing to plot.", t)
+            logger.warning('No FN at threshold=%.4f — nothing to plot.', t)
             return
         if n_tp == 0:
-            logger.warning("No TP at threshold=%.4f — cannot compute FN vs TP.", t)
+            logger.warning('No TP at threshold=%.4f — cannot compute FN vs TP.', t)
             return
 
         X_tp = self._X.values[tp_mask]
@@ -238,17 +241,17 @@ class ErrorAnalyzer:
         names_plot = names_top[order]
 
         fig, ax = plt.subplots(figsize=(9, max(5, len(d_plot) * 0.4)))
-        colors = ["#C62828" if v > 0 else "#1565C0" for v in d_plot]
+        colors = ['#C62828' if v > 0 else '#1565C0' for v in d_plot]
         ax.barh(names_plot, d_plot, color=colors, alpha=0.82)
-        ax.axvline(0, color="black", lw=0.8)
+        ax.axvline(0, color='black', lw=0.8)
         ax.set_xlabel("Cohen's d  (FN − TP)   [красный = у FN выше, синий = у FN ниже]")
         ax.set_title(
-            f"Профиль ошибок: FN vs TP   "
-            f"(TP={n_tp}, FN={n_fn}, threshold={t:.4f})"
+            f'Профиль ошибок: FN vs TP   '
+            f'(TP={n_tp}, FN={n_fn}, threshold={t:.4f})'
         )
         plt.tight_layout()
         if path:
-            fig.savefig(path, dpi=150, bbox_inches="tight")
+            fig.savefig(path, dpi=150, bbox_inches='tight')
         else:
             plt.show()
         plt.close(fig)
@@ -268,6 +271,7 @@ class ErrorAnalyzer:
 
         Args:
             log_scale: Use log-scale on the y-axis (useful when n_FN << n_TP or vice versa).
+
         """
         import matplotlib.pyplot as plt
 
@@ -278,20 +282,20 @@ class ErrorAnalyzer:
         tp_scores = pos_scores[pos_scores >= t]
 
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.hist(fn_scores, bins=n_bins, color="#C62828", alpha=0.75,
-                label=f"FN  n={len(fn_scores)}  ({len(fn_scores)/max(len(pos_scores),1):.0%})")
-        ax.hist(tp_scores, bins=n_bins, color="#1565C0", alpha=0.75,
-                label=f"TP  n={len(tp_scores)}  ({len(tp_scores)/max(len(pos_scores),1):.0%})")
-        ax.axvline(t, color="black", linestyle="--", lw=1.5, label=f"threshold={t:.4f}")
+        ax.hist(fn_scores, bins=n_bins, color='#C62828', alpha=0.75,
+                label=f'FN  n={len(fn_scores)}  ({len(fn_scores)/max(len(pos_scores),1):.0%})')
+        ax.hist(tp_scores, bins=n_bins, color='#1565C0', alpha=0.75,
+                label=f'TP  n={len(tp_scores)}  ({len(tp_scores)/max(len(pos_scores),1):.0%})')
+        ax.axvline(t, color='black', linestyle='--', lw=1.5, label=f'threshold={t:.4f}')
         if log_scale:
-            ax.set_yscale("log")
-        ax.set_xlabel("Score")
-        ax.set_ylabel("Count (positives only)")
-        ax.set_title("Распределение скоров — только позитивный класс")
+            ax.set_yscale('log')
+        ax.set_xlabel('Score')
+        ax.set_ylabel('Count (positives only)')
+        ax.set_title('Распределение скоров — только позитивный класс')
         ax.legend()
         plt.tight_layout()
         if path:
-            fig.savefig(path, dpi=150, bbox_inches="tight")
+            fig.savefig(path, dpi=150, bbox_inches='tight')
         else:
             plt.show()
         plt.close(fig)
@@ -317,19 +321,19 @@ class ErrorAnalyzer:
         pos_mask = self._y == 1
         scores_pos = self._p[pos_mask]
         X_pos = self._X.iloc[pos_mask].copy()
-        X_pos["_score"] = scores_pos
+        X_pos['_score'] = scores_pos
 
         if len(X_pos) < n_buckets:
-            logger.warning("Too few positives (%d) for %d buckets.", len(X_pos), n_buckets)
+            logger.warning('Too few positives (%d) for %d buckets.', len(X_pos), n_buckets)
             return pd.DataFrame()
 
-        X_pos["_bucket"] = pd.qcut(
-            X_pos["_score"], n_buckets, labels=[f"Q{i+1}" for i in range(n_buckets)],
-            duplicates="drop",
+        X_pos['_bucket'] = pd.qcut(
+            X_pos['_score'], n_buckets, labels=[f'Q{i+1}' for i in range(n_buckets)],
+            duplicates='drop',
         )
 
-        feat_cols = [c for c in X_pos.columns if c not in ("_score", "_bucket")]
-        pivot = X_pos.groupby("_bucket", observed=True)[feat_cols].mean()
+        feat_cols = [c for c in X_pos.columns if c not in ('_score', '_bucket')]
+        pivot = X_pos.groupby('_bucket', observed=True)[feat_cols].mean()
 
         # Select top_n features by variance across buckets
         top_feats = pivot.var(axis=0).nlargest(top_n).index
@@ -339,20 +343,20 @@ class ErrorAnalyzer:
         pivot_norm = (pivot_top - pivot_top.min()) / (pivot_top.max() - pivot_top.min() + 1e-9)
 
         fig, ax = plt.subplots(figsize=(max(8, top_n * 0.5), max(3, n_buckets * 0.6)))
-        im = ax.imshow(pivot_norm.values, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1)
+        im = ax.imshow(pivot_norm.values, aspect='auto', cmap='RdYlGn', vmin=0, vmax=1)
         ax.set_xticks(range(len(top_feats)))
-        ax.set_xticklabels(top_feats, rotation=45, ha="right", fontsize=7)
+        ax.set_xticklabels(top_feats, rotation=45, ha='right', fontsize=7)
         ax.set_yticks(range(len(pivot_norm)))
         ax.set_yticklabels(pivot_norm.index)
-        ax.set_ylabel("Score bucket (Q1=low, Qn=high)")
+        ax.set_ylabel('Score bucket (Q1=low, Qn=high)')
         ax.set_title(
-            f"Feature means по скор-бакетам  (только позитивный класс)\n"
-            f"threshold={t:.4f}  —  нормировано в [0,1] по каждой фиче"
+            f'Feature means по скор-бакетам  (только позитивный класс)\n'
+            f'threshold={t:.4f}  —  нормировано в [0,1] по каждой фиче'
         )
-        plt.colorbar(im, ax=ax, shrink=0.6, label="normalised mean")
+        plt.colorbar(im, ax=ax, shrink=0.6, label='normalised mean')
         plt.tight_layout()
         if path:
-            fig.savefig(path, dpi=150, bbox_inches="tight")
+            fig.savefig(path, dpi=150, bbox_inches='tight')
         else:
             plt.show()
         plt.close(fig)

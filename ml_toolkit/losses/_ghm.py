@@ -33,13 +33,14 @@ class GHMLoss:
     momentum:
         Коэффициент EMA для накопленных по бинам счётчиков между итерациями
         бустинга (0 → использовать только текущую итерацию, без сглаживания).
+
     """
 
     def __init__(self, bins: int = 30, momentum: float = 0.75) -> None:
         if bins < 1:
-            raise ValueError(f"bins должен быть >= 1, получено {bins}")
+            raise ValueError(f'bins должен быть >= 1, получено {bins}')
         if not 0.0 <= momentum < 1.0:
-            raise ValueError(f"momentum должен быть в [0, 1), получено {momentum}")
+            raise ValueError(f'momentum должен быть в [0, 1), получено {momentum}')
         self.bins = bins
         self.momentum = momentum
         self._acc_counts: np.ndarray | None = None

@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("mean_deviation_shape", values, params)
+    return run_transformer('mean_deviation_shape', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -16,26 +17,26 @@ def test_known_semi_ratio():
     # up: values>mean → 40; deviations: 40-15=25; up_semi=25/1=25
     # down: values<mean → 10,10,10,10,10; deviations: |10-15|=5 each; down_semi=25/5=5
     # semi_ratio = up_semi/down_semi = 25/5 = 5.0
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 40], {"windows": [6]})
-    assert _get(arrs, sfxs, "semi_ratio_w6")[-1] == pytest.approx(5.0, abs=1e-4)
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 40], {'windows': [6]})
+    assert _get(arrs, sfxs, 'semi_ratio_w6')[-1] == pytest.approx(5.0, abs=1e-4)
 
 
 def test_symmetric_distribution_semi_ratio_one():
     # [10,20,30,40]: mean=25; up: 30,40→deviations 5,15→mean_up=10; down: 10,20→deviations 15,5→mean_down=10
     # semi_ratio=1.0
-    arrs, sfxs = _run([10, 20, 30, 40], {"windows": [4]})
-    assert _get(arrs, sfxs, "semi_ratio_w4")[-1] == pytest.approx(1.0, abs=1e-4)
+    arrs, sfxs = _run([10, 20, 30, 40], {'windows': [4]})
+    assert _get(arrs, sfxs, 'semi_ratio_w4')[-1] == pytest.approx(1.0, abs=1e-4)
 
 
 def test_constant_series_semi_ratio_zero():
     # All values = mean → no up/down deviations → semi_ratio=0
-    arrs, sfxs = _run([25, 25, 25, 25, 25, 25], {"windows": [6]})
-    assert _get(arrs, sfxs, "semi_ratio_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([25, 25, 25, 25, 25, 25], {'windows': [6]})
+    assert _get(arrs, sfxs, 'semi_ratio_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_all_zeros_semi_ratio_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "semi_ratio_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'semi_ratio_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

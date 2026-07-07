@@ -31,12 +31,13 @@ Example:
     активных всего:    10, 8  → total_active = 2
     tenure = 3 − 1 + 1 = 3
     → activity_rate__share_of_tenure_active = 2/3 = 0.667
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "activity_rate"
+FEATURE = 'activity_rate'
 
 
 @nb.njit(cache=True)
@@ -62,4 +63,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
-    return [_kernel(values, position)], ["share_of_tenure_active"]
+    return [_kernel(values, position)], ['share_of_tenure_active']

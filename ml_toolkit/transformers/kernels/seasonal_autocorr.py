@@ -49,6 +49,7 @@ Example:
     нечётные позиции (1,3,5): 30,30,30 → mean = 30
     even_odd = 10 / 30 = 0.333
     → seasonal_autocorr__even_odd_w12 = 0.333  (чётные мес. втрое слабее нечётных)
+
 """
 
 import numba as nb
@@ -56,7 +57,7 @@ import numpy as np
 
 from .._windowing import EPS, pearson_from_sums, safe_ratio, windowed_lag_pearson
 
-FEATURE = "seasonal_autocorr"
+FEATURE = 'seasonal_autocorr'
 
 
 @nb.njit(cache=True)
@@ -111,8 +112,8 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
                 quarter_cv[row_idx] = (qstd_sq / 4.0) ** 0.5 / abs(qmean)
                 qmax = q_means[0]; qmin = q_means[0]
                 for q in range(1, 4):
-                    if q_means[q] > qmax: qmax = q_means[q]
-                    if q_means[q] < qmin: qmin = q_means[q]
+                    qmax = max(qmax, q_means[q])
+                    qmin = min(qmin, q_means[q])
                 seasonal_amp[row_idx] = (qmax - qmin) / abs(qmean)
 
         if ws12 >= 2:
@@ -136,5 +137,5 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
     r = _kernel(values, position)
-    suffixes = ["lag6", "lag6_w24", "lag12", "lag12_w24", "quarter_cv_w12", "even_odd_w12", "amplitude_w12"]
+    suffixes = ['lag6', 'lag6_w24', 'lag12', 'lag12_w24', 'quarter_cv_w12', 'even_odd_w12', 'amplitude_w12']
     return list(r), suffixes

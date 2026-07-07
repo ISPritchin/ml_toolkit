@@ -60,6 +60,7 @@ class LogitNormLossClassifier(_CustomLossClassifierMulticlassBase):
 
         model = LogitNormLossClassifier(temperature=0.04)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _MulticlassLossSpec(

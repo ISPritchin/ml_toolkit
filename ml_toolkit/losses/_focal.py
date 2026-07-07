@@ -21,11 +21,12 @@ class FocalLoss:
         «лёгкие» примеры.
     alpha:
         Вес класса 1 (позитивы). 1-alpha — вес класса 0.
+
     """
 
     def __init__(self, gamma: float = 2.0, alpha: float = 0.25) -> None:
         if gamma < 1.0:
-            raise ValueError("gamma < 1 инвертирует фокусировку — используйте gamma >= 1")
+            raise ValueError('gamma < 1 инвертирует фокусировку — используйте gamma >= 1')
         self.gamma = gamma
         self.alpha = alpha
 

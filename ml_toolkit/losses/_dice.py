@@ -19,6 +19,7 @@ class DiceLoss(TverskyLoss):
     ----------
     smooth:
         Коэффициент сглаживания для численной устойчивости.
+
     """
 
     def __init__(self, smooth: float = 1.0) -> None:

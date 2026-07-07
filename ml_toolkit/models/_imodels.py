@@ -12,8 +12,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -26,7 +26,14 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils.class_weight import compute_sample_weight
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +86,7 @@ class IModelsRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'IModelsRegressor':
+    ) -> IModelsRegressor:
         try:
             from imodels import FIGSRegressor as _check  # noqa: F401
         except ImportError as exc:
@@ -156,7 +163,7 @@ class IModelsClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'IModelsClassifier':
+    ) -> IModelsClassifier:
         try:
             from imodels import FIGSClassifier as _check  # noqa: F401
         except ImportError as exc:

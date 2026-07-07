@@ -1,11 +1,10 @@
-import math
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("growth_since_start", values, params)
+    return run_transformer('growth_since_start', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,32 +14,32 @@ def _get(arrays, suffixes, suffix):
 def test_known_value_from_docstring():
     # [0,10,30]: first_nonzero=10, at t=2: (30-10)/10=2.0
     arrs, sfxs = _run([0, 10, 30])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(2.0, abs=1e-4)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(2.0, abs=1e-4)
 
 
 def test_back_to_start_level_returns_zero():
     # [10,20,10]: first=10, at end (10-10)/10=0
     arrs, sfxs = _run([10, 20, 10])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(0.0, abs=1e-4)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_before_first_activity_zero():
     # [0,0,10]: first two rows are 0 → growth=0
     arrs, sfxs = _run([0, 0, 10])
-    assert _get(arrs, sfxs, "")[0] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "")[1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, '')[0] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, '')[1] == pytest.approx(0.0)
 
 
 def test_all_zeros_growth_zero():
     arrs, sfxs = _run([0, 0, 0, 0])
-    for v in _get(arrs, sfxs, ""):
+    for v in _get(arrs, sfxs, ''):
         assert v == pytest.approx(0.0)
 
 
 def test_decline_below_start_negative():
     # [50,20,10]: first=50, at end (10-50)/50=-0.8
     arrs, sfxs = _run([50, 20, 10])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(-0.8, abs=1e-4)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(-0.8, abs=1e-4)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

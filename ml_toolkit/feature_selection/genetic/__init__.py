@@ -7,4 +7,4 @@
 """
 from ._core import ScorerFn, make_catboost_scorer, select_features_genetic
 
-__all__ = ["select_features_genetic", "make_catboost_scorer", "ScorerFn"]
+__all__ = ['ScorerFn', 'make_catboost_scorer', 'select_features_genetic']

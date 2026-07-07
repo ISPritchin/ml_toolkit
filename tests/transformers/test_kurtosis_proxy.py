@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("kurtosis_proxy", values, params)
+    return run_transformer('kurtosis_proxy', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,28 +16,28 @@ def test_known_kurtosis():
     # [10,10,10,10,10,70] w=6: mean=20, std=sqrt(500)=10*sqrt(5)
     # z(10)=-1/sqrt(5), z^4=1/25=0.04; z(70)=sqrt(5), z^4=25
     # sum(z^4) = 5*0.04+25 = 25.2; kurt = 25.2/6-3 = 1.2
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 70], {"windows": [6]})
-    assert _get(arrs, sfxs, "kurt_w6")[-1] == pytest.approx(1.2, abs=1e-3)
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 70], {'windows': [6]})
+    assert _get(arrs, sfxs, 'kurt_w6')[-1] == pytest.approx(1.2, abs=1e-3)
 
 
 def test_constant_series_kurtosis_zero():
     # std=0 → kurtosis not computed → 0
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "kurt_w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'kurt_w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_all_zeros_kurtosis_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "kurt_w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'kurt_w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_top1_share_known():
     # [10,10,10,10,10,50] w=6: total=100, top1=50 → share=0.5
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 50], {"windows": [6]})
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 50], {'windows': [6]})
     # p75 index = int(6*0.75)=4, sorted=[10,10,10,10,10,50], p75=sorted[4]=10
     # p25 index = int(6*0.25)=1, p25=sorted[1]=10
     # p75/p25 ≈ 10/10 = 1.0
-    assert _get(arrs, sfxs, "p75_p25_w6")[-1] == pytest.approx(1.0, abs=1e-2)
+    assert _get(arrs, sfxs, 'p75_p25_w6')[-1] == pytest.approx(1.0, abs=1e-2)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

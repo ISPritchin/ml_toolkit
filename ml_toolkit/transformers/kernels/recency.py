@@ -32,12 +32,13 @@ Example:
     последняя активность: pos=3 (значение 30)
     recency_gap = current_pos − last_active_pos = 4 − 3 = 1
     → recency__recency_gap = 1  (молчит 1 месяц)
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "recency"
+FEATURE = 'recency'
 
 
 @nb.njit(cache=True)
@@ -60,4 +61,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
-    return [_kernel(values, position)], ["recency_gap"]
+    return [_kernel(values, position)], ['recency_gap']

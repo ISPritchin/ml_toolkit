@@ -19,6 +19,7 @@ def annotate_bars(
         fmt:       строка форматирования ('{:.1%}' для процентов и т.п.).
         threshold: не подписывать бары с abs(height) < threshold.
         padding:   отступ от вершины бара в points.
+
     """
     for patch in ax.patches:
         h = patch.get_height()

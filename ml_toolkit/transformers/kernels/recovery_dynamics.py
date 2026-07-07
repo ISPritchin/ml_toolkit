@@ -43,6 +43,7 @@ Example:
     months_since_trough = (6−1) − 4 = 1
     speed = (30 − 5)/(1 + 1) = 12.5
     → recovery_dynamics__completeness_w6 = 0.333,  speed_w6 = 12.5
+
 """
 
 import numba as nb
@@ -50,7 +51,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
-FEATURE = "recovery_dynamics"
+FEATURE = 'recovery_dynamics'
 
 
 @nb.njit(cache=True)
@@ -123,16 +124,16 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12], "trough_recent_months": 3 (опционально)}"""
-    windows = np.array(params["windows"], dtype=np.int64)
-    trough_recent_months = int(params.get("trough_recent_months", 3))
+    windows = np.array(params['windows'], dtype=np.int64)
+    trough_recent_months = int(params.get('trough_recent_months', 3))
     compl, dd_dur, isr, ptg, tir, rs = _kernel(values, position, windows, trough_recent_months)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(compl[j]);  suffixes.append(f"completeness_w{w}")
-        arrays.append(dd_dur[j]); suffixes.append(f"drawdown_dur_w{w}")
-        arrays.append(ptg[j]);    suffixes.append(f"post_trough_gain_w{w}")
-        arrays.append(tir[j]);    suffixes.append(f"trough_is_recent_w{w}")
-        arrays.append(rs[j]);     suffixes.append(f"speed_w{w}")
-    arrays.append(isr); suffixes.append("is_recovering_now")
+    for j, w in enumerate(params['windows']):
+        arrays.append(compl[j]);  suffixes.append(f'completeness_w{w}')
+        arrays.append(dd_dur[j]); suffixes.append(f'drawdown_dur_w{w}')
+        arrays.append(ptg[j]);    suffixes.append(f'post_trough_gain_w{w}')
+        arrays.append(tir[j]);    suffixes.append(f'trough_is_recent_w{w}')
+        arrays.append(rs[j]);     suffixes.append(f'speed_w{w}')
+    arrays.append(isr); suffixes.append('is_recovering_now')
     return arrays, suffixes

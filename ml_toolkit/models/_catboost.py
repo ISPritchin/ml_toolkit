@@ -8,8 +8,8 @@ baseline_col передаётся через model_settings и использу�
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -130,7 +130,7 @@ class CatBoostRegressor(BaseModel):
         y_valid: Any | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "CatBoostRegressor":
+    ) -> CatBoostRegressor:
         _CB_Classifier, _CB_Regressor, Pool = _import_catboost()
 
         set_optuna_verbosity(self.model_settings)
@@ -153,7 +153,7 @@ class CatBoostRegressor(BaseModel):
         if self.params is None:
             if va_pool is None:
                 raise ValueError(
-                    "X_valid и y_valid обязательны при params=None (нужны для Optuna)"
+                    'X_valid и y_valid обязательны при params=None (нужны для Optuna)'
                 )
             self._model, self.best_params_ = self._fit_with_optuna(
                 _CB_Regressor, tr_pool, va_pool,
@@ -265,7 +265,7 @@ class CatBoostClassifier(BaseModel):
         y_valid: Any | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "CatBoostClassifier":
+    ) -> CatBoostClassifier:
         _CB_Classifier, _CB_Regressor, Pool = _import_catboost()
 
         set_optuna_verbosity(self.model_settings)
@@ -283,7 +283,7 @@ class CatBoostClassifier(BaseModel):
         if self.params is None:
             if va_pool is None:
                 raise ValueError(
-                    "X_valid и y_valid обязательны при params=None (нужны для Optuna)"
+                    'X_valid и y_valid обязательны при params=None (нужны для Optuna)'
                 )
             self._model, self.best_params_ = self._fit_with_optuna(
                 _CB_Classifier, Pool, va_pool,
@@ -465,4 +465,4 @@ def train_classification(
 
 def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
     """CatBoost поддерживает SHAP нативно; отдельная predict_fn не нужна."""
-    return None
+    return

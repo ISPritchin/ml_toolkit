@@ -43,14 +43,20 @@ Example:
     отклонения вниз (< mean): пять «десяток» → dev=−5 → down_semi = sqrt(5²) = 5
     semi_ratio = 25 / 5 = 5.0
     → mean_deviation_shape__up_semi_w6 = 25,  down_semi_w6 = 5,  semi_ratio_w6 = 5.0
+
 """
 
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, compute_window_mean_and_std, resolve_window_size, safe_ratio
+from .._windowing import (
+    EPS,
+    compute_window_mean_and_std,
+    resolve_window_size,
+    safe_ratio,
+)
 
-FEATURE = "mean_deviation_shape"
+FEATURE = 'mean_deviation_shape'
 
 
 @nb.njit(cache=True)
@@ -89,12 +95,12 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                     up_sq += dev * dev
                     n_up += 1
                     sum_pos_dev += abs_dev
-                    if z > max_up_z: max_up_z = z
+                    max_up_z = max(max_up_z, z)
                     cur_side = 1
                 else:
                     down_sq += dev * dev
                     n_down += 1
-                    if z > max_down_z: max_down_z = z
+                    max_down_z = max(max_down_z, z)
                     cur_side = -1
                 if offset >= 1 and cur_side != prev_side:
                     cross_count += 1
@@ -115,16 +121,16 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     us, ds, sr, muz, mdz, da, cc = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(us[j]);  suffixes.append(f"up_semi_w{w}")
-        arrays.append(ds[j]);  suffixes.append(f"down_semi_w{w}")
-        arrays.append(sr[j]);  suffixes.append(f"semi_ratio_w{w}")
-        arrays.append(muz[j]); suffixes.append(f"max_up_z_w{w}")
-        arrays.append(mdz[j]); suffixes.append(f"max_down_z_w{w}")
-        arrays.append(da[j]);  suffixes.append(f"dev_asym_w{w}")
-        arrays.append(cc[j]);  suffixes.append(f"cross_count_w{w}")
+    for j, w in enumerate(params['windows']):
+        arrays.append(us[j]);  suffixes.append(f'up_semi_w{w}')
+        arrays.append(ds[j]);  suffixes.append(f'down_semi_w{w}')
+        arrays.append(sr[j]);  suffixes.append(f'semi_ratio_w{w}')
+        arrays.append(muz[j]); suffixes.append(f'max_up_z_w{w}')
+        arrays.append(mdz[j]); suffixes.append(f'max_down_z_w{w}')
+        arrays.append(da[j]);  suffixes.append(f'dev_asym_w{w}')
+        arrays.append(cc[j]);  suffixes.append(f'cross_count_w{w}')
     return arrays, suffixes

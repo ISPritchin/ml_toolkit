@@ -43,6 +43,7 @@ Example:
     peak_age_share = pos_at_peak/(pos+1) = 5/6 = 0.833
     is_new_peak = 1 (новый рекорд)
     → lifecycle_phase__completeness = 1.0,  phase_flag = 1,  peak_age_share = 0.833
+
 """
 
 import numba as nb
@@ -50,7 +51,7 @@ import numpy as np
 
 from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size, safe_ratio
 
-FEATURE = "lifecycle_phase"
+FEATURE = 'lifecycle_phase'
 
 
 @nb.njit(cache=True)
@@ -127,14 +128,14 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12], "maturity_threshold": 0.8, "ramp_threshold": 0.5 (опционально)}"""
-    windows = np.array(params["windows"], dtype=np.int64)
-    maturity_threshold = float(params.get("maturity_threshold", 0.8))
-    ramp_threshold = float(params.get("ramp_threshold", 0.5))
+    windows = np.array(params['windows'], dtype=np.int64)
+    maturity_threshold = float(params.get('maturity_threshold', 0.8))
+    ramp_threshold = float(params.get('ramp_threshold', 0.5))
     peak_age, post_peak, compl, ramp, is_new, phase, pps = _kernel(
         values, position, windows, maturity_threshold, ramp_threshold
     )
     arrays = [peak_age, post_peak, compl, ramp, is_new, phase]
-    suffixes = ["peak_age_share", "post_peak_share", "completeness", "ramp_norm", "is_new_peak", "phase_flag"]
-    for j, w in enumerate(params["windows"]):
-        arrays.append(pps[j]); suffixes.append(f"post_peak_slope_w{w}")
+    suffixes = ['peak_age_share', 'post_peak_share', 'completeness', 'ramp_norm', 'is_new_peak', 'phase_flag']
+    for j, w in enumerate(params['windows']):
+        arrays.append(pps[j]); suffixes.append(f'post_peak_slope_w{w}')
     return arrays, suffixes

@@ -47,6 +47,7 @@ class EqualizationLoss:
         Степень mitigation-множителя (сильнее подавляет частые негативы).
     seesaw_q:
         Степень compensation-множителя (сильнее подавляет уверенные ошибки).
+
     """
 
     def __init__(
@@ -58,11 +59,11 @@ class EqualizationLoss:
     ) -> None:
         counts = np.asarray(class_counts, dtype=np.float64)
         if counts.ndim != 1 or counts.shape[0] < 2:
-            raise ValueError("class_counts должен быть 1D массивом длины >= 2 (n_classes)")
+            raise ValueError('class_counts должен быть 1D массивом длины >= 2 (n_classes)')
         if np.any(counts <= 0):
-            raise ValueError("все class_counts должны быть положительными")
+            raise ValueError('все class_counts должны быть положительными')
         if not 0.0 <= lambda_ < 1.0:
-            raise ValueError(f"lambda_ должен быть в [0, 1), получено {lambda_}")
+            raise ValueError(f'lambda_ должен быть в [0, 1), получено {lambda_}')
         self.class_counts = counts
         self.n_classes = counts.shape[0]
         self.lambda_ = lambda_

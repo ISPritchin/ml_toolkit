@@ -11,8 +11,8 @@ LinearGAM строит модель f(x) = β₀ + f₁(x₁) + … + fₚ(xₚ)
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -25,7 +25,14 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils.class_weight import compute_sample_weight
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +63,7 @@ class PyGAMRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'PyGAMRegressor':
+    ) -> PyGAMRegressor:
         try:
             from pygam import LinearGAM
         except ImportError as exc:
@@ -126,7 +133,7 @@ class PyGAMClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'PyGAMClassifier':
+    ) -> PyGAMClassifier:
         try:
             from pygam import LogisticGAM
         except ImportError as exc:

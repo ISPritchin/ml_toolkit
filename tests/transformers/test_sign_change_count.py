@@ -1,11 +1,10 @@
-import math
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("sign_change_count", values, params)
+    return run_transformer('sign_change_count', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,30 +12,30 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_oscillating_count():
     # [10,30,20,40,30,50] w=6: diffs +20,-10,+20,-10,+20 → all 4 pairs change sign
-    arrs, sfxs = _run([10, 30, 20, 40, 30, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(4.0)
+    arrs, sfxs = _run([10, 30, 20, 40, 30, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(4.0)
 
 
 def test_monotone_ascending_zero_changes():
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_monotone_descending_zero_changes():
-    arrs, sfxs = _run([60, 50, 40, 30, 20, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([60, 50, 40, 30, 20, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_constant_series_zero_changes():
     # All diffs=0, sign=0, zero signs ignored → count=0
-    arrs, sfxs = _run([20, 20, 20, 20, 20, 20], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([20, 20, 20, 20, 20, 20], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_single_reversal():
     # [10,20,30,40,30,20] w=6: goes up then down → 1 sign change
-    arrs, sfxs = _run([10, 20, 30, 40, 30, 20], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([10, 20, 30, 40, 30, 20], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(1.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

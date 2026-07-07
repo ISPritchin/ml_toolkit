@@ -18,13 +18,17 @@ Stage 2 (высокая precision): обучается только на тех 
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import average_precision_score, precision_recall_curve, recall_score
+from sklearn.metrics import (
+    average_precision_score,
+    precision_recall_curve,
+    recall_score,
+)
 
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -78,6 +82,7 @@ class TwoStageCascade(BasePreset):
         model = TwoStageCascade(recall_target=0.90)
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -150,8 +155,8 @@ class TwoStageCascade(BasePreset):
         self, CB, tr_pool, va_pool, n_trials: int, is_stage2: bool,
         param_space: Callable[[Any], dict[str, Any]] | None = None,
     ):
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -260,7 +265,7 @@ class TwoStageCascade(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'TwoStageCascade':
+    ) -> TwoStageCascade:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)

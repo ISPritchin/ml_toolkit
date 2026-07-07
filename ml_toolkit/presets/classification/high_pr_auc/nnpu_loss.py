@@ -69,6 +69,7 @@ class NNPUClassifier(_CustomLossClassifierBase):
 
         model = NNPUClassifier(class_prior=0.05)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

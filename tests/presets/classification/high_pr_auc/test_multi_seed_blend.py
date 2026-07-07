@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from ml_toolkit.presets.classification.high_pr_auc import MultiSeedBlend
-from tests.presets.classification.high_pr_auc.conftest import BASE_PARAMS, assert_valid_proba
+from tests.presets.classification.high_pr_auc.conftest import (
+    BASE_PARAMS,
+    assert_valid_proba,
+)
 
 
 class TestMultiSeedBlend:

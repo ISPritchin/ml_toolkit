@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("log_volatility", values, params)
+    return run_transformer('log_volatility', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -14,24 +15,24 @@ def _get(arrays, suffixes, suffix):
 def test_constant_log_diffs_zero_vol():
     # [0, e-1, e²-1, e³-1]: log1p values = 0,1,2,3 → all diffs=1, std=0
     e1, e2, e3 = math.e - 1, math.e ** 2 - 1, math.e ** 3 - 1
-    arrs, sfxs = _run([0, e1, e2, e3], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([0, e1, e2, e3], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_constant_series_zero_vol():
-    arrs, sfxs = _run([50, 50, 50, 50, 50, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([50, 50, 50, 50, 50, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_all_zeros_zero_vol():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_volatile_series_positive_vol():
     # Large alternating log-jumps → high volatility
-    arrs, sfxs = _run([10, 1000, 10, 1000, 10, 1000], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] > 1.0
+    arrs, sfxs = _run([10, 1000, 10, 1000, 10, 1000], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] > 1.0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

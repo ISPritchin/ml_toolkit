@@ -9,8 +9,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -89,6 +89,7 @@ class HardNegativeMiner(BasePreset):
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
         print(model.pr_auc_per_round_)
+
     """
 
     def __init__(
@@ -124,8 +125,8 @@ class HardNegativeMiner(BasePreset):
     # ── Optuna (раунд 0) ────────────────────────────────────────────────────
 
     def _fit_round0_optuna(self, tr_pool, va_pool, y_va):
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -200,7 +201,7 @@ class HardNegativeMiner(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'HardNegativeMiner':
+    ) -> HardNegativeMiner:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)

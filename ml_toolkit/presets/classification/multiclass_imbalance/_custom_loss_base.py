@@ -24,9 +24,9 @@ calc_ders_multi'т target), и декодируются обратно в predic
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 import numpy as np
@@ -35,7 +35,10 @@ from sklearn.metrics import f1_score
 from sklearn.preprocessing import LabelEncoder
 
 from ml_toolkit.presets.classification._base import BasePreset
-from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
+from ml_toolkit.presets.classification._optuna_utils import (
+    CatBoostPruningCallback,
+    make_pruner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +226,7 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> '_CustomLossClassifierMulticlassBase':
+    ) -> _CustomLossClassifierMulticlassBase:
         from catboost import Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
@@ -239,8 +242,8 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         n_classes = len(self._label_encoder.classes_)
         if n_classes < 3:
             raise ValueError(
-                f"{type(self).__name__} рассчитан на мультикласс (>=3 классов), "
-                f"получено {n_classes} — для бинарной классификации см. high_pr_auc/."
+                f'{type(self).__name__} рассчитан на мультикласс (>=3 классов), '
+                f'получено {n_classes} — для бинарной классификации см. high_pr_auc/.'
             )
         self.n_classes_ = n_classes
 

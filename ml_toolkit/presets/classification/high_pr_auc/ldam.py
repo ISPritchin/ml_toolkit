@@ -69,6 +69,7 @@ class LDAMClassifier(_CustomLossClassifierBase):
 
         model = LDAMClassifier(max_margin=0.5, reweight_epoch_frac=0.8)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

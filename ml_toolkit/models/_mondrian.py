@@ -10,8 +10,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -26,8 +26,12 @@ try:
     from skgarden import MondrianForestRegressor as _MFRegressor
 except ImportError:
     try:
-        from mondrian_forest import MondrianForestClassifier as _MFClassifier  # type: ignore[no-redef]
-        from mondrian_forest import MondrianForestRegressor as _MFRegressor    # type: ignore[no-redef]
+        from mondrian_forest import (
+            MondrianForestClassifier as _MFClassifier,  # type: ignore[no-redef]
+        )
+        from mondrian_forest import (
+            MondrianForestRegressor as _MFRegressor,  # type: ignore[no-redef]
+        )
     except ImportError as e:
         raise ImportError(
             'Mondrian Forest requires skgarden or mondrian-forest package. '
@@ -36,9 +40,14 @@ except ImportError:
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
-    CLS_METRICS, REG_METRICS, apply_cat_encoder, build_cat_encoder,
-    calibrate_proba, fit_calibrator, resolve_metric_fn,
-    resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    REG_METRICS,
+    apply_cat_encoder,
+    build_cat_encoder,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,7 +81,7 @@ class MondrianForestRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'MondrianForestRegressor':
+    ) -> MondrianForestRegressor:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
@@ -137,7 +146,7 @@ class MondrianForestClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'MondrianForestClassifier':
+    ) -> MondrianForestClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])

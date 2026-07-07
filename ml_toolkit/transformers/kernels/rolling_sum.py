@@ -29,6 +29,7 @@ Example:
 
     rolling_sum = v[t−2] + v[t−1] + v[t] = 20 + 30 + 40
     → rolling_sum__w3 = 90  (объём последнего квартала)
+
 """
 
 import numba as nb
@@ -36,7 +37,7 @@ import numpy as np
 
 from .._windowing import compute_window_sum, resolve_window_size
 
-FEATURE = "rolling_sum"
+FEATURE = 'rolling_sum'
 
 
 @nb.njit(cache=True)
@@ -54,6 +55,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [3]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

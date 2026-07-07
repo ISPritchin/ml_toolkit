@@ -40,6 +40,7 @@ Example:
     gap_mean = 2,  gap_std = 0 (единственный промежуток)
     → flow_regularity__gap_mean_w6 = 2.0
     → flow_regularity__gap_cv_w6   = 0.0  (ритм идеально равномерен)
+
 """
 
 import numba as nb
@@ -47,7 +48,7 @@ import numpy as np
 
 from .._windowing import EPS, resolve_window_size
 
-FEATURE = "flow_regularity"
+FEATURE = 'flow_regularity'
 
 
 @nb.njit(cache=True)
@@ -63,8 +64,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
     max_w = 1
     for j in range(n_w):
-        if windows[j] > max_w:
-            max_w = windows[j]
+        max_w = max(max_w, windows[j])
     gaps = np.zeros(max_w)
     burst_lens = np.zeros(max_w)
 
@@ -159,15 +159,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     gm, gs, gcv, im, cs, alcv = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(gm[j]);   suffixes.append(f"gap_mean_w{w}")
-        arrays.append(gs[j]);   suffixes.append(f"gap_std_w{w}")
-        arrays.append(gcv[j]);  suffixes.append(f"gap_cv_w{w}")
-        arrays.append(im[j]);   suffixes.append(f"is_monthly_w{w}")
-        arrays.append(cs[j]);   suffixes.append(f"cadence_shift_w{w}")
-        arrays.append(alcv[j]); suffixes.append(f"active_len_cv_w{w}")
+    for j, w in enumerate(params['windows']):
+        arrays.append(gm[j]);   suffixes.append(f'gap_mean_w{w}')
+        arrays.append(gs[j]);   suffixes.append(f'gap_std_w{w}')
+        arrays.append(gcv[j]);  suffixes.append(f'gap_cv_w{w}')
+        arrays.append(im[j]);   suffixes.append(f'is_monthly_w{w}')
+        arrays.append(cs[j]);   suffixes.append(f'cadence_shift_w{w}')
+        arrays.append(alcv[j]); suffixes.append(f'active_len_cv_w{w}')
     return arrays, suffixes

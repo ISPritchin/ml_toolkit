@@ -48,6 +48,7 @@ def configure_logging(level: int = logging.INFO, fmt: str | None = None) -> None
         from cltv_dataset_builder import build_feature_datasets
         build_feature_datasets(...)  # теперь логи видны
         ```
+
     """
     package_logger = logging.getLogger(_PACKAGE_LOGGER_NAME)
     package_logger.setLevel(level)
@@ -59,7 +60,7 @@ def configure_logging(level: int = logging.INFO, fmt: str | None = None) -> None
     if not has_stream_handler:
         handler = logging.StreamHandler()
         handler.setFormatter(
-            logging.Formatter(fmt or "%(asctime)s %(levelname)s %(name)s: %(message)s")
+            logging.Formatter(fmt or '%(asctime)s %(levelname)s %(name)s: %(message)s')
         )
         package_logger.addHandler(handler)
 

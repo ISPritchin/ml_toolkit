@@ -60,6 +60,7 @@ class ThresholdMovingCV(BasePreset):
         model.fit(X_train, y_train, X_valid, y_valid)
         labels = model.predict(X_test)            # использует threshold_
         proba  = model.predict_proba(X_test)      # сырые вероятности base
+
     """
 
     def __init__(
@@ -177,7 +178,7 @@ class ThresholdMovingCV(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'ThresholdMovingCV':
+    ) -> ThresholdMovingCV:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )

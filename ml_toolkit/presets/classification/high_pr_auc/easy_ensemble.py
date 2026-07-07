@@ -13,8 +13,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -99,6 +99,7 @@ class EasyEnsembleClassifier(BasePreset):
         estimators_        — список обученных базовых моделей
         estimator_scores_  — val PR-AUC каждого estimator
         ensemble_score_    — val PR-AUC финального ансамбля
+
     """
 
     def __init__(
@@ -181,8 +182,8 @@ class EasyEnsembleClassifier(BasePreset):
         return model.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
 
     def _tune_cbt(self, X_sub: pd.DataFrame, y_sub: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier, Pool
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -216,8 +217,8 @@ class EasyEnsembleClassifier(BasePreset):
         return dict(study.best_trial.user_attrs['cb_params'])
 
     def _tune_lgb(self, X_sub: pd.DataFrame, y_sub: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         import lightgbm as lgb
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -265,7 +266,7 @@ class EasyEnsembleClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'EasyEnsembleClassifier':
+    ) -> EasyEnsembleClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )

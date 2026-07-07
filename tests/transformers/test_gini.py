@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("gini", values, params)
+    return run_transformer('gini', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -17,27 +18,27 @@ def test_known_gini():
     # unique pairs: (0,10)=10,(0,30)=30,(0,60)=60,(10,30)=20,(10,60)=50,(30,60)=30 → 200
     # all pairs (both directions): 400
     # gini = 400 / (2*4*100) = 0.5
-    arrs, sfxs = _run([0, 10, 30, 60], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(0.5, abs=1e-4)
+    arrs, sfxs = _run([0, 10, 30, 60], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(0.5, abs=1e-4)
 
 
 def test_all_equal_gini_zero():
     # All values equal → all |v_i-v_j|=0 → gini=0
-    arrs, sfxs = _run([20, 20, 20, 20], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([20, 20, 20, 20], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_all_zeros_gini_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_concentrated_on_one_value():
     # [0,0,0,100] w=4: total=100
     # pairs with 100: (0,100)×3×2=600; pairs (0,0): 0
     # gini = 600 / (2*4*100) = 0.75
-    arrs, sfxs = _run([0, 0, 0, 100], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(0.75, abs=1e-4)
+    arrs, sfxs = _run([0, 0, 0, 100], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(0.75, abs=1e-4)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

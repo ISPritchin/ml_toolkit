@@ -9,19 +9,30 @@ Gradient Boosting на гистограммах — аналог LightGBM вну
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
 import optuna
 import pandas as pd
 import sklearn
-from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+)
 from sklearn.metrics import average_precision_score, mean_absolute_error
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    encode_cat_features,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +88,7 @@ class HistGBMRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'HistGBMRegressor':
+    ) -> HistGBMRegressor:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
@@ -143,7 +154,7 @@ class HistGBMClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'HistGBMClassifier':
+    ) -> HistGBMClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])

@@ -22,8 +22,8 @@ supervised P vs RN — без каких-либо весов/коррекций 
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -91,6 +91,7 @@ class SpyPUClassifier(BasePreset):
         model = SpyPUClassifier(spy_frac=0.1, spy_threshold_pct=5)
         model.fit(X_train, y_train, X_valid, y_valid)
         print(f"Reliable negatives: {model.n_reliable_negative_}")
+
     """
 
     def __init__(
@@ -201,7 +202,7 @@ class SpyPUClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'SpyPUClassifier':
+    ) -> SpyPUClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )
@@ -242,7 +243,7 @@ class SpyPUClassifier(BasePreset):
 
         rn_mask = u_scores < self.threshold_
         rn_idx = u_idx[rn_mask]
-        self.n_reliable_negative_ = int(len(rn_idx))
+        self.n_reliable_negative_ = len(rn_idx)
         logger.info(
             '[SpyPU] n_spies=%d  порог=%.4f (перцентиль %.1f от score шпионов)  '
             'reliable negatives=%d/%d (%.1f%%)  stage1 PR-AUC=%.4f',

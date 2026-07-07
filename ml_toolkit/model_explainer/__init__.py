@@ -30,9 +30,9 @@ from ml_toolkit.model_explainer.intrinsic_visualization import (
 )
 
 __all__ = [
+    'ALL_INTERPRETABLE',
     'ModelExplainer',
     'plot_feature_importance',
-    'plot_shap_individuals',
     'plot_interpretable_extra',
-    'ALL_INTERPRETABLE',
+    'plot_shap_individuals',
 ]

@@ -52,18 +52,18 @@ from ._poly import PolyLoss
 from ._tversky import TverskyLoss
 
 __all__ = [
-    'FocalLoss',
     'AsymmetricLoss',
-    'LabelSmoothingLoss',
-    'PolyLoss',
-    'TverskyLoss',
+    'AsymmetricPolyLoss',
+    'BalancedSoftmaxLoss',
     'DiceLoss',
-    'LDAMLoss',
+    'EqualizationLoss',
+    'FocalLoss',
     'GHMLoss',
     'InfluenceBalancedLoss',
-    'AsymmetricPolyLoss',
-    'NNPULoss',
-    'EqualizationLoss',
-    'BalancedSoftmaxLoss',
+    'LDAMLoss',
+    'LabelSmoothingLoss',
     'LogitNormLoss',
+    'NNPULoss',
+    'PolyLoss',
+    'TverskyLoss',
 ]

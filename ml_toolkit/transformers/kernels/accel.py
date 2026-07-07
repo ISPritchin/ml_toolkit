@@ -32,12 +32,13 @@ Example:
     прирост t-2→t-1 = 25 − 15 = 10
     accel = 5 − 10 = −5   (или 30 − 2·25 + 15 = −5)
     → accel = −5.0  (тренд тормозит)
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "accel"
+FEATURE = 'accel'
 
 
 @nb.njit(cache=True)
@@ -56,4 +57,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
-    return [_kernel(values, position)], [""]
+    return [_kernel(values, position)], ['']

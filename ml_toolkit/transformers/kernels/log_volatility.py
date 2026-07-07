@@ -34,6 +34,7 @@ Example:
     ld_mean = 0.477
     log_vol = sqrt(mean((ld − 0.477)²)) = 0.805
     → log_volatility__w4 = 0.805  (резкие колебания темпа)
+
 """
 
 import numba as nb
@@ -41,7 +42,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "log_volatility"
+FEATURE = 'log_volatility'
 
 
 @nb.njit(cache=True)
@@ -74,8 +75,8 @@ def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, windows:
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     # log1p считается один раз на колонку (векторно)
     log_values = np.log1p(np.abs(values))
     out = _kernel(log_values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

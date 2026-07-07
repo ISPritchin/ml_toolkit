@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("streak", values, params)
+    return run_transformer('streak', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,35 +16,35 @@ def _get(arrays, suffixes, suffix):
 def test_ascending_series_streak_up():
     # [10,20,30,40,50]: 4 consecutive rises → streak_up=4, streak_down=0
     arrs, sfxs = _run([10, 20, 30, 40, 50])
-    assert _get(arrs, sfxs, "up")[-1] == pytest.approx(4.0)
-    assert _get(arrs, sfxs, "down")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'up')[-1] == pytest.approx(4.0)
+    assert _get(arrs, sfxs, 'down')[-1] == pytest.approx(0.0)
 
 
 def test_descending_series_streak_down():
     # [50,40,30,20,10]: 4 consecutive falls → streak_down=4, streak_up=0
     arrs, sfxs = _run([50, 40, 30, 20, 10])
-    assert _get(arrs, sfxs, "down")[-1] == pytest.approx(4.0)
-    assert _get(arrs, sfxs, "up")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'down')[-1] == pytest.approx(4.0)
+    assert _get(arrs, sfxs, 'up')[-1] == pytest.approx(0.0)
 
 
 def test_flat_step_resets_both_streaks():
     # [10,20,20]: 20==20 → both streaks=0 at end
     arrs, sfxs = _run([10, 20, 20])
-    assert _get(arrs, sfxs, "up")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "down")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'up')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'down')[-1] == pytest.approx(0.0)
 
 
 def test_alternating_streaks_reset():
     # [10,20,10,20,10,20]: alternates → streak_up=1, streak_down=0 at last step
     arrs, sfxs = _run([10, 20, 10, 20, 10, 20])
-    assert _get(arrs, sfxs, "up")[-1] == pytest.approx(1.0)
-    assert _get(arrs, sfxs, "down")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'up')[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'down')[-1] == pytest.approx(0.0)
 
 
 def test_all_zeros_both_streaks_zero():
     arrs, sfxs = _run([0, 0, 0, 0, 0])
-    assert _get(arrs, sfxs, "up")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "down")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'up')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'down')[-1] == pytest.approx(0.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

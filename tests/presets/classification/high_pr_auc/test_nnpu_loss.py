@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 
 from ml_toolkit.presets.classification.high_pr_auc import NNPUClassifier
-from tests.presets.classification.high_pr_auc.conftest import BASE_PARAMS, assert_valid_proba
+from tests.presets.classification.high_pr_auc.conftest import (
+    BASE_PARAMS,
+    assert_valid_proba,
+)
 
 
 class TestNNPUClassifier:

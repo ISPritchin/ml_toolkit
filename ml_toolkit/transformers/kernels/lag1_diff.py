@@ -35,6 +35,7 @@ Example:
     log_diff   = log1p(65) − log1p(60) = 4.190 − 4.111 = 0.079
     pct_change = (65 − 60)/60 = 0.0833
     → lag1_diff__diff = 5.0,  log_diff = 0.079,  pct_change = 0.083
+
 """
 
 import numba as nb
@@ -42,7 +43,7 @@ import numpy as np
 
 from .._windowing import safe_ratio
 
-FEATURE = "lag1_diff"
+FEATURE = 'lag1_diff'
 
 
 @nb.njit(cache=True)
@@ -65,4 +66,4 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
     log_values = np.log1p(np.abs(values))
     d, ld, pc = _kernel(values, log_values, position)
-    return [d, ld, pc], ["diff", "log_diff", "pct_change"]
+    return [d, ld, pc], ['diff', 'log_diff', 'pct_change']

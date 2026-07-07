@@ -39,14 +39,20 @@ Example:
     surprise = |v[t] − mean| / std = |30 − 21.667| / 3.727 = 2.236
     predictability = 1 / (1 + std/mean) = 1 / (1 + 3.727/21.667) = 0.853
     → microstructure__surprise_w6 = 2.236,  predictability_w6 = 0.853
+
 """
 
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, compute_window_mean_and_std, resolve_window_size, safe_ratio
+from .._windowing import (
+    EPS,
+    compute_window_mean_and_std,
+    resolve_window_size,
+    safe_ratio,
+)
 
-FEATURE = "microstructure"
+FEATURE = 'microstructure'
 
 
 @nb.njit(cache=True)
@@ -94,15 +100,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     snr, surp, sdir, pred, cm, vsc = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(snr[j]);  suffixes.append(f"snr_w{w}")
-        arrays.append(surp[j]); suffixes.append(f"surprise_w{w}")
-        arrays.append(pred[j]); suffixes.append(f"predictability_w{w}")
-        arrays.append(cm[j]);   suffixes.append(f"cond_mean_w{w}")
-        arrays.append(vsc[j]);  suffixes.append(f"vs_cond_mean_w{w}")
-    arrays.append(sdir); suffixes.append("surprise_dir")
+    for j, w in enumerate(params['windows']):
+        arrays.append(snr[j]);  suffixes.append(f'snr_w{w}')
+        arrays.append(surp[j]); suffixes.append(f'surprise_w{w}')
+        arrays.append(pred[j]); suffixes.append(f'predictability_w{w}')
+        arrays.append(cm[j]);   suffixes.append(f'cond_mean_w{w}')
+        arrays.append(vsc[j]);  suffixes.append(f'vs_cond_mean_w{w}')
+    arrays.append(sdir); suffixes.append('surprise_dir')
     return arrays, suffixes

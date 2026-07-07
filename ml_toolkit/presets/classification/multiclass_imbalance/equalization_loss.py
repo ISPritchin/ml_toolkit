@@ -64,6 +64,7 @@ class EqualizationLossClassifier(_CustomLossClassifierMulticlassBase):
 
         model = EqualizationLossClassifier(seesaw_p=0.8, seesaw_q=2.0)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _MulticlassLossSpec(

@@ -23,8 +23,13 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
-    CLS_METRICS, fit_calibrator, make_xgb_pruning_callback, resolve_metric_fn,
-    resolve_pruner, resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    fit_calibrator,
+    make_xgb_pruning_callback,
+    resolve_metric_fn,
+    resolve_pruner,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,11 +83,11 @@ class XGBoostRanker(BaseModel):
         y_valid: Any | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "XGBoostRanker":
+    ) -> XGBoostRanker:
         try:
             import xgboost as xgb
         except ImportError as err:
-            raise ImportError("XGBoost не установлен. Выполните: pip install xgboost") from err
+            raise ImportError('XGBoost не установлен. Выполните: pip install xgboost') from err
 
         set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
@@ -103,7 +108,7 @@ class XGBoostRanker(BaseModel):
 
         if self.params is None:
             if Xva is None:
-                raise ValueError("X_valid и y_valid обязательны при params=None (Optuna)")
+                raise ValueError('X_valid и y_valid обязательны при params=None (Optuna)')
             self._model, self.best_params_ = self._fit_with_optuna(
                 xgb, Xtr, ytr, qid_tr, Xva, yva, qid_va,
             )

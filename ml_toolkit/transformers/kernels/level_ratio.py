@@ -34,6 +34,7 @@ Example:
     mean_long  = 35  (среднее всех 6)
     level_ratio = 50 / 35 = 1.429
     → level_ratio__w3_w6 = 1.429  (последний квартал на ~43% выше нормы)
+
 """
 
 import numba as nb
@@ -41,7 +42,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
-FEATURE = "level_ratio"
+FEATURE = 'level_ratio'
 
 
 @nb.njit(cache=True)
@@ -67,9 +68,9 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"pairs": [[6, 12]]}"""
-    pairs = params["pairs"]
+    pairs = params['pairs']
     short_w = np.array([p[0] for p in pairs], dtype=np.int64)
     long_w = np.array([p[1] for p in pairs], dtype=np.int64)
     out = _kernel(values, position, short_w, long_w)
-    suffixes = [f"w{p[0]}_w{p[1]}" for p in pairs]
+    suffixes = [f'w{p[0]}_w{p[1]}' for p in pairs]
     return [out[j] for j in range(len(pairs))], suffixes

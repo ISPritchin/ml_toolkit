@@ -59,6 +59,7 @@ class FocalLossClassifier(_CustomLossClassifierBase):
 
         model = FocalLossClassifier(gamma=2.0, alpha=0.25)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

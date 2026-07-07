@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
-import numpy as np
 
 
 def add_period_bands(
@@ -23,6 +22,7 @@ def add_period_bands(
         labels:    подписи периодов; None — без подписей.
         colors:    один цвет для всех или список цветов.
         label_loc: 'top' | 'center' | 'bottom'.
+
     """
     _default_colors = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F']
     n = len(periods)
@@ -59,6 +59,7 @@ def add_forecast_region(
 
     Args:
         x_split: значение x, начиная с которого идёт прогноз.
+
     """
     ax.axvline(x_split, color=color, lw=1.2, linestyle='--', alpha=0.8)
     xl = ax.get_xlim()
@@ -88,6 +89,7 @@ def add_event_markers(
     Args:
         events: {x_value: label_str} — значение оси X → название события.
         y_frac: положение маркера в долях axes (>1 → над графиком).
+
     """
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
     for x_val, label in events.items():

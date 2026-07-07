@@ -23,8 +23,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -72,33 +72,32 @@ _DEFAULT_LGB_PARAMS: dict[str, Any] = {
 
 def _make_sampler(method: str, sampling_strategy: float, random_seed: int) -> Any:
     try:
-        from imblearn.over_sampling import ADASYN, SMOTE, BorderlineSMOTE
         from imblearn.combine import SMOTEENN
+        from imblearn.over_sampling import ADASYN, SMOTE, BorderlineSMOTE
     except ImportError as exc:
         raise ImportError(
-            "imbalanced-learn не установлен. Установите: uv add imbalanced-learn"
+            'imbalanced-learn не установлен. Установите: uv add imbalanced-learn'
         ) from exc
 
     kwargs = {'sampling_strategy': sampling_strategy, 'random_state': random_seed, 'k_neighbors': 5}
     if method == 'smote':
         return SMOTE(**kwargs)
-    elif method == 'adasyn':
+    if method == 'adasyn':
         return ADASYN(
             sampling_strategy=sampling_strategy,
             random_state=random_seed,
             n_neighbors=5,
         )
-    elif method == 'borderline':
+    if method == 'borderline':
         return BorderlineSMOTE(**kwargs)
-    elif method == 'smoteenn':
+    if method == 'smoteenn':
         smote = SMOTE(**kwargs)
         from imblearn.under_sampling import EditedNearestNeighbours
         enn = EditedNearestNeighbours()
         return SMOTEENN(smote=smote, enn=enn, random_state=random_seed)
-    else:
-        raise ValueError(
-            f"method должен быть 'smote', 'adasyn', 'borderline' или 'smoteenn', получено {method!r}"
-        )
+    raise ValueError(
+        f"method должен быть 'smote', 'adasyn', 'borderline' или 'smoteenn', получено {method!r}"
+    )
 
 
 class SyntheticOversamplingClassifier(BasePreset):
@@ -147,6 +146,7 @@ class SyntheticOversamplingClassifier(BasePreset):
 
         n_synthetic_     — количество сгенерированных синтетических примеров
         augmented_ratio_ — реальное соотношение minority/majority после oversampling
+
     """
 
     def __init__(
@@ -190,7 +190,7 @@ class SyntheticOversamplingClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'SyntheticOversamplingClassifier':
+    ) -> SyntheticOversamplingClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )
@@ -349,8 +349,8 @@ class SyntheticOversamplingClassifier(BasePreset):
         )
 
     def _tune_cbt(self, X_aug: pd.DataFrame, y_aug: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier, Pool
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -384,8 +384,8 @@ class SyntheticOversamplingClassifier(BasePreset):
         return dict(study.best_trial.user_attrs['cb_params'])
 
     def _tune_lgb(self, X_aug: pd.DataFrame, y_aug: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         import lightgbm as lgb
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)

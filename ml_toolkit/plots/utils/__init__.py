@@ -1,28 +1,34 @@
 """Утилиты форматирования осей matplotlib."""
-from .ticks import (
-    number_to_number_with_suffix,
-    modify_ticks,
-    modify_ticks_percent,
-    modify_xticks_for_date_axis,
-)
 from .lines import (
     add_bisector,
-    add_vline,
     add_hline,
+    add_vline,
 )
 from .regions import (
-    hide_spines,
     fill_region,
+    hide_spines,
 )
 from .styles import (
     PALETTES,
     apply_style,
 )
+from .ticks import (
+    modify_ticks,
+    modify_ticks_percent,
+    modify_xticks_for_date_axis,
+    number_to_number_with_suffix,
+)
 
 __all__ = [
-    'number_to_number_with_suffix', 'modify_ticks', 'modify_ticks_percent',
+    'PALETTES',
+    'add_bisector',
+    'add_hline',
+    'add_vline',
+    'apply_style',
+    'fill_region',
+    'hide_spines',
+    'modify_ticks',
+    'modify_ticks_percent',
     'modify_xticks_for_date_axis',
-    'add_bisector', 'add_vline', 'add_hline',
-    'hide_spines', 'fill_region',
-    'PALETTES', 'apply_style',
+    'number_to_number_with_suffix',
 ]

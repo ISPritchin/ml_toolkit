@@ -39,6 +39,7 @@ Example:
     lag3_ratio = v[t] / v[t-3] − 1 = 40/10 − 1 = 3.0  (рост ×4 за квартал)
     lag9_ratio = lag12_ratio = 0 (недостаточно истории)
     → lag_comparison__lag3_ratio = 3.0
+
 """
 
 import numba as nb
@@ -46,7 +47,7 @@ import numpy as np
 
 from .._windowing import EPS, safe_ratio
 
-FEATURE = "lag_comparison"
+FEATURE = 'lag_comparison'
 
 
 @nb.njit(cache=True)
@@ -147,5 +148,5 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     r3, r9, r12, t3, c12, accel = _kernel(values, position)
     return (
         [r3, r9, r12, t3, c12, accel],
-        ["lag3_ratio", "lag9_ratio", "lag12_ratio", "lag3_trend", "lag12_consistency", "yoy_accel"],
+        ['lag3_ratio', 'lag9_ratio', 'lag12_ratio', 'lag3_trend', 'lag12_consistency', 'yoy_accel'],
     )

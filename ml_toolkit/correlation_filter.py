@@ -30,6 +30,7 @@ def _compute_correlation_excluding_both_zero(
         `left_values`/`right_values` отлично от нуля. Возвращает 0.0, если
         таких наблюдений меньше двух или один из признаков на них
         константен (корреляция не определена).
+
     """
     keep_mask = ~((left_values == 0.0) & (right_values == 0.0))
     if keep_mask.sum() < 2:
@@ -91,6 +92,7 @@ def filter_correlated_features(
         Подмножество `candidate_cols` (в исходном порядке появления), не
         коррелирующее по модулю выше `threshold` ни с одним из ранее
         принятых признаков.
+
     """
     accepted_cols: list[str] = list(preselected_cols) if preselected_cols else []
     column_arrays: dict[str, np.ndarray] = {
@@ -103,21 +105,21 @@ def filter_correlated_features(
         row_sample_idx = rng.choice(n_rows, size=max_rows_for_correlation, replace=False)
         column_arrays = {col: arr[row_sample_idx] for col, arr in column_arrays.items()}
         logger.info(
-            "Корреляции считаются на подвыборке %d из %d строк (random_seed=%d)",
+            'Корреляции считаются на подвыборке %d из %d строк (random_seed=%d)',
             max_rows_for_correlation,
             n_rows,
             random_seed,
         )
 
     logger.info(
-        "Корреляционный фильтр: %d кандидатов, threshold=%.3f, %d предвыбранных колонок",
+        'Корреляционный фильтр: %d кандидатов, threshold=%.3f, %d предвыбранных колонок',
         len(candidate_cols),
         threshold,
         len(accepted_cols),
     )
 
     n_dropped = 0
-    for candidate_col in tqdm(candidate_cols, desc="Корреляционный фильтр", unit="фича"):
+    for candidate_col in tqdm(candidate_cols, desc='Корреляционный фильтр', unit='фича'):
         if candidate_col in accepted_cols:
             continue
         candidate_values = column_arrays[candidate_col]
@@ -142,7 +144,7 @@ def filter_correlated_features(
 
     result = [col for col in accepted_cols if col in candidate_cols]
     logger.info(
-        "Корреляционный фильтр завершён: принято %d, отброшено %d из %d кандидатов",
+        'Корреляционный фильтр завершён: принято %d, отброшено %d из %d кандидатов',
         len(result),
         n_dropped,
         len(candidate_cols),

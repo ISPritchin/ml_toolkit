@@ -1,11 +1,10 @@
-import math
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("rolling_min_max", values, params)
+    return run_transformer('rolling_min_max', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,35 +12,35 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_min_max():
     # [10,80,40,20,5,30] w=6 → min=5, max=80
-    arrs, sfxs = _run([10, 80, 40, 20, 5, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "min_w6")[-1] == pytest.approx(5.0)
-    assert _get(arrs, sfxs, "max_w6")[-1] == pytest.approx(80.0)
+    arrs, sfxs = _run([10, 80, 40, 20, 5, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'min_w6')[-1] == pytest.approx(5.0)
+    assert _get(arrs, sfxs, 'max_w6')[-1] == pytest.approx(80.0)
 
 
 def test_all_zeros_min_max_both_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "min_w6")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "max_w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'min_w6')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'max_w6')[-1] == pytest.approx(0.0)
 
 
 def test_partial_window_uses_available_rows():
     # At row 2 only 3 values [10,80,40] are in window
-    arrs, sfxs = _run([10, 80, 40, 20, 5, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "min_w6")[2] == pytest.approx(10.0)
-    assert _get(arrs, sfxs, "max_w6")[2] == pytest.approx(80.0)
+    arrs, sfxs = _run([10, 80, 40, 20, 5, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'min_w6')[2] == pytest.approx(10.0)
+    assert _get(arrs, sfxs, 'max_w6')[2] == pytest.approx(80.0)
 
 
 def test_monotone_ascending_max_equals_current():
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
     # max is always the last (current) value
-    assert _get(arrs, sfxs, "max_w6")[-1] == pytest.approx(60.0)
-    assert _get(arrs, sfxs, "min_w6")[-1] == pytest.approx(10.0)
+    assert _get(arrs, sfxs, 'max_w6')[-1] == pytest.approx(60.0)
+    assert _get(arrs, sfxs, 'min_w6')[-1] == pytest.approx(10.0)
 
 
 def test_zero_in_window_sets_min_to_zero():
     # Any zero in window → min=0
-    arrs, sfxs = _run([100, 50, 0, 80, 70, 90], {"windows": [6]})
-    assert _get(arrs, sfxs, "min_w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([100, 50, 0, 80, 70, 90], {'windows': [6]})
+    assert _get(arrs, sfxs, 'min_w6')[-1] == pytest.approx(0.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

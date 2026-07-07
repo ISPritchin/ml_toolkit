@@ -47,6 +47,7 @@ class InfluenceBalancedLoss:
     beta:
         Коэффициент effective number of samples (Cui et al., 2019) для
         per-class части веса.
+
     """
 
     def __init__(
@@ -57,7 +58,7 @@ class InfluenceBalancedLoss:
         beta: float = 0.9999,
     ) -> None:
         if n_pos <= 0 or n_neg <= 0:
-            raise ValueError(f"n_pos и n_neg должны быть положительными, получено {n_pos}, {n_neg}")
+            raise ValueError(f'n_pos и n_neg должны быть положительными, получено {n_pos}, {n_neg}')
         self.n_pos = n_pos
         self.n_neg = n_neg
         self.alpha = alpha

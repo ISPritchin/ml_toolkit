@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("quantile_persistence", values, params)
+    return run_transformer('quantile_persistence', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -14,25 +15,25 @@ def _get(arrays, suffixes, suffix):
 def test_above_med_from_docstring():
     # [10,20,30,40,50,60] w=6: честная медиана = (30+40)/2 = 35
     # values > 35: {40,50,60} → above_med=3/6=0.5
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "above_med_w6")[-1] == pytest.approx(3 / 6, abs=0.01)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'above_med_w6')[-1] == pytest.approx(3 / 6, abs=0.01)
 
 
 def test_monotone_rank_trend_positive():
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "rank_trend_w6")[-1] > 0
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'rank_trend_w6')[-1] > 0
 
 
 def test_constant_series_high_q_stability():
     # All values equal → CV of ranks≈0 → q_stability≈1
-    arrs, sfxs = _run([30] * 12, {"windows": [12]})
-    assert _get(arrs, sfxs, "q_stability_w12")[-1] > 0.5
+    arrs, sfxs = _run([30] * 12, {'windows': [12]})
+    assert _get(arrs, sfxs, 'q_stability_w12')[-1] > 0.5
 
 
 def test_bot_q_high_for_always_low_values():
     # All same value → each ≤ p25 → bot_q=1.0 when all are equal to p25
-    arrs, sfxs = _run([10] * 6, {"windows": [6]})
-    assert _get(arrs, sfxs, "bot_q_w6")[-1] == pytest.approx(1.0, abs=0.1)
+    arrs, sfxs = _run([10] * 6, {'windows': [6]})
+    assert _get(arrs, sfxs, 'bot_q_w6')[-1] == pytest.approx(1.0, abs=0.1)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

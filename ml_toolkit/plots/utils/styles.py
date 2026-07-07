@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 
 from .regions import hide_spines
 
-
 # ── Закруглённые стрелки для стиля 'presentation' (стиль черчения) ────────────
 # Квадратичные кривые Безье: кончик в (0,0), крылья уходят влево и раскрываются.
 _AH_VERTS: list[tuple[float, float]] = [
@@ -49,6 +48,7 @@ def apply_style(
                  'presentation' — крупные шрифты, жирные линии.
         palette: ключ из PALETTES или список hex-цветов.
         grid:    показать сетку.
+
     """
     from cycler import cycler  # noqa: PLC0415
 

@@ -32,6 +32,7 @@ Example:
       i=2: 5≠0, prev(i=1)=0      → вспышка #2
       i=4: 8≠0, prev(i=3)=0      → вспышка #3
     → active_run_count__w6 = 3
+
 """
 
 import numba as nb
@@ -39,7 +40,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "active_run_count"
+FEATURE = 'active_run_count'
 
 
 @nb.njit(cache=True)
@@ -64,6 +65,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

@@ -31,6 +31,7 @@ Example:
     значения ≤ 45: 10, 30, 20, 40, 45 → 5 шт. (50 исключено)
     rank_in_window = 5/6 = 0.833
     → rank_in_window__w6 = 0.833  (текущий мес. выше 5 из 6)
+
 """
 
 import numba as nb
@@ -38,7 +39,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "rank_in_window"
+FEATURE = 'rank_in_window'
 
 
 @nb.njit(cache=True)
@@ -61,6 +62,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

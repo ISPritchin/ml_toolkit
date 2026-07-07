@@ -1,18 +1,25 @@
-import sys
 from pathlib import Path
+import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from matplotlib import gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 
 from ml_toolkit.plots.utils import (
+    PALETTES,
+    add_bisector,
+    add_hline,
+    add_vline,
+    apply_style,
+    fill_region,
+    hide_spines,
+    modify_ticks,
+    modify_ticks_percent,
+    modify_xticks_for_date_axis,
     number_to_number_with_suffix,
-    modify_ticks, modify_ticks_percent, modify_xticks_for_date_axis,
-    add_bisector, add_vline, add_hline,
-    hide_spines, fill_region, apply_style, PALETTES,
 )
 
 rng  = np.random.default_rng(42)
@@ -150,7 +157,8 @@ ax.set_title("style='presentation'  palette='dark'", fontsize=9, fontweight='bol
 ax = fig.add_subplot(gs[3, 1])
 x = np.linspace(0, 3, 100)
 y = np.sin(x * 2) * np.exp(-x / 3)
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes as _ins  # noqa: PLC0415
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes as _ins
+
 ax.set_visible(False)
 ax_l = _ins(ax, width='45%', height='90%', loc='center left',
             bbox_to_anchor=(-0.05, 0, 1, 1), bbox_transform=ax.transAxes)

@@ -33,6 +33,7 @@ Example:
     prior_mean  = (10+20+30)/3 = 20   (предыдущие 3 мес)
     momentum = 50/20 − 1 = 1.5
     → momentum__h3 = 1.5  (последний квартал в 2.5× выше предыдущего)
+
 """
 
 import numba as nb
@@ -40,7 +41,7 @@ import numpy as np
 
 from .._windowing import EPS, safe_ratio
 
-FEATURE = "momentum"
+FEATURE = 'momentum'
 
 
 @nb.njit(cache=True)
@@ -71,12 +72,12 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
+    """Args:
+    params: {"half_windows": [3, 6]}
+
     """
-    Args:
-        params: {"half_windows": [3, 6]}
-    """
-    half_windows = np.array(params["half_windows"], dtype=np.int64)
+    half_windows = np.array(params['half_windows'], dtype=np.int64)
     out = _kernel(values, position, half_windows)
     arrays = [out[j] for j in range(len(half_windows))]
-    suffixes = [f"h{h}" for h in params["half_windows"]]
+    suffixes = [f'h{h}' for h in params['half_windows']]
     return arrays, suffixes

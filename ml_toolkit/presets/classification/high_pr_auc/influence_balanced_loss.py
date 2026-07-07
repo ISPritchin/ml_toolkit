@@ -65,6 +65,7 @@ class InfluenceBalancedLossClassifier(_CustomLossClassifierBase):
 
         model = InfluenceBalancedLossClassifier(alpha=1000.0)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

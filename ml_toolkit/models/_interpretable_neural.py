@@ -11,8 +11,8 @@ PyTorch уже установлен (torch==2.6.0).
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -24,7 +24,14 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.preprocessing import QuantileTransformer
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +66,7 @@ def _build_additive_model(n_features: int, hidden_dim: int, n_layers: int, n_int
     import itertools
 
     import torch
-    import torch.nn as nn
+    from torch import nn
 
     def _make_net(in_dim: int) -> nn.Sequential:
         layers: list[nn.Module] = [nn.Linear(in_dim, hidden_dim), nn.ReLU()]
@@ -96,8 +103,7 @@ def _train_torch_reg(
     patience: int = 20,
 ) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray]:
     import torch
-    import torch.nn as nn
-    import torch.optim as optim
+    from torch import nn, optim
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     n_features = X_tr.shape[1]
@@ -161,7 +167,7 @@ class InterpretableNeuralRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'InterpretableNeuralRegressor':
+    ) -> InterpretableNeuralRegressor:
         import functools
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
@@ -245,7 +251,7 @@ class InterpretableNeuralClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'InterpretableNeuralClassifier':
+    ) -> InterpretableNeuralClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])

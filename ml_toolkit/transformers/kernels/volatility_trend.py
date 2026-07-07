@@ -36,6 +36,7 @@ Example:
     std_long  (все 6) = 10.0
     volatility_trend = 14.142 − 10.0 = 4.142
     → volatility_trend__w3_w6 = 4.142  (краткосрочный хаос нарастает)
+
 """
 
 import numba as nb
@@ -43,7 +44,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean_and_std, resolve_window_size
 
-FEATURE = "volatility_trend"
+FEATURE = 'volatility_trend'
 
 
 @nb.njit(cache=True)
@@ -69,9 +70,9 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"pairs": [[6, 12]]} — ключ обязателен, дефолты задаёт пресет."""
-    pairs = params["pairs"]
+    pairs = params['pairs']
     short_w = np.array([p[0] for p in pairs], dtype=np.int64)
     long_w = np.array([p[1] for p in pairs], dtype=np.int64)
     out = _kernel(values, position, short_w, long_w)
-    suffixes = [f"w{p[0]}_w{p[1]}" for p in pairs]
+    suffixes = [f'w{p[0]}_w{p[1]}' for p in pairs]
     return [out[j] for j in range(len(pairs))], suffixes

@@ -35,6 +35,7 @@ Example:
     S_long  = 10+...+60 = 210  (все 6 мес)
     recent_share = 150 / 210 = 0.714
     → recent_share__r3_w6 = 0.714  (последний квартал — 71% объёма, рост выше нормы 0.5)
+
 """
 
 import numba as nb
@@ -42,7 +43,7 @@ import numpy as np
 
 from .._windowing import compute_window_sum, resolve_window_size, safe_ratio
 
-FEATURE = "recent_share"
+FEATURE = 'recent_share'
 
 
 @nb.njit(cache=True)
@@ -68,9 +69,9 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"pairs": [[3, 12], [6, 24]]}"""
-    pairs = params["pairs"]
+    pairs = params['pairs']
     short_w = np.array([p[0] for p in pairs], dtype=np.int64)
     long_w = np.array([p[1] for p in pairs], dtype=np.int64)
     out = _kernel(values, position, short_w, long_w)
-    suffixes = [f"r{p[0]}_w{p[1]}" for p in pairs]
+    suffixes = [f'r{p[0]}_w{p[1]}' for p in pairs]
     return [out[j] for j in range(len(pairs))], suffixes

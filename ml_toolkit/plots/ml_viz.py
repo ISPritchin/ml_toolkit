@@ -22,6 +22,7 @@ def add_threshold_band(
     Args:
         band_width: ширина закрашенной полосы ±; None — только линия.
         axis:       'x' (threshold по оси X) | 'y'.
+
     """
     _vline = ax.axvline if axis == 'x' else ax.axhline
     _vspan = ax.axvspan if axis == 'x' else ax.axhspan
@@ -64,6 +65,7 @@ def add_confusion_quadrant_labels(
         threshold_x: граница по X (авто — середина xlim).
         threshold_y: граница по Y (авто — середина ylim).
         labels:      {quadrant: text}; quadrant ∈ {'TL','TR','BL','BR'}.
+
     """
     xl, yl = ax.get_xlim(), ax.get_ylim()
     tx = threshold_x if threshold_x is not None else (xl[0] + xl[1]) / 2

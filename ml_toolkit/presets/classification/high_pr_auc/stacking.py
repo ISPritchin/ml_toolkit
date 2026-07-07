@@ -24,8 +24,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -127,6 +127,7 @@ class SubsampleStacking(BasePreset):
         model = SubsampleStacking(n_base_models=6, meta='logistic')
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -146,11 +147,11 @@ class SubsampleStacking(BasePreset):
         selected_features: list[str] | None = None,
     ):
         if not 0.0 < subsample_rate < 1.0:
-            raise ValueError(f"subsample_rate должен быть в (0, 1), получено {subsample_rate}")
+            raise ValueError(f'subsample_rate должен быть в (0, 1), получено {subsample_rate}')
         if n_folds < 2:
-            raise ValueError(f"n_folds должен быть >= 2, получено {n_folds}")
+            raise ValueError(f'n_folds должен быть >= 2, получено {n_folds}')
         if meta not in ('logistic', 'weighted', 'catboost'):
-            raise ValueError(f"meta должен быть 'logistic', 'weighted' или 'catboost'")
+            raise ValueError("meta должен быть 'logistic', 'weighted' или 'catboost'")
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.n_base_models = n_base_models
         self.subsample_rate = subsample_rate
@@ -227,8 +228,8 @@ class SubsampleStacking(BasePreset):
     def _tune_shared_params(
         self, X_tr_feats: pd.DataFrame, y_tr: np.ndarray, va_pool_full: Any, y_va: np.ndarray,
     ) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier, Pool
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -291,7 +292,7 @@ class SubsampleStacking(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'SubsampleStacking':
+    ) -> SubsampleStacking:
         from catboost import CatBoostClassifier, Pool
         from sklearn.model_selection import StratifiedKFold
 

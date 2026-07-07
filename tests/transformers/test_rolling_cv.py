@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("rolling_cv", values, params)
+    return run_transformer('rolling_cv', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,27 +14,27 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_cv_from_docstring():
     # [10,10,10,10,10,40] w=6: mean=15, std=sqrt(125)≈11.18, CV=11.18/15≈0.745
-    arrs, sfxs = _run([10, 10, 10, 10, 10, 40], {"windows": [6]})
+    arrs, sfxs = _run([10, 10, 10, 10, 10, 40], {'windows': [6]})
     expected_std = math.sqrt(125)
     expected_cv = expected_std / 15
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(expected_cv, abs=1e-3)
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(expected_cv, abs=1e-3)
 
 
 def test_constant_series_cv_zero():
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_all_zeros_cv_zero():
     # mean=0, std=0 → CV=0/(0+EPS)≈0
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-3)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-3)
 
 
 def test_cv_nonneg():
     # CV is always non-negative
-    arrs, sfxs = _run([10, 50, 5, 100, 3, 80], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] >= 0
+    arrs, sfxs = _run([10, 50, 5, 100, 3, 80], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] >= 0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

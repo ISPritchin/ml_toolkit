@@ -42,6 +42,7 @@ Example:
     оптимальный разрыв при k=2: mean_left = 0,  mean_right = 100
     magnitude = |0 − 100| / 47.14 = 2.121 > 2 → flag = 1
     → regime_change__magnitude_w6 = 2.121,  split_pos_w6 = 2,  flag_w6 = 1
+
 """
 
 import numba as nb
@@ -49,7 +50,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
 
-FEATURE = "regime_change"
+FEATURE = 'regime_change'
 
 
 @nb.njit(cache=True)
@@ -133,16 +134,16 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12], "shift_threshold": 2.0 (опционально, в сигмах)}"""
-    windows = np.array(params["windows"], dtype=np.int64)
-    shift_threshold = float(params.get("shift_threshold", 2.0))
+    windows = np.array(params['windows'], dtype=np.int64)
+    shift_threshold = float(params.get('shift_threshold', 2.0))
     mag, spos, flag, lve, asym, rlen = _kernel(values, position, windows, shift_threshold)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(mag[j]);   suffixes.append(f"magnitude_w{w}")
-        arrays.append(spos[j]);  suffixes.append(f"split_pos_w{w}")
-        arrays.append(flag[j]);  suffixes.append(f"flag_w{w}")
-        arrays.append(lve[j]);   suffixes.append(f"late_vs_early_w{w}")
-        arrays.append(asym[j]);  suffixes.append(f"asymmetry_w{w}")
-    arrays.append(rlen); suffixes.append("current_regime_len")
+    for j, w in enumerate(params['windows']):
+        arrays.append(mag[j]);   suffixes.append(f'magnitude_w{w}')
+        arrays.append(spos[j]);  suffixes.append(f'split_pos_w{w}')
+        arrays.append(flag[j]);  suffixes.append(f'flag_w{w}')
+        arrays.append(lve[j]);   suffixes.append(f'late_vs_early_w{w}')
+        arrays.append(asym[j]);  suffixes.append(f'asymmetry_w{w}')
+    arrays.append(rlen); suffixes.append('current_regime_len')
     return arrays, suffixes

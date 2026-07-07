@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("max_abs_jump", values, params)
+    return run_transformer('max_abs_jump', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,30 +14,30 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_value_from_docstring():
     # [10,20,15,60,55,50] w=6: |jumps|=10,5,45,5,5 → max=45
-    arrs, sfxs = _run([10, 20, 15, 60, 55, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(45.0)
+    arrs, sfxs = _run([10, 20, 15, 60, 55, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(45.0)
 
 
 def test_constant_series_jump_zero():
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_all_zeros_jump_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0)
 
 
 def test_single_large_spike():
     # [10,10,10,100,10,10] w=6: max jump = 90 (10→100) or 90 (100→10)
-    arrs, sfxs = _run([10, 10, 10, 100, 10, 10], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(90.0)
+    arrs, sfxs = _run([10, 10, 10, 100, 10, 10], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(90.0)
 
 
 def test_before_window_ready_is_zero():
     # ws=1 → no jump possible → 0
-    arrs, sfxs = _run([100], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[0] == pytest.approx(0.0)
+    arrs, sfxs = _run([100], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[0] == pytest.approx(0.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

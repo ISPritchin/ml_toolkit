@@ -34,6 +34,7 @@ Example:
     mean_d = 40/5 = 8
     std_diff = sqrt(mean((d − 8)²)) = sqrt(1080/5) = sqrt(216) = 14.70
     → volatility_of_diff__w6 = 14.70  (резко чередующиеся приращения)
+
 """
 
 import numba as nb
@@ -41,7 +42,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "volatility_of_diff"
+FEATURE = 'volatility_of_diff'
 
 
 @nb.njit(cache=True)
@@ -71,6 +72,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

@@ -24,11 +24,12 @@ API для получения важности признаков, SHAP-знач
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import io
 import logging
-import warnings
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -217,6 +218,7 @@ class ModelExplainer:
         feature_names_:      Список признаков, использованных при обучении.
         supports_shap_:      True, если для модели доступен SHAP TreeExplainer.
         supports_intrinsic_: True, если доступна нативная интерпретация (EBM/GAM/rules/tree).
+
     """
 
     def __init__(
@@ -271,6 +273,7 @@ class ModelExplainer:
 
         Returns:
             pd.Series с именами признаков в индексе, отсортированный по убыванию.
+
         """
         cache_key = f'{method}_{n_repeats}'
         if cache_key in self._importance_cache:
@@ -284,7 +287,8 @@ class ModelExplainer:
         name = self.model_name_
 
         from ml_toolkit.model_explainer.feature_importance import (  # noqa: PLC0415
-            _permutation_importance, _tree_importance,
+            _permutation_importance,
+            _tree_importance,
         )
 
         # gain / встроенная важность для tree-моделей
@@ -337,6 +341,7 @@ class ModelExplainer:
 
         Returns:
             numpy array (n_samples, n_features) SHAP values.
+
         """
         if not self.supports_shap_:
             raise ValueError(
@@ -410,6 +415,7 @@ class ModelExplainer:
 
         Returns:
             pd.Series — вклад каждого признака (по убыванию |вклада|).
+
         """
         X_row = X_row[self.feature_names_].head(1).copy()
 
@@ -468,8 +474,12 @@ class ModelExplainer:
 
         Returns:
             matplotlib Figure.
+
         """
-        from ml_toolkit.model_explainer.feature_importance import _draw_bar, _try_shap_plot  # noqa: PLC0415
+        from ml_toolkit.model_explainer.feature_importance import (  # noqa: PLC0415
+            _draw_bar,
+            _try_shap_plot,
+        )
 
         imp = self.feature_importance(method=method, verbose=verbose)
         n_show = min(top_n, len(imp))
@@ -533,13 +543,16 @@ class ModelExplainer:
             max_samples: Максимальное число строк.
             top_n:       Число признаков на графике.
             save_path:   Если задан — сохраняет PNG.
+
         """
         if not self.supports_shap_:
             raise ValueError(
                 f'SHAP недоступен для {self.model_name_}. '
                 'Используйте plot_importance(method="permutation").'
             )
-        from ml_toolkit.model_explainer.feature_importance import _try_shap_plot  # noqa: PLC0415
+        from ml_toolkit.model_explainer.feature_importance import (
+            _try_shap_plot,
+        )
 
         X_use = self.X_valid if X is None else X[self.feature_names_].copy()
         if len(X_use) > max_samples:
@@ -581,6 +594,7 @@ class ModelExplainer:
             n_show:   Число наблюдений на итоговом графике (сетка ceil(n/3) × 3).
             top_n:    Число признаков в каждом waterfall.
             save_path: Если задан — сохраняет PNG.
+
         """
         if not self.supports_shap_:
             raise ValueError(f'SHAP недоступен для {self.model_name_}')
@@ -646,6 +660,7 @@ class ModelExplainer:
             top_n:       Число признаков, если features=None.
             grid_points: Число точек сетки вдоль оси признака.
             save_path:   Если задан — сохраняет PNG.
+
         """
         if features is None:
             imp = self.feature_importance()
@@ -711,6 +726,7 @@ class ModelExplainer:
 
         Returns:
             True если визуализация успешно создана.
+
         """
         if not self.supports_intrinsic_:
             logger.info('plot_intrinsic недоступен для %s', self.model_name_)
@@ -726,7 +742,9 @@ class ModelExplainer:
             tmp.close()
             cleanup_path = save_path
 
-        from ml_toolkit.model_explainer.intrinsic_visualization import plot_interpretable_extra  # noqa: PLC0415
+        from ml_toolkit.model_explainer.intrinsic_visualization import (
+            plot_interpretable_extra,
+        )
         ok = plot_interpretable_extra(
             raw, self.model_name_, self.feature_names_,
             self.X_valid, save_path=save_path, task=self.task,
@@ -766,6 +784,7 @@ class ModelExplainer:
 
         Returns:
             Список Path сохранённых PNG-файлов.
+
         """
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -791,7 +810,9 @@ class ModelExplainer:
         if self.supports_intrinsic_:
             path = out_dir / f'{prefix}_intrinsic.png'
             try:
-                from ml_toolkit.model_explainer.intrinsic_visualization import plot_interpretable_extra  # noqa: PLC0415
+                from ml_toolkit.model_explainer.intrinsic_visualization import (
+                    plot_interpretable_extra,
+                )
                 raw = _model_for_intrinsic(self.model, self.model_name_)
                 ok = plot_interpretable_extra(
                     raw, self.model_name_, self.feature_names_,

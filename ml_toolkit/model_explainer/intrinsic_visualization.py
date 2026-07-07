@@ -29,9 +29,17 @@ import pandas as pd
 
 from ml_toolkit.models import (
     GAM_NAMES as _GAM_SET,
+)
+from ml_toolkit.models import (
     IMODELS_NAMES as _RULE_TEXT_SET,
+)
+from ml_toolkit.models import (
     INTERPRETABLE_NEURAL_NAMES as _NAM_SET,
+)
+from ml_toolkit.models import (
     INTERPRETABLE_TREE_NAMES as _INTERPRETABLE_TREE_SET,
+)
+from ml_toolkit.models import (
     LINEAR_TREE_NAMES as _LINEAR_TREE_SET,
 )
 
@@ -297,7 +305,7 @@ def _plot_mars_summary(
         # Feature importance через внутренние атрибуты MARS
         fi_raw: np.ndarray | None = None
         if hasattr(earth_model, 'feature_importances_'):
-            raw = getattr(earth_model, 'feature_importances_')
+            raw = earth_model.feature_importances_
             if isinstance(raw, dict):
                 nf_idx = {f: i for i, f in enumerate(num_feats)}
                 fi_arr = np.array([raw.get(f, 0.0) for f in num_feats])
@@ -644,7 +652,6 @@ def _plot_soft_decision_tree(
 ) -> bool:
     """SoftDecisionTree: важность признаков из весов inner_w + распределение значений листьев."""
     try:
-        import torch
 
         model, _imputer, _scaler, num_feats = model_tuple
         if model._net is None:
@@ -686,7 +693,7 @@ def _plot_soft_decision_tree(
         ax_leaf.axhline(0, color='gray', lw=0.8)
         ax_leaf.set_xlabel('Leaf index', fontsize=9)
         ax_leaf.set_ylabel('Leaf value', fontsize=9)
-        ax_leaf.set_title(f'Leaf values  (blue=negative, red=positive)', fontsize=9)
+        ax_leaf.set_title('Leaf values  (blue=negative, red=positive)', fontsize=9)
         ax_leaf.spines[['top', 'right']].set_visible(False)
         ax_leaf.grid(axis='y', alpha=0.25, linestyle='--')
 
@@ -789,6 +796,7 @@ def plot_interpretable_extra(
 
     Returns:
         True если визуализация успешно сохранена.
+
     """
     if model_name not in ALL_INTERPRETABLE:
         return False

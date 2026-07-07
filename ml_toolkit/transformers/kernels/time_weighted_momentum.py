@@ -35,6 +35,7 @@ Example:
     window_sum = 10+...+60 = 210
     time_weighted_momentum = 150 / 210 = 0.714
     → time_weighted_momentum__w6 = 0.714  (положительный нарастающий импульс)
+
 """
 
 import numba as nb
@@ -42,7 +43,7 @@ import numpy as np
 
 from .._windowing import compute_window_sum, resolve_window_size, safe_ratio
 
-FEATURE = "time_weighted_momentum"
+FEATURE = 'time_weighted_momentum'
 
 
 @nb.njit(cache=True)
@@ -69,6 +70,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

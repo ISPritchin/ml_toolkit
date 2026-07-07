@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 import io
 import logging
-from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -30,7 +30,7 @@ class BaseEvaluator:
 
     # ── Registration ──────────────────────────────────────────────────────────
 
-    def add(self, name: str, y_true: Any, y_second: Any) -> 'BaseEvaluator':
+    def add(self, name: str, y_true: Any, y_second: Any) -> BaseEvaluator:
         """Register a split. y_second is y_proba (cls) or y_pred (reg). Returns self."""
         self._splits[name] = (np.asarray(y_true), np.asarray(y_second))
         return self
@@ -39,12 +39,13 @@ class BaseEvaluator:
         self,
         name_or_fn: str | Callable,
         name: str | None = None,
-    ) -> 'BaseEvaluator':
+    ) -> BaseEvaluator:
         """Register one metric.
 
         Args:
             name_or_fn: Preset name (str) or callable (y_true, y_second) → float.
             name: Display name; required when name_or_fn is callable.
+
         """
         if isinstance(name_or_fn, str):
             if name_or_fn not in self._AVAILABLE_PRESETS:
@@ -61,7 +62,7 @@ class BaseEvaluator:
             raise TypeError(f'Expected str or callable, got {type(name_or_fn).__name__!r}')
         return self
 
-    def add_metrics(self, metrics: dict[str, str | Callable]) -> 'BaseEvaluator':
+    def add_metrics(self, metrics: dict[str, str | Callable]) -> BaseEvaluator:
         """Register multiple metrics from {display_name: preset_str_or_callable}."""
         for k, v in metrics.items():
             if isinstance(v, str):
@@ -76,7 +77,7 @@ class BaseEvaluator:
                 )
         return self
 
-    def add_default_metrics(self) -> 'BaseEvaluator':
+    def add_default_metrics(self) -> BaseEvaluator:
         """Add the class-defined default metric set."""
         for name in self._DEFAULT_METRIC_NAMES:
             self._metrics[name] = self._AVAILABLE_PRESETS[name]
@@ -244,7 +245,7 @@ class BaseEvaluator:
     def _draw_ci_panel(
         self,
         ax_: Any,
-        df: 'pd.DataFrame',
+        df: pd.DataFrame,
         split: str,
         show_point_estimate: bool,
     ) -> None:
@@ -294,6 +295,7 @@ class BaseEvaluator:
             show_point_estimate: Overlay a diamond marker at the point estimate.
             ax:                  Existing Axes (optional); disables auto-split.
             path:                Output path (optional).
+
         """
         import matplotlib.pyplot as plt
 

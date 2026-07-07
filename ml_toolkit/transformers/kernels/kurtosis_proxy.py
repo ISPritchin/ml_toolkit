@@ -40,6 +40,7 @@ Example:
     sum(z⁴) = 5·0.04 + 25 = 25.2
     kurt = 25.2/6 − 3 = 4.2 − 3 = 1.2
     → kurtosis_proxy__kurt_w6 = 1.2  (тяжёлый правый хвост)
+
 """
 
 import numba as nb
@@ -55,7 +56,7 @@ from .._windowing import (
     sorted_quantile,
 )
 
-FEATURE = "kurtosis_proxy"
+FEATURE = 'kurtosis_proxy'
 
 
 @nb.njit(cache=True)
@@ -101,19 +102,19 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out_kurt, out_p75p25, out_p90p10, out_upper, out_lower = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(out_kurt[j])
-        suffixes.append(f"kurt_w{w}")
+        suffixes.append(f'kurt_w{w}')
         arrays.append(out_p75p25[j])
-        suffixes.append(f"p75_p25_w{w}")
+        suffixes.append(f'p75_p25_w{w}')
         arrays.append(out_p90p10[j])
-        suffixes.append(f"p90_p10_w{w}")
+        suffixes.append(f'p90_p10_w{w}')
         arrays.append(out_upper[j])
-        suffixes.append(f"upper_tail_w{w}")
+        suffixes.append(f'upper_tail_w{w}')
         arrays.append(out_lower[j])
-        suffixes.append(f"lower_tail_w{w}")
+        suffixes.append(f'lower_tail_w{w}')
     return arrays, suffixes

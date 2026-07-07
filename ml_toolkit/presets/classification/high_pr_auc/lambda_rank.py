@@ -82,6 +82,7 @@ class LambdaRankClassifier(BasePreset):
         model.fit(X_train, y_train, X_valid, y_valid)
         # predict_proba возвращает позицию скора в train-распределении, [0, 1]
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -117,7 +118,7 @@ class LambdaRankClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'LambdaRankClassifier':
+    ) -> LambdaRankClassifier:
         import lightgbm as lgb
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
@@ -154,7 +155,7 @@ class LambdaRankClassifier(BasePreset):
         train_set = lgb.Dataset(
             X_tr_feats, label=y_tr,
             group=[len(y_tr)],
-            categorical_feature=self.cat_features_ if self.cat_features_ else 'auto',
+            categorical_feature=self.cat_features_ or 'auto',
         )
         valid_set = lgb.Dataset(
             X_va_feats, label=y_va,

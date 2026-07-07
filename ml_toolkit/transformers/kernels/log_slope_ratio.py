@@ -32,6 +32,7 @@ Example:
     log_slope_long  (окно 6, весь ряд)           = 0.676
     log_slope_ratio = 0.689 / 0.676 = 1.019
     → log_slope_ratio__w3_w6 = 1.019  (краткосрочный log-темп чуть выше)
+
 """
 
 import numba as nb
@@ -39,7 +40,7 @@ import numpy as np
 
 from .._windowing import fit_linear_trend_slope, resolve_window_size, safe_ratio
 
-FEATURE = "log_slope_ratio"
+FEATURE = 'log_slope_ratio'
 
 
 @nb.njit(cache=True)
@@ -60,9 +61,9 @@ def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, pairs: n
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"pairs": [[6, 12]]}"""
-    pairs = np.array(params["pairs"], dtype=np.int64)
+    pairs = np.array(params['pairs'], dtype=np.int64)
     # log1p считается один раз на колонку, без буфера на каждое окно
     log_values = np.log1p(np.abs(values))
     out = _kernel(log_values, position, pairs)
-    p = params["pairs"]
-    return [out[j] for j in range(len(p))], [f"w{a}_w{b}" for a, b in p]
+    p = params['pairs']
+    return [out[j] for j in range(len(p))], [f'w{a}_w{b}' for a, b in p]

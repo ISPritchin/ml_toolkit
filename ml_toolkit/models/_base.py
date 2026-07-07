@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
+import logging
 from typing import Any
 
 import numpy as np
@@ -19,7 +19,7 @@ def _to_pandas(df: Any) -> pd.DataFrame:
         # use_pyarrow_extension_array=False — нужны NumPy-backed массивы для sklearn/lgbm/catboost
         return df.to_pandas(use_pyarrow_extension_array=False)
     raise TypeError(
-        f"Ожидается pandas.DataFrame или polars.DataFrame, получено {type(df).__name__!r}"
+        f'Ожидается pandas.DataFrame или polars.DataFrame, получено {type(df).__name__!r}'
     )
 
 
@@ -32,7 +32,7 @@ def _to_numpy(series: Any) -> np.ndarray:
     if hasattr(series, 'to_numpy'):  # polars Series
         return series.to_numpy()
     raise TypeError(
-        f"Ожидается pd.Series, pl.Series или np.ndarray, получено {type(series).__name__!r}"
+        f'Ожидается pd.Series, pl.Series или np.ndarray, получено {type(series).__name__!r}'
     )
 
 logger = logging.getLogger(__name__)
@@ -56,11 +56,11 @@ class BaseModel(ABC):
         n_optuna_trials: int = 50,
         model_settings: dict[str, Any] | None = None,
     ) -> None:
-        """
-        Args:
-            params: Гиперпараметры модели. Если None — запускается Optuna.
-            n_optuna_trials: Число trials Optuna (игнорируется если params задан).
-            model_settings: Доп. настройки: baseline_col, reg_metric, cls_metric и т.п.
+        """Args:
+        params: Гиперпараметры модели. Если None — запускается Optuna.
+        n_optuna_trials: Число trials Optuna (игнорируется если params задан).
+        model_settings: Доп. настройки: baseline_col, reg_metric, cls_metric и т.п.
+
         """
         self.params = params
         self.n_optuna_trials = n_optuna_trials
@@ -83,7 +83,7 @@ class BaseModel(ABC):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "BaseModel":
+    ) -> BaseModel:
         """Обучает модель. Возвращает self для method chaining.
 
         Args:
@@ -93,6 +93,7 @@ class BaseModel(ABC):
             y_valid: Целевая переменная валидации.
             selected_features: Признаки для обучения. None → все столбцы X_train.
             cat_features: Категориальные признаки.
+
         """
 
     def predict(self, X: Any) -> np.ndarray:
@@ -106,15 +107,15 @@ class BaseModel(ABC):
         return self._predict_proba_impl(_to_pandas(X))
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
-        raise NotImplementedError(f"{type(self).__name__} не реализует predict()")
+        raise NotImplementedError(f'{type(self).__name__} не реализует predict()')
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
-        raise NotImplementedError(f"{type(self).__name__} не реализует predict_proba()")
+        raise NotImplementedError(f'{type(self).__name__} не реализует predict_proba()')
 
     def _check_fitted(self) -> None:
         if self._model is None:
             raise RuntimeError(
-                f"{type(self).__name__} не обучена. Вызовите .fit() перед .predict()."
+                f'{type(self).__name__} не обучена. Вызовите .fit() перед .predict().'
             )
 
     def _resolve_features(

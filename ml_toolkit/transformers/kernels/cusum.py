@@ -36,14 +36,18 @@ Example:
     cusum_pos = 15 + 5 = 20
     cusum_neg = −15 + (−5) = −20
     → cusum__pos_w4 = 20,  cusum__neg_w4 = −20
+
 """
 
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean_and_std, compute_window_sum, resolve_window_size
+from .._windowing import (
+    compute_window_sum,
+    resolve_window_size,
+)
 
-FEATURE = "cusum"
+FEATURE = 'cusum'
 
 
 @nb.njit(cache=True)
@@ -73,13 +77,13 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out_pos, out_neg = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(out_pos[j])
-        suffixes.append(f"pos_w{w}")
+        suffixes.append(f'pos_w{w}')
         arrays.append(out_neg[j])
-        suffixes.append(f"neg_w{w}")
+        suffixes.append(f'neg_w{w}')
     return arrays, suffixes

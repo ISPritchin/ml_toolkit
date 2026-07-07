@@ -15,7 +15,7 @@ import polars as pl
 
 from ml_toolkit.feature_selection.screening import FeatureScreener as _FeatureScreener
 
-__all__ = ["FeatureScreener"]
+__all__ = ['FeatureScreener']
 
 
 def _to_pl_frame(X: pd.DataFrame) -> pl.DataFrame:
@@ -43,7 +43,7 @@ class FeatureScreener(_FeatureScreener):
     Параметры идентичны оригиналу — см. ml_toolkit/feature_selection/screening.py.
     """
 
-    def fit(self, X: pd.DataFrame, y: np.ndarray | pd.Series) -> "FeatureScreener":
+    def fit(self, X: pd.DataFrame, y: np.ndarray | pd.Series) -> FeatureScreener:
         super().fit(_to_pl_frame(X), _to_pl_y(y))
         return self
 
@@ -55,7 +55,7 @@ class FeatureScreener(_FeatureScreener):
 
     def report(self) -> pd.DataFrame:
         """Полная таблица статистик с именем признака в качестве индекса."""
-        return super().report().to_pandas().set_index("feature")
+        return super().report().to_pandas().set_index('feature')
 
     def removal_summary(self) -> pd.DataFrame:
         """Сводка удалённых признаков по причинам + строка ИТОГО."""

@@ -47,6 +47,7 @@ def fill_region(
             'top-left' | 'top-center' | 'top-right' |
             'center-left' | 'center' | 'center-right' |
             'bottom-left' | 'bottom-center' | 'bottom-right'
+
     """
     ax.axvspan(x1, x2, color=color, alpha=alpha, **span_kwargs)
     if not label:

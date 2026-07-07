@@ -31,11 +31,12 @@ class LogitNormLoss:
     temperature:
         Температура нормализации. Меньше temperature → сильнее нормализация
         → менее уверенные вероятности. Рекомендуется 0.01-0.1.
+
     """
 
     def __init__(self, temperature: float = 0.04) -> None:
         if temperature <= 0.0:
-            raise ValueError(f"temperature должна быть положительной, получено {temperature}")
+            raise ValueError(f'temperature должна быть положительной, получено {temperature}')
         self.temperature = temperature
 
     def calc_ders_multi(self, approx, target, weight):

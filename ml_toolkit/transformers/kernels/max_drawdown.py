@@ -31,6 +31,7 @@ Example:
     running_peak растёт до 80, затем падение до 5
     наихудшая просадка в точке v=5: (80 − 5) / 80 = 0.9375
     → max_drawdown__w6 = 0.9375  (потеря ~94% от пика)
+
 """
 
 import numba as nb
@@ -38,7 +39,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size, safe_ratio
 
-FEATURE = "max_drawdown"
+FEATURE = 'max_drawdown'
 
 
 @nb.njit(cache=True)
@@ -54,17 +55,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             largest_dd = 0.0
             for offset in range(ws):
                 v = product_values[row_idx - ws + 1 + offset]
-                if v > running_peak:
-                    running_peak = v
+                running_peak = max(running_peak, v)
                 dd = safe_ratio(running_peak - v, running_peak)
-                if dd > largest_dd:
-                    largest_dd = dd
+                largest_dd = max(largest_dd, dd)
             out[j, row_idx] = largest_dd
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

@@ -24,8 +24,13 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
-    CLS_METRICS, fit_calibrator, make_catboost_pruning_callback, resolve_metric_fn,
-    resolve_pruner, resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    fit_calibrator,
+    make_catboost_pruning_callback,
+    resolve_metric_fn,
+    resolve_pruner,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +42,7 @@ def _import_catboost():
         from catboost import Pool as _pool
         return _ranker, _pool
     except ImportError as err:
-        raise ImportError("CatBoost не установлен. Выполните: pip install catboost") from err
+        raise ImportError('CatBoost не установлен. Выполните: pip install catboost') from err
 
 
 def _make_group_ids(n: int, group_size: int | None) -> np.ndarray:
@@ -86,7 +91,7 @@ class CatBoostRanker(BaseModel):
         y_valid: Any | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "CatBoostRanker":
+    ) -> CatBoostRanker:
         _CB_Ranker, Pool = _import_catboost()
 
         set_optuna_verbosity(self.model_settings)
@@ -109,7 +114,7 @@ class CatBoostRanker(BaseModel):
 
         if self.params is None:
             if va_pool is None:
-                raise ValueError("X_valid и y_valid обязательны при params=None (Optuna)")
+                raise ValueError('X_valid и y_valid обязательны при params=None (Optuna)')
             self._model, self.best_params_ = self._fit_with_optuna(
                 _CB_Ranker, Pool, tr_pool, va_pool, Xva, yva, cat_in_sel, group_size,
             )
@@ -189,7 +194,7 @@ class CatBoostRanker(BaseModel):
         try:
             from catboost import Pool
         except ImportError as err:
-            raise ImportError("CatBoost не установлен") from err
+            raise ImportError('CatBoost не установлен') from err
         cat_in_sel = [c for c in self.cat_features_ if c in self.selected_features_]
         group_size: int | None = self.model_settings.get('group_size', 2000)
         Xp = X[self.selected_features_]

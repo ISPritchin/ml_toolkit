@@ -34,7 +34,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ml_toolkit.feature_selection.drift_filter import AdversarialDriftFilter, compute_psi
+from ml_toolkit.feature_selection.drift_filter import (
+    AdversarialDriftFilter,
+    compute_psi,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +178,7 @@ class FeatureSelectionPipeline:
         X_train_clean = pipeline.transform(X_train)
         X_valid_clean = pipeline.transform(X_valid)
         X_test_clean  = pipeline.transform(X_test)
+
     """
 
     def __init__(
@@ -340,7 +344,7 @@ class FeatureSelectionPipeline:
         X_valid: pd.DataFrame,
         y_valid: Any = None,
         selected_features: list[str] | None = None,
-    ) -> 'FeatureSelectionPipeline':
+    ) -> FeatureSelectionPipeline:
         """Обучить пайплайн на X_train/y_train с учётом X_valid.
 
         Args:
@@ -353,11 +357,12 @@ class FeatureSelectionPipeline:
 
         Returns:
             self
+
         """
         if not isinstance(X_train, pd.DataFrame):
-            raise TypeError("X_train должен быть pandas DataFrame")
+            raise TypeError('X_train должен быть pandas DataFrame')
         if not isinstance(X_valid, pd.DataFrame):
-            raise TypeError("X_valid должен быть pandas DataFrame")
+            raise TypeError('X_valid должен быть pandas DataFrame')
 
         y_arr = np.asarray(y_train)
 
@@ -395,10 +400,10 @@ class FeatureSelectionPipeline:
         Работает для X_train, X_valid и X_test.
         """
         if not self._fitted:
-            raise RuntimeError("FeatureSelectionPipeline не обучен. Вызовите fit() первым.")
+            raise RuntimeError('FeatureSelectionPipeline не обучен. Вызовите fit() первым.')
         missing = [f for f in self.selected_features_ if f not in X.columns]
         if missing:
-            raise ValueError(f"В X отсутствуют признаки: {missing}")
+            raise ValueError(f'В X отсутствуют признаки: {missing}')
         return X[self.selected_features_]
 
     def fit_transform(
@@ -458,13 +463,13 @@ class FeatureSelectionPipeline:
                  univariate_auc, kept, stage_removed, removed_by.
         """
         if not self._fitted:
-            raise RuntimeError("FeatureSelectionPipeline не обучен.")
+            raise RuntimeError('FeatureSelectionPipeline не обучен.')
         return pd.DataFrame(self._report_rows)
 
     def summary(self) -> str:
         """Краткая сводка результатов фильтрации."""
         if not self._fitted:
-            raise RuntimeError("FeatureSelectionPipeline не обучен.")
+            raise RuntimeError('FeatureSelectionPipeline не обучен.')
 
         total = len(self._report_rows)
         n1 = len(self.stage1_removed_)
@@ -489,7 +494,7 @@ class FeatureSelectionPipeline:
     def removal_summary(self) -> pd.DataFrame:
         """Агрегированная сводка по причинам удаления."""
         if not self._fitted:
-            raise RuntimeError("FeatureSelectionPipeline не обучен.")
+            raise RuntimeError('FeatureSelectionPipeline не обучен.')
         rows = [r for r in self._report_rows if not r['kept']]
         if not rows:
             return pd.DataFrame(columns=['причина', 'признаков'])

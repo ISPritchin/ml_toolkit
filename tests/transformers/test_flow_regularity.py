@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("flow_regularity", values, params)
+    return run_transformer('flow_regularity', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,27 +14,27 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_gap_mean_and_cv():
     # [5,0,0,8,0,0] w=6: one gap of length 2 → gap_mean=2.0, gap_std=0.0, gap_cv=0.0
-    arrs, sfxs = _run([5, 0, 0, 8, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "gap_mean_w6")[-1] == pytest.approx(2.0, abs=1e-4)
-    assert _get(arrs, sfxs, "gap_cv_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([5, 0, 0, 8, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'gap_mean_w6')[-1] == pytest.approx(2.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'gap_cv_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_continuous_stream_is_monthly():
     # All nonzero → is_monthly=1
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], {"windows": [12]})
-    assert _get(arrs, sfxs, "is_monthly_w12")[-1] == pytest.approx(1.0)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], {'windows': [12]})
+    assert _get(arrs, sfxs, 'is_monthly_w12')[-1] == pytest.approx(1.0)
 
 
 def test_all_zeros_no_gaps_no_bursts():
     # No active months → gap_mean=0 (no gaps recorded)
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "gap_mean_w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'gap_mean_w6')[-1] == pytest.approx(0.0)
 
 
 def test_variable_gaps_positive_cv():
     # [10,0,10,0,0,0,10,0] w=8: gaps of length 1 and 3 → cv > 0
-    arrs, sfxs = _run([10, 0, 10, 0, 0, 0, 10, 0], {"windows": [8]})
-    assert _get(arrs, sfxs, "gap_cv_w8")[-1] > 0
+    arrs, sfxs = _run([10, 0, 10, 0, 0, 0, 10, 0], {'windows': [8]})
+    assert _get(arrs, sfxs, 'gap_cv_w8')[-1] > 0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

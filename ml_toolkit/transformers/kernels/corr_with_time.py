@@ -34,6 +34,7 @@ Example:
     cov = 6·560 − 15·180 = 3360 − 2700 = 660
     var = sqrt((6·55−15²)(6·6400−180²)) = sqrt(105·6000) = 793.7
     → corr_with_time__w6 = 660/793.7 = 0.832  (растущий, но зубчатый тренд)
+
 """
 
 import numba as nb
@@ -41,7 +42,7 @@ import numpy as np
 
 from .._windowing import EPS, resolve_window_size
 
-FEATURE = "corr_with_time"
+FEATURE = 'corr_with_time'
 
 
 @nb.njit(cache=True)
@@ -75,6 +76,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

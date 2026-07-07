@@ -19,7 +19,9 @@ import logging
 
 import numpy as np
 
-from ml_toolkit.presets.classification.high_pr_auc.pu_learning import PULearningClassifier
+from ml_toolkit.presets.classification.high_pr_auc.pu_learning import (
+    PULearningClassifier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ class ElkanNotoHoldoutPU(PULearningClassifier):
         model = ElkanNotoHoldoutPU(c_holdout_frac=0.3, n_bootstrap=100)
         model.fit(X_train, y_train, X_valid, y_valid)
         print(f"c={model.c_:.3f}  95% CI={model.c_ci_}")
+
     """
 
     def __init__(

@@ -57,6 +57,7 @@ class PolyLossClassifier(_CustomLossClassifierBase):
 
         model = PolyLossClassifier(eps1=2.0)
         model.fit(X_train, y_train, X_valid, y_valid)
+
     """
 
     _loss_spec = _LossSpec(

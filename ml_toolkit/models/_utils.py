@@ -8,7 +8,6 @@ import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
 
-
 # ── Именованные метрики ────────────────────────────────────────────────────────
 
 def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -45,7 +44,7 @@ CLS_METRICS: dict[str, tuple[Callable, str]] = {
 
 # ── Параметризованные метрики ─────────────────────────────────────────────────
 
-def precision_at_k(y_true: np.ndarray, y_score: np.ndarray, *, k: int | float) -> float:
+def precision_at_k(y_true: np.ndarray, y_score: np.ndarray, *, k: float) -> float:
     """Precision@k: доля позитивных среди топ-k предсказаний по убыванию score.
 
     Args:
@@ -55,6 +54,7 @@ def precision_at_k(y_true: np.ndarray, y_score: np.ndarray, *, k: int | float) -
 
     Returns:
         Доля позитивных в топ-k, от 0.0 до 1.0.
+
     """
     n = len(y_true)
     cut = max(1, int(n * k)) if isinstance(k, float) and k <= 1.0 else min(int(k), n)
@@ -62,7 +62,7 @@ def precision_at_k(y_true: np.ndarray, y_score: np.ndarray, *, k: int | float) -
     return float(np.asarray(y_true)[top_idx].mean())
 
 
-def recall_at_k(y_true: np.ndarray, y_score: np.ndarray, *, k: int | float) -> float:
+def recall_at_k(y_true: np.ndarray, y_score: np.ndarray, *, k: float) -> float:
     """Recall@k: доля найденных позитивов среди топ-k предсказаний.
 
     Args:
@@ -72,6 +72,7 @@ def recall_at_k(y_true: np.ndarray, y_score: np.ndarray, *, k: int | float) -> f
 
     Returns:
         Recall в топ-k; 0.0 если нет позитивных примеров.
+
     """
     n = len(y_true)
     cut = max(1, int(n * k)) if isinstance(k, float) and k <= 1.0 else min(int(k), n)
@@ -94,6 +95,7 @@ def quantile_loss(y_true: np.ndarray, y_pred: np.ndarray, *, q: float) -> float:
 
     Returns:
         Среднее значение Pinball loss.
+
     """
     if not 0.0 < q < 1.0:
         raise ValueError(f'q должен быть в (0, 1), получено {q}')
@@ -103,7 +105,7 @@ def quantile_loss(y_true: np.ndarray, y_pred: np.ndarray, *, q: float) -> float:
 
 # ── Фабричные функции ─────────────────────────────────────────────────────────
 
-def make_precision_at_k(k: int | float) -> tuple[Callable, str]:
+def make_precision_at_k(k: float) -> tuple[Callable, str]:
     """Возвращает (fn, 'maximize') для использования в model_settings['cls_metric'].
 
     Args:
@@ -113,16 +115,18 @@ def make_precision_at_k(k: int | float) -> tuple[Callable, str]:
 
         model_settings = {'name': 'catboost', 'cls_metric': make_precision_at_k(100)}
         model_settings = {'name': 'catboost', 'cls_metric': make_precision_at_k(0.05)}
+
     """
     import functools
     return (functools.partial(precision_at_k, k=k), 'maximize')
 
 
-def make_recall_at_k(k: int | float) -> tuple[Callable, str]:
+def make_recall_at_k(k: float) -> tuple[Callable, str]:
     """Возвращает (fn, 'maximize') для использования в model_settings['cls_metric'].
 
     Args:
         k: Число объектов (int) или доля выборки (float ∈ (0, 1]).
+
     """
     import functools
     return (functools.partial(recall_at_k, k=k), 'maximize')
@@ -137,6 +141,7 @@ def make_quantile_loss(q: float) -> tuple[Callable, str]:
     Example::
 
         model_settings = {'name': 'catboost', 'reg_metric': make_quantile_loss(0.75)}
+
     """
     import functools
     return (functools.partial(quantile_loss, q=q), 'minimize')
@@ -159,6 +164,7 @@ def build_cat_encoder(
     Returns:
         Кортеж (encoder, cat_in_sel, new_col_names, sel_updated).
         ``encoder`` равен None если категориальных признаков нет.
+
     """
     from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
@@ -217,6 +223,7 @@ def apply_cat_encoder(
 
     Returns:
         DataFrame с закодированными категориальными признаками.
+
     """
     if encoder is None or not cat_in_sel:
         return X
@@ -269,6 +276,7 @@ def encode_cat_features(
             X_train, X_valid, X_inference, selected_features, cat_features,
             model_settings={'cat_encoder': 'onehot'},
         )
+
     """
     encoder, cat_in_sel, new_col_names, sel_updated = build_cat_encoder(
         X_train, selected_features, cat_features, model_settings,
@@ -375,7 +383,8 @@ def make_xgb_pruning_callback(trial: Any) -> Any:
 def make_lgb_pruning_callback(trial: Any) -> Callable[[Any], None]:
     """LightGBM callback: см. make_xgb_pruning_callback — тот же report()/should_prune(),
     берёт первую строку env.evaluation_result_list (в этом пакете objective всегда передаёт
-    ровно один eval_set с одной метрикой)."""
+    ровно один eval_set с одной метрикой).
+    """
     import optuna
 
     def _callback(env: Any) -> None:
@@ -449,6 +458,7 @@ def resolve_metric_fn(
         ms = {'reg_metric': lambda yt, yp: custom(yt, yp)}
         # кортеж (fn, direction)
         ms = {'reg_metric': (lambda yt, yp: r2_score(yt, yp), 'maximize')}
+
     """
     spec = model_settings.get(key)
     if spec is None:
@@ -491,6 +501,7 @@ def fit_rank_reference(scores: np.ndarray) -> np.ndarray:
 
     Returns:
         Отсортированный по возрастанию float64-массив — референсное распределение.
+
     """
     return np.sort(np.asarray(scores, dtype=np.float64))
 
@@ -509,6 +520,7 @@ def rank_transform(scores: np.ndarray, reference: np.ndarray) -> np.ndarray:
 
     Returns:
         Массив float64 в [0, 1]: доля референсных скоров, не превышающих данный.
+
     """
     reference = np.asarray(reference, dtype=np.float64)
     if len(reference) == 0:
@@ -526,6 +538,7 @@ def fit_calibrator(val_proba: np.ndarray, y_valid: np.ndarray) -> IsotonicRegres
 
     Returns:
         Обученный калибратор с методом predict(proba) -> np.ndarray.
+
     """
     calibrator = IsotonicRegression(out_of_bounds='clip')
     calibrator.fit(val_proba, y_valid)
@@ -546,6 +559,7 @@ def fit_multiclass_calibrators(
 
     Returns:
         Список из K обученных IsotonicRegression, по одному на класс.
+
     """
     classes = np.unique(y_valid)
     return [
@@ -565,6 +579,7 @@ def apply_multiclass_calibrators(
 
     Returns:
         Откалиброванная матрица (n_samples, K), строки нормированы к сумме 1.
+
     """
     calibrated = np.column_stack([cal.predict(proba[:, k]) for k, cal in enumerate(calibrators)])
     row_sums = calibrated.sum(axis=1, keepdims=True)
@@ -581,5 +596,6 @@ def calibrate_proba(val_proba: np.ndarray, y_valid: np.ndarray, infer_proba: np.
 
     Returns:
         Откалиброванные вероятности для инференс-выборки, зажатые в [0, 1].
+
     """
     return fit_calibrator(val_proba, y_valid).predict(infer_proba)

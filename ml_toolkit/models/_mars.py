@@ -12,8 +12,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -24,7 +24,14 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, mean_absolute_error
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +58,7 @@ class MARSRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'MARSRegressor':
+    ) -> MARSRegressor:
         try:
             from pyearth import Earth
         except ImportError as exc:
@@ -129,7 +136,7 @@ class MARSClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'MARSClassifier':
+    ) -> MARSClassifier:
         try:
             from pyearth import Earth
         except ImportError as exc:

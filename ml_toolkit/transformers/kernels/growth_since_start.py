@@ -30,6 +30,7 @@ Example:
 
     growth_since_start = (v[t] − first_nonzero) / first_nonzero = (30 − 10)/10
     → growth_since_start = 2.0  (рост ×3 от стартового уровня)
+
 """
 
 import numba as nb
@@ -37,7 +38,7 @@ import numpy as np
 
 from .._windowing import safe_ratio
 
-FEATURE = "growth_since_start"
+FEATURE = 'growth_since_start'
 
 
 @nb.njit(cache=True)
@@ -57,4 +58,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
-    return [_kernel(values, position)], [""]
+    return [_kernel(values, position)], ['']

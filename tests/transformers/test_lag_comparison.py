@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("lag_comparison", values, params)
+    return run_transformer('lag_comparison', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,25 +16,25 @@ def _get(arrays, suffixes, suffix):
 def test_known_lag3_from_docstring():
     # [10,20,30,40]: lag3_ratio = 40/10 - 1 = 3.0
     arrs, sfxs = _run([10, 20, 30, 40])
-    assert _get(arrs, sfxs, "lag3_ratio")[-1] == pytest.approx(3.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'lag3_ratio')[-1] == pytest.approx(3.0, abs=1e-4)
 
 
 def test_lag9_zero_before_9_periods():
     arrs, sfxs = _run([10] * 9)
-    assert _get(arrs, sfxs, "lag9_ratio")[7] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'lag9_ratio')[7] == pytest.approx(0.0)
 
 
 def test_constant_series_all_ratios_zero():
     arrs, sfxs = _run([50] * 15)
-    assert _get(arrs, sfxs, "lag3_ratio")[-1] == pytest.approx(0.0, abs=1e-3)
-    assert _get(arrs, sfxs, "lag12_ratio")[-1] == pytest.approx(0.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'lag3_ratio')[-1] == pytest.approx(0.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'lag12_ratio')[-1] == pytest.approx(0.0, abs=1e-3)
 
 
 def test_lag12_yoy_doubling():
     # [10]*12 then [20]: last row v=20, v[t-12]=10 → lag12_ratio=20/10-1=1.0
     values = [10] * 12 + [20]
     arrs, sfxs = _run(values)
-    assert _get(arrs, sfxs, "lag12_ratio")[-1] == pytest.approx(1.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'lag12_ratio')[-1] == pytest.approx(1.0, abs=1e-4)
 
 
 def test_yoy_accel_positive_when_speeding_up():
@@ -41,7 +42,7 @@ def test_yoy_accel_positive_when_speeding_up():
     # need 19 values (pos>=18)
     values = [10] * 7 + [20] * 6 + [40] * 6
     arrs, sfxs = _run(values)
-    assert _get(arrs, sfxs, "yoy_accel")[-1] > 0
+    assert _get(arrs, sfxs, 'yoy_accel')[-1] > 0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

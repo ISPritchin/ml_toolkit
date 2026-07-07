@@ -19,8 +19,8 @@ xgboost — опциональная тяжёлая зависимость (не
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -109,6 +109,7 @@ class HeterogeneousStacking(BasePreset):
 
         model = HeterogeneousStacking(base_zoo=['catboost', 'lightgbm', 'logistic'])
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...], cat_features=[...])
+
     """
 
     def __init__(
@@ -347,7 +348,7 @@ class HeterogeneousStacking(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'HeterogeneousStacking':
+    ) -> HeterogeneousStacking:
         from sklearn.model_selection import StratifiedKFold
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)

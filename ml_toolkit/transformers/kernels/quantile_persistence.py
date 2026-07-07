@@ -42,6 +42,7 @@ Example:
     выше медианы (> 35): 40, 50, 60 → above_med = 3/6 = 0.5
     ранги растут монотонно → rank_trend > 0 (позиция улучшается)
     → quantile_persistence__above_med_w6 = 0.5,  rank_trend_w6 > 0
+
 """
 
 import numba as nb
@@ -55,7 +56,7 @@ from .._windowing import (
     sorted_quantile,
 )
 
-FEATURE = "quantile_persistence"
+FEATURE = 'quantile_persistence'
 
 
 @nb.njit(cache=True)
@@ -71,8 +72,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
     max_w = 1
     for j in range(n_w):
-        if windows[j] > max_w:
-            max_w = windows[j]
+        max_w = max(max_w, windows[j])
     sorted_buf = np.empty(max_w)
     ranks = np.empty(max_w)
 
@@ -104,7 +104,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                 if v <= p25: bot_q += 1
                 if v > ewma_now: above_ewma_cnt += 1
                 # rank within window: доля точек <= v (бинарный поиск по sorted_buf)
-                ranks[offset] = np.searchsorted(sorted_buf[:ws], v, side="right") / ws
+                ranks[offset] = np.searchsorted(sorted_buf[:ws], v, side='right') / ws
 
             out_above_med[j, row_idx] = above_med / ws
             out_top_q[j, row_idx] = top_q / ws
@@ -115,8 +115,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             # При ws < 2 не считается: half > ws означал бы чтение за границей буфера.
             if ws >= 2:
                 half = ws // 2
-                if half < 2:
-                    half = 2
+                half = max(half, 2)
                 start = ws - half
                 mean_r = 0.0
                 for i in range(half):
@@ -143,15 +142,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     am, tq, bq, rt, qs, ae = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(am[j]); suffixes.append(f"above_med_w{w}")
-        arrays.append(tq[j]); suffixes.append(f"top_q_w{w}")
-        arrays.append(bq[j]); suffixes.append(f"bot_q_w{w}")
-        arrays.append(rt[j]); suffixes.append(f"rank_trend_w{w}")
-        arrays.append(qs[j]); suffixes.append(f"q_stability_w{w}")
-        arrays.append(ae[j]); suffixes.append(f"above_ewma_w{w}")
+    for j, w in enumerate(params['windows']):
+        arrays.append(am[j]); suffixes.append(f'above_med_w{w}')
+        arrays.append(tq[j]); suffixes.append(f'top_q_w{w}')
+        arrays.append(bq[j]); suffixes.append(f'bot_q_w{w}')
+        arrays.append(rt[j]); suffixes.append(f'rank_trend_w{w}')
+        arrays.append(qs[j]); suffixes.append(f'q_stability_w{w}')
+        arrays.append(ae[j]); suffixes.append(f'above_ewma_w{w}')
     return arrays, suffixes

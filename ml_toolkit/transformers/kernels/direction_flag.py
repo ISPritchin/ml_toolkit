@@ -32,6 +32,7 @@ Example:
     OLS-наклон по окну = +10 (ровный рост +10 ед/мес)
     slope > eps → знак +1
     → direction_flag__w6 = +1.0  (восходящий тренд)
+
 """
 
 import numba as nb
@@ -39,7 +40,7 @@ import numpy as np
 
 from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size
 
-FEATURE = "direction_flag"
+FEATURE = 'direction_flag'
 
 
 @nb.njit(cache=True)
@@ -64,12 +65,12 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
+    """Args:
+    params: {"windows": [6, 12]}
+
     """
-    Args:
-        params: {"windows": [6, 12]}
-    """
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     arrays = [out[j] for j in range(len(windows))]
-    suffixes = [f"w{w}" for w in params["windows"]]
+    suffixes = [f'w{w}' for w in params['windows']]
     return arrays, suffixes

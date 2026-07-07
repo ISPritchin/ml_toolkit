@@ -1,9 +1,8 @@
 """Classification evaluator — metrics, threshold analysis, visualisations."""
 from __future__ import annotations
 
-import functools
-import logging
 from collections.abc import Callable
+import functools
 from typing import Any
 
 import numpy as np
@@ -148,23 +147,24 @@ _CLS_DEFAULT_METRICS = [
 
 # ── Factory functions ──────────────────────────────────────────────────────────
 
-def precision_at_k(k: int | float) -> Callable:
+def precision_at_k(k: float) -> Callable:
     """Returns (y_true, y_proba) → precision in top-k predictions.
 
     Args:
         k: Number of objects (int) or fraction of sample (float ∈ (0, 1]).
+
     """
     from ml_toolkit.models._utils import precision_at_k as _pak
     return functools.partial(_pak, k=k)
 
 
-def recall_at_k(k: int | float) -> Callable:
+def recall_at_k(k: float) -> Callable:
     """Returns (y_true, y_proba) → recall in top-k predictions."""
     from ml_toolkit.models._utils import recall_at_k as _rak
     return functools.partial(_rak, k=k)
 
 
-def lift_at_k(k: int | float) -> Callable:
+def lift_at_k(k: float) -> Callable:
     """Returns (y_true, y_proba) → lift = precision@k / base_rate."""
     from ml_toolkit.models._utils import precision_at_k as _pak
 
@@ -224,6 +224,7 @@ class ClassificationEvaluator(BaseEvaluator):
 
         Returns:
             (total_psi, bin_df) — bin_df columns: bin, {ref}_pct, {target}_pct, psi.
+
         """
         self._require_binary('psi')
         _, p_ref = self._splits[ref]
@@ -253,7 +254,10 @@ class ClassificationEvaluator(BaseEvaluator):
         """Scan precision/recall/f1/accuracy/specificity across thresholds (binary only)."""
         self._require_binary('threshold_scan')
         from sklearn.metrics import (
-            accuracy_score, f1_score, precision_score, recall_score,
+            accuracy_score,
+            f1_score,
+            precision_score,
+            recall_score,
         )
         y, p = self._splits[split]
         thresholds = np.linspace(0.01, 0.99, n_points)
@@ -522,6 +526,7 @@ class ClassificationEvaluator(BaseEvaluator):
             show_counts_axis:  Add a secondary top X-axis with absolute object counts.
             ax:                Existing Axes to draw on (optional).
             path:              Output path (optional).
+
         """
         from matplotlib.lines import Line2D
 

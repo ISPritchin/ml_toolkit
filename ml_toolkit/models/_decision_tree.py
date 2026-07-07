@@ -9,8 +9,8 @@ NaN: SimpleImputer(median) внутри Pipeline.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -24,9 +24,14 @@ from sklearn.tree import DecisionTreeRegressor as _SKDTRegressor
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
-    CLS_METRICS, REG_METRICS, apply_cat_encoder, build_cat_encoder,
-    calibrate_proba, encode_cat_features, fit_calibrator, resolve_metric_fn,
-    resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    REG_METRICS,
+    apply_cat_encoder,
+    build_cat_encoder,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +82,7 @@ class DecisionTreeRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'DecisionTreeRegressor':
+    ) -> DecisionTreeRegressor:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
@@ -143,7 +148,7 @@ class DecisionTreeClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'DecisionTreeClassifier':
+    ) -> DecisionTreeClassifier:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
@@ -239,5 +244,5 @@ def train_classification(
 
 
 def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
-    """sklearn DecisionTree предоставляет feature_importances_ напрямую; predict_fn не нужна."""
-    return None
+    """Sklearn DecisionTree предоставляет feature_importances_ напрямую; predict_fn не нужна."""
+    return

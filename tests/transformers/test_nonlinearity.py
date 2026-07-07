@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("nonlinearity", values, params)
+    return run_transformer('nonlinearity', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,28 +16,28 @@ def test_known_quad_proxy_from_docstring():
     # [10,20,30,20,10,5] w=6: mean=95/6≈15.833, third=2
     # Q1=(10+20)/2=15, Q2=(30+20)/2=25, Q3=(10+5)/2=7.5
     # quad=(15-50+7.5)/15.833=-27.5/15.833≈-1.737
-    arrs, sfxs = _run([10, 20, 30, 20, 10, 5], {"windows": [6]})
-    assert _get(arrs, sfxs, "quad_proxy_w6")[-1] == pytest.approx(-1.737, abs=0.02)
-    assert _get(arrs, sfxs, "convexity_sign_w6")[-1] == pytest.approx(-1.0)
+    arrs, sfxs = _run([10, 20, 30, 20, 10, 5], {'windows': [6]})
+    assert _get(arrs, sfxs, 'quad_proxy_w6')[-1] == pytest.approx(-1.737, abs=0.02)
+    assert _get(arrs, sfxs, 'convexity_sign_w6')[-1] == pytest.approx(-1.0)
 
 
 def test_linear_series_quad_proxy_near_zero():
     # Linear → Q1≈mean of first third, Q3≈mean of last third
     # For perfect linear the quad proxy is very small
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
     # Q1=(10+20)/2=15, Q2=(30+40)/2=35, Q3=(50+60)/2=55
     # quad=(15-70+55)/35=0/35=0
-    assert abs(_get(arrs, sfxs, "quad_proxy_w6")[-1]) < 0.01
+    assert abs(_get(arrs, sfxs, 'quad_proxy_w6')[-1]) < 0.01
 
 
 def test_constant_series_quad_proxy_zero():
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "quad_proxy_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'quad_proxy_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_all_zeros_quad_proxy_zero():
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "quad_proxy_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'quad_proxy_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

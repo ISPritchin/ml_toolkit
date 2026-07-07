@@ -25,8 +25,8 @@ c ≈ mean(model.predict_proba(X_val_c[y==1])), где X_val_c — полови�
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -34,7 +34,10 @@ import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.presets.classification._base import BasePreset
-from ml_toolkit.presets.classification._optuna_utils import CatBoostPruningCallback, make_pruner
+from ml_toolkit.presets.classification._optuna_utils import (
+    CatBoostPruningCallback,
+    make_pruner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +98,7 @@ class PULearningClassifier(BasePreset):
         model = PULearningClassifier()
         model.fit(X_train, y_train, X_valid, y_valid)
         proba = model.predict_proba(X_test)  # уже откорректированные вероятности
+
     """
 
     def __init__(
@@ -130,8 +134,8 @@ class PULearningClassifier(BasePreset):
     # ── Optuna ────────────────────────────────────────────────────────────────
 
     def _tune(self, tr_pool: Any, va_pool: Any) -> Any:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -213,7 +217,7 @@ class PULearningClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'PULearningClassifier':
+    ) -> PULearningClassifier:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(

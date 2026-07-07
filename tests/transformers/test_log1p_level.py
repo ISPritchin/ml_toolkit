@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("log1p_level", values, params)
+    return run_transformer('log1p_level', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,32 +16,32 @@ def _get(arrays, suffixes, suffix):
 def test_known_value():
     # v=100: sign(100)*log1p(100)=ln(101)≈4.6151
     arrs, sfxs = _run([100])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(math.log1p(100), abs=1e-6)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(math.log1p(100), abs=1e-6)
 
 
 def test_zero_maps_to_zero():
     arrs, sfxs = _run([0])
-    assert _get(arrs, sfxs, "")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, '')[-1] == pytest.approx(0.0)
 
 
 def test_large_value_compresses_scale():
     # log1p(1000) should be much less than 1000
     arrs, sfxs = _run([1000])
-    val = _get(arrs, sfxs, "")[-1]
+    val = _get(arrs, sfxs, '')[-1]
     assert val == pytest.approx(math.log1p(1000), abs=1e-6)
     assert val < 10  # compressed from 1000
 
 
 def test_series_monotone_positive():
     arrs, sfxs = _run([0, 10, 100, 1000])
-    result = _get(arrs, sfxs, "")
+    result = _get(arrs, sfxs, '')
     for i in range(len(result) - 1):
         assert result[i] <= result[i + 1]
 
 
 def test_zeros_in_series_give_zero():
     arrs, sfxs = _run([10, 0, 50, 0])
-    result = _get(arrs, sfxs, "")
+    result = _get(arrs, sfxs, '')
     assert result[1] == pytest.approx(0.0)
     assert result[3] == pytest.approx(0.0)
 

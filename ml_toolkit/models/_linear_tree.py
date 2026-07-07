@@ -9,8 +9,8 @@ Optuna тюнит max_depth ∈ [2, 15] — охватывает как инте
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -21,7 +21,14 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._utils import CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn, resolve_timeout, set_optuna_verbosity
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +69,7 @@ class LinearTreeRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'LinearTreeRegressor':
+    ) -> LinearTreeRegressor:
         try:
             from lineartree import LinearTreeRegressor as _LTR
             from sklearn.linear_model import Ridge
@@ -135,7 +142,7 @@ class LinearTreeClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'LinearTreeClassifier':
+    ) -> LinearTreeClassifier:
         try:
             from lineartree import LinearTreeClassifier as _LTC
             from sklearn.linear_model import LogisticRegression

@@ -16,23 +16,29 @@ model_settings keys (опционально):
 
 from __future__ import annotations
 
-import logging
+from collections.abc import Callable
 from copy import deepcopy
+import logging
 from typing import Any
 
 import numpy as np
 import optuna
 import pandas as pd
-import torch
-from torch import nn
 from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.preprocessing import OrdinalEncoder, QuantileTransformer
+import torch
+from torch import nn
 
-from collections.abc import Callable
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
-    CLS_METRICS, REG_METRICS, calibrate_proba, fit_calibrator, resolve_metric_fn,
-    resolve_pruner, resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    REG_METRICS,
+    calibrate_proba,
+    fit_calibrator,
+    resolve_metric_fn,
+    resolve_pruner,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +57,7 @@ class _Preprocessor:
         num_features: Список числовых признаков.
         cat_features: Список категориальных признаков.
         cat_cardinalities: Количество уникальных значений каждого категориального признака.
+
     """
 
     def __init__(self, num_features: list[str], cat_features: list[str], n_train: int) -> None:
@@ -89,6 +96,7 @@ class _Preprocessor:
 
         Returns:
             Словарь с ключами `'x_num'` (float32) и/или `'x_cat'` (int64).
+
         """
         result: dict[str, torch.Tensor] = {}
         if self.num_features:
@@ -156,6 +164,7 @@ def _train_epoch(
         optimizer: Оптимизатор (AdamW).
         loss_fn: Функция потерь (MSE для регрессии, BCE для классификации).
         batch_size: Размер мини-батча.
+
     """
     model.train()
     k = model.backbone.k
@@ -318,7 +327,7 @@ class TabMRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'TabMRegressor':
+    ) -> TabMRegressor:
         try:
             import tabm
         except ImportError as err:
@@ -429,7 +438,7 @@ class TabMClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'TabMClassifier':
+    ) -> TabMClassifier:
         try:
             import tabm
         except ImportError as err:
@@ -554,6 +563,7 @@ def train_regression(
 
     Raises:
         ImportError: Если пакет `tabm` не установлен.
+
     """
     try:
         import tabm
@@ -680,6 +690,7 @@ def train_classification(
 
     Raises:
         ImportError: Если пакет `tabm` не установлен.
+
     """
     try:
         import tabm

@@ -23,6 +23,7 @@ class AsymmetricLoss:
     prob_margin:
         Порог обрезки: негативы с p < prob_margin исключаются из градиента.
         Полезно при зашумлённых метках.
+
     """
 
     def __init__(

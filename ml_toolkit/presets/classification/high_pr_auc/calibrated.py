@@ -54,6 +54,7 @@ class CalibratedWrapper(BasePreset):
         model = CalibratedWrapper(EasyEnsembleClassifier(n_estimators=10), method='isotonic')
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=[...])
         proba = model.predict_proba(X_test)
+
     """
 
     def __init__(
@@ -94,7 +95,7 @@ class CalibratedWrapper(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'CalibratedWrapper':
+    ) -> CalibratedWrapper:
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(
             X_train, y_train, X_valid, y_valid
         )

@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 
 from ml_toolkit.presets.classification.high_pr_auc import ConfidentLearningCleaner
-from tests.presets.classification.high_pr_auc.conftest import BASE_PARAMS, assert_valid_proba
+from tests.presets.classification.high_pr_auc.conftest import (
+    BASE_PARAMS,
+    assert_valid_proba,
+)
 
 
 class TestConfidentLearningCleaner:

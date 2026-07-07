@@ -28,8 +28,14 @@ from sklearn.metrics import average_precision_score
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
-    CLS_METRICS, fit_calibrator, make_lgb_pruning_callback, prep_cat_features,
-    resolve_metric_fn, resolve_pruner, resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    fit_calibrator,
+    make_lgb_pruning_callback,
+    prep_cat_features,
+    resolve_metric_fn,
+    resolve_pruner,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,11 +92,11 @@ class LightGBMRanker(BaseModel):
         y_valid: Any | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "LightGBMRanker":
+    ) -> LightGBMRanker:
         try:
             import lightgbm as lgb
         except ImportError as err:
-            raise ImportError("LightGBM не установлен. Выполните: pip install lightgbm") from err
+            raise ImportError('LightGBM не установлен. Выполните: pip install lightgbm') from err
 
         set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
@@ -115,7 +121,7 @@ class LightGBMRanker(BaseModel):
 
         if self.params is None:
             if Xva is None:
-                raise ValueError("X_valid и y_valid обязательны при params=None (Optuna)")
+                raise ValueError('X_valid и y_valid обязательны при params=None (Optuna)')
             self._model, self.best_params_ = self._fit_with_optuna(
                 lgb, Xtr, ytr, tr_groups, Xva, yva, va_groups, cat_in_sel,
             )

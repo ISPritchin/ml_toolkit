@@ -45,6 +45,7 @@ class NNPULoss:
         Порог срабатывания non-negative коррекции (обычно 0).
     gamma:
         Множитель "обратного" градиента при срабатывании коррекции (обычно 1).
+
     """
 
     def __init__(self, class_prior: float, beta: float = 0.0, gamma: float = 1.0) -> None:

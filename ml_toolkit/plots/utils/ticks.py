@@ -5,7 +5,6 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
-
 _RU_MONTHS: list[str] = [
     'янв', 'фев', 'мар', 'апр', 'май', 'июн',
     'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
@@ -60,6 +59,7 @@ def modify_xticks_for_date_axis(
         fmt:  strftime-строка или 'auto' — ConciseDateFormatter (убирает повторяющийся год).
         lang: 'ru' — русские названия месяцев без зависимости от системного locale;
               год показывается только при первом появлении и смене.
+
     """
     locator = mdates.AutoDateLocator()
     ax.xaxis.set_major_locator(locator)

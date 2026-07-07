@@ -30,6 +30,7 @@ Example:
 
     lag_growth_ratio = v[t] / v[t-3] − 1 = 40/10 − 1 = 3.0
     → lag_growth_ratio__lag3 = 3.0  (рост ×4 за 3 мес)
+
 """
 
 import numba as nb
@@ -37,7 +38,7 @@ import numpy as np
 
 from .._windowing import EPS, safe_ratio
 
-FEATURE = "lag_growth_ratio"
+FEATURE = 'lag_growth_ratio'
 
 
 @nb.njit(cache=True)
@@ -60,6 +61,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, lags
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"lags": [6, 12]}"""
-    lags = np.array(params["lags"], dtype=np.int64)
+    lags = np.array(params['lags'], dtype=np.int64)
     out = _kernel(values, position, lags)
-    return [out[j] for j in range(len(lags))], [f"lag{l}" for l in params["lags"]]
+    return [out[j] for j in range(len(lags))], [f'lag{l}' for l in params['lags']]

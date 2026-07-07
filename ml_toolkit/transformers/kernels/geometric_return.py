@@ -33,6 +33,7 @@ Example:
     mean(log_diff) = 0.665
     geometric_return = exp(0.665) − 1 = 0.946
     → geometric_return__w4 = 0.946  (≈ +95% в месяц)
+
 """
 
 import numba as nb
@@ -40,7 +41,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "geometric_return"
+FEATURE = 'geometric_return'
 
 
 @nb.njit(cache=True)
@@ -62,8 +63,8 @@ def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, windows:
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     # log1p считается один раз на колонку (векторно)
     log_values = np.log1p(np.abs(values))
     out = _kernel(log_values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

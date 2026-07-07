@@ -24,6 +24,7 @@ class AsymmetricPolyLoss:
         Параметры базового ASL (см. AsymmetricLoss).
     eps1:
         Коэффициент линейного Poly-1 члена. Рекомендуется 1.0-3.0.
+
     """
 
     def __init__(

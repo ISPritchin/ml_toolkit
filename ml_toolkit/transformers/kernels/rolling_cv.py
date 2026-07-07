@@ -32,6 +32,7 @@ Example:
     std  = sqrt(mean((v−15)²)) = 11.18
     rolling_cv = std / |mean| = 11.18 / 15 = 0.745
     → rolling_cv__w6 = 0.745  (заметная волатильность от всплеска 40)
+
 """
 
 import numba as nb
@@ -39,7 +40,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
 
-FEATURE = "rolling_cv"
+FEATURE = 'rolling_cv'
 
 
 @nb.njit(cache=True)
@@ -58,6 +59,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6, 12, 24]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

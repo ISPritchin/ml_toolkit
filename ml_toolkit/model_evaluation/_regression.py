@@ -1,12 +1,10 @@
 """Regression evaluator — metrics and visualisations."""
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-import pandas as pd
 
 from ._base import BaseEvaluator, logger
 

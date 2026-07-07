@@ -46,6 +46,7 @@ Example:
     обвалов нет (значения росли или равны)
     → extreme_events__spike_count_w7 = 1,  max_spike_z_w7 = 2.449
     → extreme_events__is_spike_now = 1,  recency_w7 = 0
+
 """
 
 import numba as nb
@@ -53,7 +54,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
 
-FEATURE = "extreme_events"
+FEATURE = 'extreme_events'
 
 
 @nb.njit(cache=True)
@@ -93,16 +94,14 @@ def _kernel(
                 is_extreme = False
                 if z > spike_z:
                     spike_count += 1
-                    if z > max_spike_z:
-                        max_spike_z = z
+                    max_spike_z = max(max_spike_z, z)
                     is_extreme = True
                 if offset >= 1:
                     prev = product_values[abs_idx - 1]
                     drop = safe_ratio(prev - v, prev)
                     if drop > crash_drop:
                         crash_count += 1
-                        if drop > max_drop:
-                            max_drop = drop
+                        max_drop = max(max_drop, drop)
                         is_extreme = True
                 if is_extreme:
                     last_extreme_ago = ws - 1 - offset
@@ -120,18 +119,18 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12], "spike_z": 2.0, "crash_drop": 0.5 (опционально)}"""
-    windows = np.array(params["windows"], dtype=np.int64)
-    spike_z = float(params.get("spike_z", 2.0))
-    crash_drop = float(params.get("crash_drop", 0.5))
+    windows = np.array(params['windows'], dtype=np.int64)
+    spike_z = float(params.get('spike_z', 2.0))
+    crash_drop = float(params.get('crash_drop', 0.5))
     sc, mz, cc, md, er, isn, bal = _kernel(values, position, windows, spike_z, crash_drop)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(sc[j]);  suffixes.append(f"spike_count_w{w}")
-        arrays.append(mz[j]);  suffixes.append(f"max_spike_z_w{w}")
-        arrays.append(cc[j]);  suffixes.append(f"crash_count_w{w}")
-        arrays.append(md[j]);  suffixes.append(f"max_drop_w{w}")
-        arrays.append(er[j]);  suffixes.append(f"recency_w{w}")
-        arrays.append(bal[j]); suffixes.append(f"balance_w{w}")
-    arrays.append(isn); suffixes.append("is_spike_now")
+    for j, w in enumerate(params['windows']):
+        arrays.append(sc[j]);  suffixes.append(f'spike_count_w{w}')
+        arrays.append(mz[j]);  suffixes.append(f'max_spike_z_w{w}')
+        arrays.append(cc[j]);  suffixes.append(f'crash_count_w{w}')
+        arrays.append(md[j]);  suffixes.append(f'max_drop_w{w}')
+        arrays.append(er[j]);  suffixes.append(f'recency_w{w}')
+        arrays.append(bal[j]); suffixes.append(f'balance_w{w}')
+    arrays.append(isn); suffixes.append('is_spike_now')
     return arrays, suffixes

@@ -1,8 +1,8 @@
 # ruff: noqa: N806
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -13,9 +13,15 @@ from sklearn.metrics import average_precision_score, mean_absolute_error
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._undersampling import UndersampleSampler
 from ml_toolkit.models._utils import (
-    CLS_METRICS, REG_METRICS, calibrate_proba, encode_cat_features,
-    fit_calibrator, make_xgb_pruning_callback, prep_cat_features, resolve_metric_fn,
-    resolve_pruner, resolve_timeout, set_optuna_verbosity,
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    make_xgb_pruning_callback,
+    prep_cat_features,
+    resolve_metric_fn,
+    resolve_pruner,
+    resolve_timeout,
+    set_optuna_verbosity,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,7 +59,7 @@ class XGBoostRegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'XGBoostRegressor':
+    ) -> XGBoostRegressor:
         try:
             import xgboost as xgb
         except ImportError as err:
@@ -143,7 +149,7 @@ class XGBoostClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'XGBoostClassifier':
+    ) -> XGBoostClassifier:
         try:
             import xgboost as xgb
         except ImportError as err:
@@ -291,4 +297,4 @@ def train_classification(
 
 def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
     """XGBoost поддерживает SHAP нативно; отдельная predict_fn не нужна."""
-    return None
+    return

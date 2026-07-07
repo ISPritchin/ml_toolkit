@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("log_slope", values, params)
+    return run_transformer('log_slope', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -13,29 +14,29 @@ def _get(arrays, suffixes, suffix):
 
 def test_known_value_from_docstring():
     # [10,20,40,80] w=4: doubling → log_slope≈0.666/month
-    arrs, sfxs = _run([10, 20, 40, 80], {"windows": [4]})
-    assert _get(arrs, sfxs, "w4")[-1] == pytest.approx(0.666, abs=0.01)
+    arrs, sfxs = _run([10, 20, 40, 80], {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4')[-1] == pytest.approx(0.666, abs=0.01)
 
 
 def test_constant_series_log_slope_zero():
-    arrs, sfxs = _run([50, 50, 50, 50, 50, 50], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([50, 50, 50, 50, 50, 50], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_all_zeros_log_slope_zero():
     # log1p(0)=0 for all → constant log-series → slope=0
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] == pytest.approx(0.0, abs=1e-6)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_declining_series_negative_log_slope():
-    arrs, sfxs = _run([80, 40, 20, 10, 5, 2], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] < 0
+    arrs, sfxs = _run([80, 40, 20, 10, 5, 2], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] < 0
 
 
 def test_log_slope_positive_for_growth():
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "w6")[-1] > 0
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'w6')[-1] > 0
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

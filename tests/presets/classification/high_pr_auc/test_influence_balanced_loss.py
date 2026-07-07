@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from ml_toolkit.presets.classification.high_pr_auc import InfluenceBalancedLossClassifier
+from ml_toolkit.presets.classification.high_pr_auc import (
+    InfluenceBalancedLossClassifier,
+)
 from tests.presets.classification.high_pr_auc.conftest import BASE_PARAMS
 
 

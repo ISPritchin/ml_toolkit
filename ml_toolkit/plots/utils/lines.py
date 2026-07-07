@@ -40,6 +40,7 @@ def add_vline(
         rotation: угол поворота текста в градусах.
                   90  — вдоль линии (по умолчанию).
                   0   — перпендикулярно линии (горизонтально).
+
     """
     ax.axvline(x, color=color, lw=lw, linestyle=linestyle, **line_kwargs)
     if not label:
@@ -70,6 +71,7 @@ def add_hline(
         rotation: угол поворота текста в градусах.
                   0   — вдоль линии (по умолчанию).
                   90  — перпендикулярно линии (вертикально).
+
     """
     ax.axhline(y, color=color, lw=lw, linestyle=linestyle, **line_kwargs)
     if not label:

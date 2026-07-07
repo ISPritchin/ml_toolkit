@@ -1,14 +1,16 @@
+from collections.abc import Iterable
 import datetime
 from functools import partial
 from pathlib import Path
-from typing import Iterable, List
 
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
 from ml_toolkit.data_description import CommissionTableColumns
-from ml_toolkit.plots.client_viz import draw_client_prediction  # noqa: F401  (re-export)
+from ml_toolkit.plots.client_viz import (
+    draw_client_prediction,
+)
 
 try:
     from .utils import (
@@ -45,6 +47,7 @@ def show_mask_selection_plot(
         mask_column_name (str): имя колонки с маской
         show (bool, optional): 'истина', если требуется отображать график в Jupyter Notebook. Defaults to True.
         save_path (Path | None, optional): путь для сохранения графика. Defaults to None.
+
     """
     stat_activity = monthly_df.group_by(ts_column_name).agg(
         (pl.col(target_column_name) != 0).sum().alias('n_any_activity'),
@@ -116,6 +119,7 @@ def get_error_distribution_plot(
         max_confidence (float, optional): максимальная уверенность в прогнозе при отборе данных. Defaults to 1.
         save_path (Path | None, optional): путь для сохранения графика. Defaults to None.
         show (bool, optional): 'истина', если требуется отображать график в Jupyter Notebook. Defaults to True.
+
     """
     n_models = len(predicts)
     fig, axes = plt.subplots(nrows=n_models, ncols=1, figsize=(8, n_models * 2), sharex=True, sharey=True)
@@ -160,7 +164,7 @@ def get_error_distribution_plot(
 def get_different_quantiles(
     predicts: dict[str, pl.DataFrame],
     *,
-    quantiles: List[int] = (0.05, 0.25, 0.5, 0.75, 0.95),
+    quantiles: list[int] = (0.05, 0.25, 0.5, 0.75, 0.95),
     min_error: float = 0,
     max_error: float = 10,
     min_confidence: float = 0.5,
@@ -178,6 +182,7 @@ def get_different_quantiles(
         max_confidence (float, optional): максимальная уверенность в прогнозе при отборе данных. Defaults to 1.
         save_path (Path | None, optional): путь для сохранения графика. Defaults to None.
         show (bool, optional): 'истина', если требуется отображать график в Jupyter Notebook. Defaults to True.
+
     """
     n_models = len(predicts)
 
@@ -273,6 +278,7 @@ def get_sample_plot(
 
     Returns:
         Датафрейм `client_raw_data` последнего обработанного клиента.
+
     """
     t = predicts[model_name].filter(
         pl.col('confidence').is_between(min_confidence, max_confidence),
@@ -281,7 +287,7 @@ def get_sample_plot(
     n_total = len(t)
     n_examples = min(n_examples, len(t))
     t = t.sample(n_examples).sort('confidence',  descending=True)
-    
+
     n_rows = (n_examples // n_plots_in_a_row) + int((n_examples % n_plots_in_a_row) != 0)
     fig, axes = plt.subplots(
         nrows=n_rows,
@@ -289,7 +295,7 @@ def get_sample_plot(
         figsize=(16, n_rows * 3.5),
     )
     axes = np.array(axes).flatten()
-    
+
     for i in range(len(t)):
         client_id = t[i][CommissionTableColumns.ID_COLUMN_NAME][0]
         confidence = round(t[i]['confidence'][0], 2)
@@ -297,7 +303,7 @@ def get_sample_plot(
         y_pred = round(t[i]['y_pred'][0], 1)
         error = round(t[i]['error'][0] * 100, 1)
         date = t[i][ts_column_name][0]
-        
+
         client_raw_data = daily_df.filter(
             pl.col(CommissionTableColumns.ID_COLUMN_NAME) == client_id
         )
@@ -305,17 +311,20 @@ def get_sample_plot(
             (client_raw_data[CommissionTableColumns.TS_COLUMN_NAME].max() - client_raw_data[CommissionTableColumns.TS_COLUMN_NAME].min()).total_seconds() \
             // 60 / 60 / 24 / 7
         )
-        
-        from ml_toolkit.feature_extraction.weekly import add_records_for_absent_data, select_data_for_last_weeks  # noqa: PLC0415
+
+        from ml_toolkit.feature_extraction.weekly import (  # noqa: PLC0415
+            add_records_for_absent_data,
+            select_data_for_last_weeks,
+        )
         weeks_data = select_data_for_last_weeks(
-            client_raw_data, 
-            ts_column_name=CommissionTableColumns.TS_COLUMN_NAME, 
+            client_raw_data,
+            ts_column_name=CommissionTableColumns.TS_COLUMN_NAME,
             last_date=last_date,
             n_weeks=n_weeks
         )
-        
+
         week_data = add_records_for_absent_data(
-            weeks_data, 
+            weeks_data,
             id_column_name=CommissionTableColumns.ID_COLUMN_NAME,
             last_date=last_date,
             n_weeks=n_weeks
@@ -324,7 +333,7 @@ def get_sample_plot(
         ).agg(
             pl.col('fee_nds_amount').sum(),
         ).sort('end_week_date')
-        
+
         draw_client_prediction(axes[i], daily_df, client_id, date, y_pred, confidence, y_true)
         # Override title with legacy format expected by this function
         axes[i].set_title(
@@ -333,23 +342,23 @@ def get_sample_plot(
         )
         # Weekly overlay (дополнительный слой поверх базового графика)
         axes[i].plot(week_data['end_week_date'], week_data['fee_nds_amount'], 'o-', alpha=0.6)
-    
+
     for i in range(len(t), n_plots_in_a_row * n_rows):
         axes[i].set_visible(False)
-    
+
     plt.suptitle(f'Запросу с {min_confidence} <= confidence <= {max_confidence} and {min_error} <= error <= {max_error}\nудовлетворяет {n_total} случаев из {len(predicts[model_name])}. Отображены случайные {n_examples} клиентов', y=1)
-    
+
     plt.tight_layout()
-    
+
     if save_path:
         Path(save_path).parent.mkdir(exist_ok=True, parents=True)
         plt.savefig(save_path, dpi=150, transparent=True)
-        
+
     if show:
         plt.show()
     else:
         plt.close(fig)
-        
+
     return client_raw_data
 
 
@@ -374,6 +383,7 @@ def get_cls_proba_calibration(
         save_path (Path | None, optional): путь. Defaults to None.
         save_path (Path | None, optional): путь для сохранения графика. Defaults to None.
         show (bool, optional): 'истина', если требуется отображать график в Jupyter Notebook. Defaults to True.
+
     """
     fig, axes = plt.subplots(ncols=len(predicts), figsize=(4*len(predicts), 4), sharey=True)
     if not isinstance(axes, Iterable):
@@ -415,13 +425,12 @@ def get_error_distribution_for_different_threshold(
     predicts: dict[str, pl.DataFrame],
     *,
     min_confidence: float = 0.5,
-    error_thresholds: List[float] = (0.05, 0.25, 0.5, 1),
+    error_thresholds: list[float] = (0.05, 0.25, 0.5, 1),
     n_drop_first: int = 10,
     save_path: Path | None = None,
     show: bool = True,
 ) -> None:
-    """
-    Построение графиков распределения ошибок для разных порогов на основе прогнозов моделей.
+    """Построение графиков распределения ошибок для разных порогов на основе прогнозов моделей.
 
     Функция фильтрует данные по уверенности модели и строит кривые, показывающие долю
     правильных предсказаний при различных порогах ошибки. Графики отображаются по
@@ -443,6 +452,7 @@ def get_error_distribution_for_different_threshold(
 
     Returns:
         None: Результатом является отображение или сохранение графиков, возвращаемого значение нет.
+
     """
     n_models = len(predicts)
 
@@ -490,7 +500,7 @@ def get_error_distribution_for_different_threshold(
 
         modify_ticks(ax, axis='x', func=partial(number_to_number_with_suffix, add_new_line_character=True))
         x_max = max(x_max, len(pred) + 1)
-    
+
     for ax in axes:
         ax.set_xlim(0, x_max)
 

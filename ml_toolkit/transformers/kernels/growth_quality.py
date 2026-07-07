@@ -40,6 +40,7 @@ Example:
     organic = 1 − 0.2 = 0.8
     pos_count = 5,  consist_score = 5/5 = 1.0,  growth_gini = 0 (все приросты равны)
     → growth_quality__organic_w6 = 0.8,  best_share_w6 = 0.2,  pos_count_w6 = 5
+
 """
 
 import numba as nb
@@ -47,7 +48,7 @@ import numpy as np
 
 from .._windowing import EPS, compute_window_mean, resolve_window_size, safe_ratio
 
-FEATURE = "growth_quality"
+FEATURE = 'growth_quality'
 
 
 @nb.njit(cache=True)
@@ -63,8 +64,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
     max_w = 1
     for j in range(n_w):
-        if windows[j] > max_w:
-            max_w = windows[j]
+        max_w = max(max_w, windows[j])
     pos_diffs = np.zeros(max_w)
 
     for row_idx in range(n_rows):
@@ -88,8 +88,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                     pos_diffs[n_pos] = d
                     n_pos += 1
                     sum_pos += d
-                    if d > max_pos:
-                        max_pos = d
+                    max_pos = max(max_pos, d)
                 elif d < 0.0:
                     sum_neg_abs += abs(d)
                 if product_values[abs_idx] != 0.0:
@@ -124,15 +123,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     bs, cs, pc, gg, org, nss = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
-        arrays.append(bs[j]);  suffixes.append(f"best_share_w{w}")
-        arrays.append(cs[j]);  suffixes.append(f"consist_score_w{w}")
-        arrays.append(pc[j]);  suffixes.append(f"pos_count_w{w}")
-        arrays.append(gg[j]);  suffixes.append(f"growth_gini_w{w}")
-        arrays.append(org[j]); suffixes.append(f"organic_w{w}")
-        arrays.append(nss[j]); suffixes.append(f"neg_sum_share_w{w}")
+    for j, w in enumerate(params['windows']):
+        arrays.append(bs[j]);  suffixes.append(f'best_share_w{w}')
+        arrays.append(cs[j]);  suffixes.append(f'consist_score_w{w}')
+        arrays.append(pc[j]);  suffixes.append(f'pos_count_w{w}')
+        arrays.append(gg[j]);  suffixes.append(f'growth_gini_w{w}')
+        arrays.append(org[j]); suffixes.append(f'organic_w{w}')
+        arrays.append(nss[j]); suffixes.append(f'neg_sum_share_w{w}')
     return arrays, suffixes

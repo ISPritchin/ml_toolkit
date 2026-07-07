@@ -33,6 +33,7 @@ Example:
     slope_long  (окно 6, весь ряд)         = 6.714
     slope_ratio = 12.5 / 6.714 = 1.862
     → slope_ratio__w3_w6 = 1.862  (краткосрочный тренд почти вдвое круче)
+
 """
 
 import numba as nb
@@ -40,7 +41,7 @@ import numpy as np
 
 from .._windowing import fit_linear_trend_slope, resolve_window_size, safe_ratio
 
-FEATURE = "slope_ratio"
+FEATURE = 'slope_ratio'
 
 
 @nb.njit(cache=True)
@@ -65,14 +66,14 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
+    """Args:
+    params: {"pairs": [[6, 12], [12, 24]]}
+
     """
-    Args:
-        params: {"pairs": [[6, 12], [12, 24]]}
-    """
-    pairs = params["pairs"]
+    pairs = params['pairs']
     short_windows = np.array([p[0] for p in pairs], dtype=np.int64)
     long_windows = np.array([p[1] for p in pairs], dtype=np.int64)
     out = _kernel(values, position, short_windows, long_windows)
     arrays = [out[j] for j in range(len(pairs))]
-    suffixes = [f"w{p[0]}_w{p[1]}" for p in pairs]
+    suffixes = [f'w{p[0]}_w{p[1]}' for p in pairs]
     return arrays, suffixes

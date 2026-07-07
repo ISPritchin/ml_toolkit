@@ -31,6 +31,7 @@ Example:
     median (чётное окно) = 0.5·(10 + 10) = 10
     mean_median_gap = (15 − 10) / 15 = 0.333
     → mean_median_gap__w6 = 0.333  (правосторонняя асимметрия от всплеска 40)
+
 """
 
 import numba as nb
@@ -44,7 +45,7 @@ from .._windowing import (
     sorted_median,
 )
 
-FEATURE = "mean_median_gap"
+FEATURE = 'mean_median_gap'
 
 
 @nb.njit(cache=True)
@@ -54,8 +55,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
     out = np.zeros((n_w, n_rows))
     max_w = 1
     for j in range(n_w):
-        if windows[j] > max_w:
-            max_w = windows[j]
+        max_w = max(max_w, windows[j])
     sorted_buf = np.empty(max_w)
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
@@ -70,6 +70,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [6]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

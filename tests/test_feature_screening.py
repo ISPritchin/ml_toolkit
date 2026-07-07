@@ -6,11 +6,10 @@ import pytest
 
 from ml_toolkit.feature_screening import FeatureScreener
 
-
 # ─── Фикстуры ────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture()
+@pytest.fixture
 def basic_dataset():
     """1000 строк, 20% позитивов; смесь хороших и плохих признаков."""
     rng = np.random.default_rng(42)

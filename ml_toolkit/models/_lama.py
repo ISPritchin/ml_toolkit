@@ -10,8 +10,8 @@ Regression: `fit_predict` возвращает in-sample предикты на t
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
@@ -52,7 +52,7 @@ class LAMARegressor(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'LAMARegressor':
+    ) -> LAMARegressor:
         try:
             from lightautoml.automl.presets.tabular_presets import TabularAutoML
             from lightautoml.tasks import Task
@@ -109,7 +109,7 @@ class LAMAClassifier(BaseModel):
         y_valid: pd.Series | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'LAMAClassifier':
+    ) -> LAMAClassifier:
         try:
             from lightautoml.automl.presets.tabular_presets import TabularAutoML
             from lightautoml.tasks import Task

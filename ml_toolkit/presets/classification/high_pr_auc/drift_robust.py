@@ -20,15 +20,18 @@ cat_features=) + predict_proba(X)); None → внутренний обычный
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
-from ml_toolkit.feature_selection.drift_filter import AdversarialDriftFilter, compute_psi
+from ml_toolkit.feature_selection.drift_filter import (
+    AdversarialDriftFilter,
+    compute_psi,
+)
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
@@ -98,6 +101,7 @@ class DriftRobustClassifier(BasePreset):
         model = DriftRobustClassifier(target_auc=0.55)
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=feats)
         print(model.removed_features_)
+
     """
 
     def __init__(
@@ -130,8 +134,8 @@ class DriftRobustClassifier(BasePreset):
         self._drift_filter: AdversarialDriftFilter | None = None
 
     def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
-        import optuna
         from catboost import CatBoostClassifier
+        import optuna
 
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -171,7 +175,7 @@ class DriftRobustClassifier(BasePreset):
         y_valid: Any,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> 'DriftRobustClassifier':
+    ) -> DriftRobustClassifier:
         from catboost import CatBoostClassifier, Pool
 
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(

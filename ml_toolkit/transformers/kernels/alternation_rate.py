@@ -38,6 +38,7 @@ Example:
     → alternation_rate__alt_rate_w6   = 4/4 = 1.0
     → alternation_rate__max_jump_share_w6 = 20/80 = 0.25
     → alternation_rate__mean_abs_jump_w6  = 80/5 = 16.0
+
 """
 
 import numba as nb
@@ -45,7 +46,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size, safe_ratio
 
-FEATURE = "alternation_rate"
+FEATURE = 'alternation_rate'
 
 
 @nb.njit(cache=True)
@@ -70,8 +71,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                 abs_idx = row_idx - ws + 1 + offset
                 d_abs = abs(product_values[abs_idx] - product_values[abs_idx - 1])
                 tv += d_abs
-                if d_abs > max_jump:
-                    max_jump = d_abs
+                max_jump = max(max_jump, d_abs)
                 raw_d = product_values[abs_idx] - product_values[abs_idx - 1]
                 cur_sign = 1 if raw_d > 0.0 else (-1 if raw_d < 0.0 else 0)
                 if offset >= 2 and prev_sign != 0 and cur_sign != 0 and cur_sign != prev_sign:
@@ -87,15 +87,15 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out_alt, out_max, out_mean = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(out_alt[j])
-        suffixes.append(f"alt_rate_w{w}")
+        suffixes.append(f'alt_rate_w{w}')
         arrays.append(out_max[j])
-        suffixes.append(f"max_jump_share_w{w}")
+        suffixes.append(f'max_jump_share_w{w}')
         arrays.append(out_mean[j])
-        suffixes.append(f"mean_abs_jump_w{w}")
+        suffixes.append(f'mean_abs_jump_w{w}')
     return arrays, suffixes

@@ -28,6 +28,7 @@ Example:
     непрерывные активные серии: [10,10] (длина 2), [10,10,10] (длина 3)
     наибольшая = 3
     → longest_active_run__w6 = 3
+
 """
 
 import numba as nb
@@ -35,7 +36,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "longest_active_run"
+FEATURE = 'longest_active_run'
 
 
 @nb.njit(cache=True)
@@ -52,8 +53,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             for offset in range(ws):
                 if product_values[row_idx - ws + 1 + offset] != 0.0:
                     cur_run += 1
-                    if cur_run > best_run:
-                        best_run = cur_run
+                    best_run = max(best_run, cur_run)
                 else:
                     cur_run = 0
             out[j, row_idx] = best_run
@@ -62,6 +62,6 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f"w{w}" for w in params["windows"]]
+    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

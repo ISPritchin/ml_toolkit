@@ -29,12 +29,13 @@ Example:
 
     log1p_level = sign(v)·ln(1 + |v|) = +ln(101)
     → log1p_level = 4.615
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "log1p_level"
+FEATURE = 'log1p_level'
 
 
 @nb.njit(cache=True)
@@ -50,4 +51,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
-    return [_kernel(values, position)], [""]
+    return [_kernel(values, position)], ['']

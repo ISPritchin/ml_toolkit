@@ -32,12 +32,13 @@ Example:
     tenure_months = pos − first_active_position + 1 = 4 − 2 + 1 = 3
     first_active_flag = 0 (флаг=1 был только в строке pos=2)
     → tenure__tenure_months = 3,  first_active_flag = 0
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "tenure"
+FEATURE = 'tenure'
 
 
 @nb.njit(cache=True)
@@ -62,4 +63,4 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {} — параметры не используются."""
     t, f = _kernel(values, position)
-    return [t, f], ["tenure_months", "first_active_flag"]
+    return [t, f], ['tenure_months', 'first_active_flag']

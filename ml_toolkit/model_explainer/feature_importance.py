@@ -21,10 +21,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
-import warnings
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,7 +33,9 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, mean_absolute_error
 from tqdm import tqdm
 
-from ml_toolkit.models import ALL_TREE_NAMES as _TREE_MODELS, LIGHTGBM_VARIANTS as _LIGHTGBM_VARIANTS, SKLEARN_TREE_NAMES as _SKLEARN_TREE_MODELS
+from ml_toolkit.models import ALL_TREE_NAMES as _TREE_MODELS
+from ml_toolkit.models import LIGHTGBM_VARIANTS as _LIGHTGBM_VARIANTS
+from ml_toolkit.models import SKLEARN_TREE_NAMES as _SKLEARN_TREE_MODELS
 
 logger = logging.getLogger(__name__)
 _TOP_N = 30
@@ -76,6 +79,7 @@ def plot_shap_individuals(
         n_show: Число клиентов на графике.
         n_features: Число признаков в каждом waterfall.
         task: 'regression' или 'classification'.
+
     """
     # Mondrian не поддерживает TreeExplainer
     _shap_supported = _TREE_MODELS - {'mondrian'}
@@ -392,6 +396,7 @@ def plot_feature_importance(
         save_path: Путь сохранения PNG.
         predict_fn: Функция ``f(X_df) -> np.ndarray``. Обязательна для LAMA/TabM.
         top_n: Число признаков в bar chart.
+
     """
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -409,19 +414,19 @@ def plot_feature_importance(
                 imp_type = 'Permutation Importance (ΔMAE)' if task == 'regression' else 'Permutation Importance (ΔPR-AUC)'
             else:
                 logger.warning('no feature_importances_ and predict_fn is None for %s; skipping', model_name)
-                return
+                return None
         elif model_name in LINEAR_NAMES:
             raw = _linear_importance(model, feature_names)
             imp_type = '|Coefficient| (StandardScaler units)'
         else:
             if predict_fn is None:
                 logger.warning('predict_fn is None for %s; skipping feature importance', model_name)
-                return
+                return None
             raw = _permutation_importance(predict_fn, feature_names, X_valid, y_valid, task)
             imp_type = 'Permutation Importance (ΔMAE)' if task == 'regression' else 'Permutation Importance (ΔPR-AUC)'
     except Exception:
         logger.exception('Importance computation failed for %s (%s)', model_name, task)
-        return
+        return None
 
     importance = pd.Series(raw, index=feature_names, name='importance').sort_values(ascending=False)
 

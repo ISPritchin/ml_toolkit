@@ -29,6 +29,7 @@ Example:
     |скачки| соседних: |20−10|=10, |15−20|=5, |60−15|=45, |55−60|=5, |50−55|=5
     максимум = 45
     → max_abs_jump__w6 = 45  (резкий разовый скачок 15→60)
+
 """
 
 import numba as nb
@@ -36,7 +37,7 @@ import numpy as np
 
 from .._windowing import resolve_window_size
 
-FEATURE = "max_abs_jump"
+FEATURE = 'max_abs_jump'
 
 
 @nb.njit(cache=True)
@@ -60,19 +61,18 @@ def _kernel(
                     product_values[row_idx - ws + 1 + offset]
                     - product_values[row_idx - ws + offset]
                 )
-                if jump > largest:
-                    largest = jump
+                largest = max(largest, jump)
             out[j, row_idx] = largest
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
+    """Args:
+    params: {"windows": [6, 12]}
+
     """
-    Args:
-        params: {"windows": [6, 12]}
-    """
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     arrays = [out[j] for j in range(len(windows))]
-    suffixes = [f"w{w}" for w in params["windows"]]
+    suffixes = [f'w{w}' for w in params['windows']]
     return arrays, suffixes

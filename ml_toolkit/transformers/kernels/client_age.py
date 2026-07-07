@@ -32,12 +32,13 @@ Example:
     months_since_start_norm = pos/(pos+12) = 4/16 = 0.25
     → client_age__new_client_flag = 0.0
     → client_age__months_since_start_norm = 0.25
+
 """
 
 import numba as nb
 import numpy as np
 
-FEATURE = "client_age"
+FEATURE = 'client_age'
 
 
 @nb.njit(cache=True)
@@ -59,7 +60,7 @@ def _kernel(
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"new_client_months": 3, "norm_months": 12 (опционально)}"""
-    new_client_months = int(params.get("new_client_months", 3))
-    norm_months = float(params.get("norm_months", 12.0))
+    new_client_months = int(params.get('new_client_months', 3))
+    norm_months = float(params.get('norm_months', 12.0))
     ncf, msn = _kernel(values, position, new_client_months, norm_months)
-    return [ncf, msn], ["new_client_flag", "months_since_start_norm"]
+    return [ncf, msn], ['new_client_flag', 'months_since_start_norm']

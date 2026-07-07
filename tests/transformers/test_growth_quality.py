@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("growth_quality", values, params)
+    return run_transformer('growth_quality', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -14,32 +15,32 @@ def _get(arrays, suffixes, suffix):
 def test_known_values_from_docstring():
     # [10,20,30,40,50,60] w=6: 5 equal pos diffs of +10, sum=50
     # best_share=10/50=0.2, organic=0.8, pos_count=5, consist=5/5=1.0, gini=0
-    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {"windows": [6]})
-    assert _get(arrs, sfxs, "best_share_w6")[-1] == pytest.approx(0.2, abs=1e-4)
-    assert _get(arrs, sfxs, "organic_w6")[-1] == pytest.approx(0.8, abs=1e-4)
-    assert _get(arrs, sfxs, "pos_count_w6")[-1] == pytest.approx(5.0)
-    assert _get(arrs, sfxs, "consist_score_w6")[-1] == pytest.approx(1.0, abs=1e-4)
-    assert _get(arrs, sfxs, "growth_gini_w6")[-1] == pytest.approx(0.0, abs=1e-4)
+    arrs, sfxs = _run([10, 20, 30, 40, 50, 60], {'windows': [6]})
+    assert _get(arrs, sfxs, 'best_share_w6')[-1] == pytest.approx(0.2, abs=1e-4)
+    assert _get(arrs, sfxs, 'organic_w6')[-1] == pytest.approx(0.8, abs=1e-4)
+    assert _get(arrs, sfxs, 'pos_count_w6')[-1] == pytest.approx(5.0)
+    assert _get(arrs, sfxs, 'consist_score_w6')[-1] == pytest.approx(1.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'growth_gini_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 
 def test_single_spike_organic_near_zero():
     # [0,0,0,0,0,100]: one positive diff=+100, best_share=1.0, organic=0
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 100], {"windows": [6]})
-    assert _get(arrs, sfxs, "organic_w6")[-1] == pytest.approx(0.0, abs=1e-3)
-    assert _get(arrs, sfxs, "best_share_w6")[-1] == pytest.approx(1.0, abs=1e-3)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 100], {'windows': [6]})
+    assert _get(arrs, sfxs, 'organic_w6')[-1] == pytest.approx(0.0, abs=1e-3)
+    assert _get(arrs, sfxs, 'best_share_w6')[-1] == pytest.approx(1.0, abs=1e-3)
 
 
 def test_constant_series_pos_count_zero():
     # All same → no positive diffs → pos_count=0
-    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {"windows": [6]})
-    assert _get(arrs, sfxs, "pos_count_w6")[-1] == pytest.approx(0.0)
+    arrs, sfxs = _run([30, 30, 30, 30, 30, 30], {'windows': [6]})
+    assert _get(arrs, sfxs, 'pos_count_w6')[-1] == pytest.approx(0.0)
 
 
 def test_all_zeros_no_diffs():
     # max_pos=0, sum_pos=0 → best_share=0/(0+EPS)=0, organic=1-0=1.0 (degenerate: no growth at all)
-    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {"windows": [6]})
-    assert _get(arrs, sfxs, "pos_count_w6")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "best_share_w6")[-1] == pytest.approx(0.0, abs=1e-3)
+    arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
+    assert _get(arrs, sfxs, 'pos_count_w6')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'best_share_w6')[-1] == pytest.approx(0.0, abs=1e-3)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):

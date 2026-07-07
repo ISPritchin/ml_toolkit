@@ -17,11 +17,12 @@ class LabelSmoothingLoss:
     eps:
         Степень сглаживания: 0.1 → целевые метки [0.05, 0.95].
         Рекомендуется 0.05–0.15.
+
     """
 
     def __init__(self, eps: float = 0.1) -> None:
         if not 0.0 <= eps < 0.5:
-            raise ValueError("eps должен быть в [0, 0.5)")
+            raise ValueError('eps должен быть в [0, 0.5)')
         self.eps = eps
 
     def calc_ders_range(

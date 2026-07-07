@@ -24,6 +24,7 @@ Example:
 
     mean_w = (v[t−2] + v[t−1] + v[t]) / 3 = (20 + 30 + 40) / 3
     → window_mean__w3 = 30.0
+
 """
 
 import numba as nb
@@ -31,7 +32,7 @@ import numpy as np
 
 from .._windowing import compute_window_mean, resolve_window_size
 
-FEATURE = "window_mean"
+FEATURE = 'window_mean'
 
 
 @nb.njit(cache=True)
@@ -51,11 +52,11 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
     """params: {"windows": [3, 6, 12]}"""
-    windows = np.array(params["windows"], dtype=np.int64)
+    windows = np.array(params['windows'], dtype=np.int64)
     (mean,) = _kernel(values, position, windows)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params["windows"]):
+    for j, w in enumerate(params['windows']):
         arrays.append(mean[j])
-        suffixes.append(f"w{w}")
+        suffixes.append(f'w{w}')
     return arrays, suffixes

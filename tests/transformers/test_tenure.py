@@ -1,11 +1,12 @@
 import math
+
 import pytest
 
-from tests.transformers.conftest import run_transformer, get_feature_output
+from tests.transformers.conftest import get_feature_output, run_transformer
 
 
 def _run(values, params=None):
-    return run_transformer("tenure", values, params)
+    return run_transformer('tenure', values, params)
 
 
 def _get(arrays, suffixes, suffix):
@@ -15,13 +16,13 @@ def _get(arrays, suffixes, suffix):
 def test_known_value_from_docstring():
     # [0,0,10,20,30]: first_active at pos=2, at pos=4 → tenure=4-2+1=3
     arrs, sfxs = _run([0, 0, 10, 20, 30])
-    assert _get(arrs, sfxs, "tenure_months")[-1] == pytest.approx(3.0)
+    assert _get(arrs, sfxs, 'tenure_months')[-1] == pytest.approx(3.0)
 
 
 def test_first_active_flag_only_once():
     # [0,0,10,20,30]: flag=1 only at index 2, not elsewhere
     arrs, sfxs = _run([0, 0, 10, 20, 30])
-    flags = _get(arrs, sfxs, "first_active_flag")
+    flags = _get(arrs, sfxs, 'first_active_flag')
     assert flags[0] == pytest.approx(0.0)
     assert flags[1] == pytest.approx(0.0)
     assert flags[2] == pytest.approx(1.0)
@@ -31,22 +32,22 @@ def test_first_active_flag_only_once():
 
 def test_all_zeros_tenure_zero():
     arrs, sfxs = _run([0, 0, 0, 0, 0])
-    assert _get(arrs, sfxs, "tenure_months")[-1] == pytest.approx(0.0)
-    assert _get(arrs, sfxs, "first_active_flag")[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'tenure_months')[-1] == pytest.approx(0.0)
+    assert _get(arrs, sfxs, 'first_active_flag')[-1] == pytest.approx(0.0)
 
 
 def test_active_from_start_tenure_counts_from_one():
     # [10,20,30]: first at pos=0 → tenure=pos-0+1=3 at pos=2
     arrs, sfxs = _run([10, 20, 30])
-    assert _get(arrs, sfxs, "tenure_months")[-1] == pytest.approx(3.0)
-    assert _get(arrs, sfxs, "first_active_flag")[0] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'tenure_months')[-1] == pytest.approx(3.0)
+    assert _get(arrs, sfxs, 'first_active_flag')[0] == pytest.approx(1.0)
 
 
 def test_activation_after_zeros_flag_and_tenure():
     # [0,0,0,50]: first at pos=3 → flag=1 there, tenure=1
     arrs, sfxs = _run([0, 0, 0, 50])
-    assert _get(arrs, sfxs, "first_active_flag")[-1] == pytest.approx(1.0)
-    assert _get(arrs, sfxs, "tenure_months")[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'first_active_flag')[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'tenure_months')[-1] == pytest.approx(1.0)
 
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):
