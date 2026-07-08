@@ -1,6 +1,6 @@
 [project]
 name = "ml-toolkit"
-version = "0.1.6"
+version = "0.1.7"
 description = "Переиспользуемые ML-примитивы: feature engineering, модели, отбор признаков, оценка/интерпретация"
 requires-python = ">=3.10"
 dependencies = [
@@ -20,6 +20,7 @@ dependencies = [
     "imbalanced-learn>=0.12",
     "deap>=1.4.4",
     "openpyxl>=3.1.5",
+    "ngboost>=0.5.1",
 ]
 
 [dependency-groups]
