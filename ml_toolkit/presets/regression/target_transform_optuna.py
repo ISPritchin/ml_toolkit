@@ -270,6 +270,7 @@ class TargetTransformOptunaRegressor(BasePreset):
     def _tune(self, X_train, y_tr, X_valid, y_va, feats) -> tuple[Any, Any, dict]:
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
         candidates = _valid_transforms(self.transforms, y_tr)
@@ -312,6 +313,7 @@ class TargetTransformOptunaRegressor(BasePreset):
         transform_name = best.user_attrs['transform_name']
         arch_p = dict(best.user_attrs['arch_p'])
         model, transform, _ = self._fit_one(X_train, y_tr, X_valid, y_va, feats, transform_name, arch_p)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return model, transform, {'transform': transform_name, **arch_p}
 
     # ── fit ───────────────────────────────────────────────────────────────────

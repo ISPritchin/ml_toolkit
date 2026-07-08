@@ -128,6 +128,7 @@ class HardNegativeMiner(BasePreset):
         from catboost import CatBoostClassifier
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -164,6 +165,7 @@ class HardNegativeMiner(BasePreset):
         best = dict(study.best_trial.user_attrs['cb_params'])
         m = CatBoostClassifier(**best)
         m.fit(tr_pool, eval_set=va_pool, verbose=False)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return m, best
 
     # ── Обновление весов ────────────────────────────────────────────────────

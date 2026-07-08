@@ -143,6 +143,7 @@ class RegressionByBinnedClassification(BasePreset):
         import optuna
         from catboost import CatBoostClassifier
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
         esr = _DEFAULT_PARAMS['early_stopping_rounds']
@@ -177,6 +178,7 @@ class RegressionByBinnedClassification(BasePreset):
         best = dict(study.best_trial.user_attrs['cb_params'])
         model = CatBoostClassifier(**best)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return model, best
 
     def fit(

@@ -153,6 +153,7 @@ class CoTeachingClassifier(BasePreset):
     def _tune(self, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -181,6 +182,7 @@ class CoTeachingClassifier(BasePreset):
                                     sampler=optuna.samplers.TPESampler(seed=self.random_seed))
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return dict(study.best_trial.user_attrs['cb_params'])
 
     def fit(

@@ -145,6 +145,7 @@ class AdversarialValidationWeighting(BasePreset):
         from catboost import CatBoostClassifier
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -172,6 +173,7 @@ class AdversarialValidationWeighting(BasePreset):
                                     pruner=make_pruner())
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return dict(study.best_trial.user_attrs['cb_params'])
 
     def fit(

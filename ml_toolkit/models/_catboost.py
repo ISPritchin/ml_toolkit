@@ -133,7 +133,8 @@ class CatBoostRegressor(BaseModel):
     ) -> CatBoostRegressor:
         _CB_Classifier, _CB_Regressor, Pool = _import_catboost()
 
-        set_optuna_verbosity(self.model_settings)
+        import optuna
+        _optuna_prev_verbosity = set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -169,6 +170,7 @@ class CatBoostRegressor(BaseModel):
             self.valid_pred_ = pp(X_valid, self._model.predict(va_pred_pool))
             logger.info('[CatBoost Reg] Final MAE: %.3f', mean_absolute_error(y_valid, self.valid_pred_))
 
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _fit_with_optuna(self, _CB_Regressor, tr_pool, va_pool,
@@ -268,7 +270,8 @@ class CatBoostClassifier(BaseModel):
     ) -> CatBoostClassifier:
         _CB_Classifier, _CB_Regressor, Pool = _import_catboost()
 
-        set_optuna_verbosity(self.model_settings)
+        import optuna
+        _optuna_prev_verbosity = set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -311,6 +314,7 @@ class CatBoostClassifier(BaseModel):
                 self.calibrators_ = fit_multiclass_calibrators(full_va, y_valid.values)
                 logger.info('[CatBoost Cls] Isotonic calibration fitted (%d calibrators)', self.n_classes_)
 
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _fit_with_optuna(self, _CB_Classifier, Pool, va_pool, X_train_feats, y_train, y_valid):

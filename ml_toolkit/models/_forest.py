@@ -153,7 +153,7 @@ def _fit_forest_reg(
     self.selected_features_ = self._resolve_features(X_train, selected_features)
     self.cat_features_ = list(cat_features or [])
     ms = self.model_settings
-    set_optuna_verbosity(ms)
+    _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
     self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
         build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
@@ -192,6 +192,7 @@ def _fit_forest_reg(
     if X_valid is not None:
         X_valid_enc = apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
         self.valid_pred_ = self._model.predict(X_valid_enc[self.selected_features_])
+    optuna.logging.set_verbosity(_optuna_prev_verbosity)
     return self
 
 
@@ -203,7 +204,7 @@ def _fit_forest_cls(
     self.selected_features_ = self._resolve_features(X_train, selected_features)
     self.cat_features_ = list(cat_features or [])
     ms = self.model_settings
-    set_optuna_verbosity(ms)
+    _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
     self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
         build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
@@ -243,6 +244,7 @@ def _fit_forest_cls(
         X_valid_enc = apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
         self.valid_pred_ = self._model.predict_proba(X_valid_enc[self.selected_features_])[:, 1]
         self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
+    optuna.logging.set_verbosity(_optuna_prev_verbosity)
     return self
 
 

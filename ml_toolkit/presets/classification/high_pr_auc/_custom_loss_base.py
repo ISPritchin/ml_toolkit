@@ -124,6 +124,7 @@ class _CustomLossClassifierBase(BasePreset):
     def _tune(self, tr_pool: Any, va_pool: Any) -> tuple[Any, dict]:
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
         esr = _DEFAULT_ARCH_PARAMS['early_stopping_rounds']
@@ -206,6 +207,7 @@ class _CustomLossClassifierBase(BasePreset):
         best_loss = dict(study.best_trial.user_attrs['loss_p'])
         best_arch = dict(study.best_trial.user_attrs['arch_p'])
         model = self._fit_model(tr_pool, va_pool, best_arch, best_loss)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return model, {**best_loss, **best_arch}
 
     # ── fit ───────────────────────────────────────────────────────────────────

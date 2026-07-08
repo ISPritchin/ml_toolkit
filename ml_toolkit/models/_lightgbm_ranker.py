@@ -98,7 +98,8 @@ class LightGBMRanker(BaseModel):
         except ImportError as err:
             raise ImportError('LightGBM не установлен. Выполните: pip install lightgbm') from err
 
-        set_optuna_verbosity(self.model_settings)
+        import optuna
+        _optuna_prev_verbosity = set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -141,6 +142,7 @@ class LightGBMRanker(BaseModel):
             lo, hi = raw_tr.min(), raw_tr.max()
             self.train_pred_ = (raw_tr - lo) / (hi - lo + 1e-12)
 
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _fit_with_optuna(self, lgb, Xtr, ytr, tr_groups, Xva, yva, va_groups, cat_in_sel):

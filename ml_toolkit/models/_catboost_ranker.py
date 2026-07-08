@@ -94,7 +94,8 @@ class CatBoostRanker(BaseModel):
     ) -> CatBoostRanker:
         _CB_Ranker, Pool = _import_catboost()
 
-        set_optuna_verbosity(self.model_settings)
+        import optuna
+        _optuna_prev_verbosity = set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -134,6 +135,7 @@ class CatBoostRanker(BaseModel):
             lo, hi = raw_tr.min(), raw_tr.max()
             self.train_pred_ = (raw_tr - lo) / (hi - lo + 1e-12)
 
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _fit_with_optuna(self, _CB_Ranker, Pool, tr_pool, va_pool, Xva, yva, cat_in_sel, group_size):

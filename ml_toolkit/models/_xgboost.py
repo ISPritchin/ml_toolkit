@@ -69,7 +69,7 @@ class XGBoostRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
         has_cat = bool(self.cat_features_)
 
         # XGBoost uses category dtype — no OrdinalEncoder stored
@@ -128,6 +128,7 @@ class XGBoostRegressor(BaseModel):
         if X_valid is not None:
             Xva = _prep(X_valid, self.selected_features_, self.cat_features_)
             self.valid_pred_ = self._model.predict(Xva)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -159,7 +160,7 @@ class XGBoostClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
         has_cat = bool(self.cat_features_)
 
         Xtr = _prep(X_train, self.selected_features_, self.cat_features_)
@@ -246,6 +247,7 @@ class XGBoostClassifier(BaseModel):
             Xva = _prep(X_valid, self.selected_features_, self.cat_features_)
             self.valid_pred_ = self._model.predict_proba(Xva)[:, 1]
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:

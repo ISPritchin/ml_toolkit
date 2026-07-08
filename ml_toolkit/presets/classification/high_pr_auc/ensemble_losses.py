@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 def _optimize_weights(probas: list[np.ndarray], y_val: np.ndarray, random_seed: int = 42) -> np.ndarray:
     import optuna
+    _optuna_prev_verbosity = optuna.logging.get_verbosity()
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
     n = len(probas)
@@ -46,11 +47,13 @@ def _optimize_weights(probas: list[np.ndarray], y_val: np.ndarray, random_seed: 
     study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=random_seed))
     study.optimize(objective, n_trials=100, show_progress_bar=False)
     raw = np.array([study.best_params[f'w{i}'] for i in range(n)])
+    optuna.logging.set_verbosity(_optuna_prev_verbosity)
     return raw / (raw.sum() + 1e-9)
 
 
 def _fit_power_alpha(probas: list[np.ndarray], y_val: np.ndarray, random_seed: int = 42) -> float:
     import optuna
+    _optuna_prev_verbosity = optuna.logging.get_verbosity()
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
     def objective(trial: optuna.Trial) -> float:
@@ -61,6 +64,7 @@ def _fit_power_alpha(probas: list[np.ndarray], y_val: np.ndarray, random_seed: i
 
     study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=random_seed))
     study.optimize(objective, n_trials=50, show_progress_bar=False)
+    optuna.logging.set_verbosity(_optuna_prev_verbosity)
     return float(study.best_params['alpha'])
 
 
@@ -191,6 +195,7 @@ class BoostedEnsemble(BasePreset):
         from catboost import CatBoostClassifier
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -225,6 +230,7 @@ class BoostedEnsemble(BasePreset):
         # (см. loss_configs) — не пропускаем их в base_params, иначе, например,
         # scale_pos_weight=1.0 просочится в конфиги с кастомным Python-лоссом
         # (FocalLoss и т.п.), для которых CatBoost его не поддерживает вовсе.
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return {k: v for k, v in best.items() if k not in ('loss_function', 'scale_pos_weight', 'random_seed')}
 
     def fit(

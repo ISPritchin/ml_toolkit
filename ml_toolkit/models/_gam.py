@@ -73,7 +73,7 @@ class PyGAMRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[PYGAM Reg] features=%d', len(self._num_feats_))
@@ -110,6 +110,7 @@ class PyGAMRegressor(BaseModel):
         if X_valid is not None:
             X_va = self._prep.transform(X_valid[self._num_feats_].to_numpy(dtype=float))
             self.valid_pred_ = self._model.predict(X_va)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -143,7 +144,7 @@ class PyGAMClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
         logger.info('[PYGAM Cls] features=%d', len(self._num_feats_))
@@ -182,6 +183,7 @@ class PyGAMClassifier(BaseModel):
             X_va = self._prep.transform(X_valid[self._num_feats_].to_numpy(dtype=float))
             self.valid_pred_ = np.asarray(self._model.predict_proba(X_va))
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:

@@ -132,7 +132,8 @@ class LightGBMRegressor(BaseModel):
         except ImportError as err:
             raise ImportError('LightGBM not installed. Run: pip install lightgbm') from err
 
-        set_optuna_verbosity(self.model_settings)
+        import optuna
+        _optuna_prev_verbosity = set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -170,6 +171,7 @@ class LightGBMRegressor(BaseModel):
             self.valid_pred_ = pp(X_valid, self._model.predict(Xva) + (baseline_va if baseline_va is not None else 0))
             logger.info('[LGB Reg] Final MAE: %.3f', mean_absolute_error(y_valid, self.valid_pred_))
 
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _fit_with_optuna(self, lgb, Xtr, resid_tr, Xva, resid_va, cat_in_sel,
@@ -288,7 +290,8 @@ class LightGBMClassifier(BaseModel):
         except ImportError as err:
             raise ImportError('LightGBM not installed. Run: pip install lightgbm') from err
 
-        set_optuna_verbosity(self.model_settings)
+        import optuna
+        _optuna_prev_verbosity = set_optuna_verbosity(self.model_settings)
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = cat_features or []
@@ -319,6 +322,7 @@ class LightGBMClassifier(BaseModel):
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.values)
             logger.info('[LGB Cls] Isotonic calibration fitted (n=%d)', len(self.valid_pred_))
 
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _fit_with_optuna(self, lgb, Xtr, y_train, Xva, y_valid, cat_in_sel):

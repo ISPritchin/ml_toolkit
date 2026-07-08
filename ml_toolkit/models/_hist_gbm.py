@@ -93,7 +93,7 @@ class HistGBMRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
@@ -133,6 +133,7 @@ class HistGBMRegressor(BaseModel):
         if X_valid is not None:
             X_va = X_valid_enc[self.selected_features_].to_numpy(dtype=float)
             self.valid_pred_ = self._model.predict(X_va)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -159,7 +160,7 @@ class HistGBMClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
@@ -200,6 +201,7 @@ class HistGBMClassifier(BaseModel):
             X_va = X_valid_enc[self.selected_features_].to_numpy(dtype=float)
             self.valid_pred_ = self._model.predict_proba(X_va)[:, 1]
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:

@@ -124,6 +124,7 @@ class QuantileEnsembleRegressor(BasePreset):
         import optuna
         from catboost import CatBoostRegressor
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
         loss_name = f'Quantile:alpha={q}'
@@ -155,6 +156,7 @@ class QuantileEnsembleRegressor(BasePreset):
         best = dict(study.best_trial.user_attrs['cb_params'])
         model = CatBoostRegressor(**best)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return model, best
 
     def _fit_one_quantile(self, tr_pool, va_pool, y_va, q):

@@ -137,6 +137,7 @@ class PULearningClassifier(BasePreset):
         from catboost import CatBoostClassifier
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -180,6 +181,7 @@ class PULearningClassifier(BasePreset):
         model = CatBoostClassifier(**best_params)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
         self.best_params_ = best_params
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return model
 
     # ── Оценка c ──────────────────────────────────────────────────────────────

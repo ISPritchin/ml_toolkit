@@ -291,7 +291,7 @@ def encode_cat_features(
     )
 
 
-def set_optuna_verbosity(model_settings: dict[str, Any]) -> None:
+def set_optuna_verbosity(model_settings: dict[str, Any]) -> int:
     """Форсирует WARNING-уровень логов Optuna для текущего тюнинга, если не запрошено иначе.
 
     model_settings['optuna_verbose']: bool = False — при True не трогает
@@ -300,10 +300,18 @@ def set_optuna_verbosity(model_settings: dict[str, Any]) -> None:
     ml_toolkit.models._*), без возможности отключить и вне привязки к
     конкретному вызову fit() — вызывайте это в начале fit(), а не полагайтесь
     на импорт модуля.
+
+    Возвращает предыдущий уровень verbosity — `optuna.logging.set_verbosity()`
+    меняет глобальное состояние процесса, а не что-то по месту вызова, поэтому
+    вызывающий fit() обязан восстановить его в конце тем же значением (иначе
+    приглушение "утекает" во все последующие Optuna-вызовы в этом процессе,
+    даже с optuna_verbose=True).
     """
     import optuna
+    prev = optuna.logging.get_verbosity()
     if not model_settings.get('optuna_verbose', False):
         optuna.logging.set_verbosity(optuna.logging.WARNING)
+    return prev
 
 
 def resolve_timeout(model_settings: dict[str, Any]) -> float | None:

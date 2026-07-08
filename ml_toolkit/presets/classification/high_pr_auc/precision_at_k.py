@@ -111,6 +111,7 @@ class PrecisionAtKClassifier(BasePreset):
         from catboost import CatBoostClassifier, Pool
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -230,6 +231,7 @@ class PrecisionAtKClassifier(BasePreset):
         logger.info('[P@K] Финал  P@K=%.4f  PR-AUC=%.4f',
                     precision_at_k(y_va, self.valid_pred_, k=self.k_fraction),
                     average_precision_score(y_va, self.valid_pred_))
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:

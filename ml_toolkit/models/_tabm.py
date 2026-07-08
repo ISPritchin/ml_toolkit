@@ -337,7 +337,7 @@ class TabMRegressor(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
         self._device = _resolve_device(ms.get('device', 'auto'))
         n_epochs_trial = int(ms.get('n_epochs_per_trial', 150))
@@ -415,6 +415,7 @@ class TabMRegressor(BaseModel):
         self.train_pred_ = _pp(X_train, _denorm(data_tr))
         if X_valid is not None:
             self.valid_pred_ = _pp(X_valid, _denorm(data_va))
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -448,7 +449,7 @@ class TabMClassifier(BaseModel):
         self.selected_features_ = self._resolve_features(X_train, selected_features)
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
-        set_optuna_verbosity(ms)
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
         self._device = _resolve_device(ms.get('device', 'auto'))
         n_epochs_trial = int(ms.get('n_epochs_per_trial', 100))
@@ -518,6 +519,7 @@ class TabMClassifier(BaseModel):
         if X_valid is not None:
             self.valid_pred_ = np.nan_to_num(_avg_pred(_predict_raw(self._model, data_va), 'classification'), nan=0.5)
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
@@ -570,7 +572,7 @@ def train_regression(
     except ImportError as err:
         raise ImportError('tabm not installed. Run: pip install tabm') from err
 
-    set_optuna_verbosity(model_settings)
+    _optuna_prev_verbosity = set_optuna_verbosity(model_settings)
     device = _resolve_device(model_settings.get('device', 'auto'))
     n_epochs_trial = int(model_settings.get('n_epochs_per_trial', 150))
     n_epochs_final = int(model_settings.get('n_epochs_final', 1000))
@@ -654,6 +656,7 @@ def train_regression(
     best_params = {**bp, 'n_epochs_final': n_epochs_final, 'patience': patience,
                    'device': str(device), 'batch_size': batch_size}
     # Wrap for downstream use (SHAP not supported for TabM)
+    optuna.logging.set_verbosity(_optuna_prev_verbosity)
     return (final_model, prep, y_stats), train_pred, valid_pred, infer_pred, best_params
 
 
@@ -698,7 +701,7 @@ def train_classification(
         raise ImportError('tabm not installed. Run: pip install tabm') from err
 
     cfg = model_settings or {}
-    set_optuna_verbosity(cfg)
+    _optuna_prev_verbosity = set_optuna_verbosity(cfg)
     device = _resolve_device(cfg.get('device', 'auto'))
     n_epochs_trial = int(cfg.get('n_epochs_per_trial', 100))
     n_epochs_final = int(cfg.get('n_epochs_final', 1000))
@@ -771,6 +774,7 @@ def train_classification(
     logger.info('[TabM Cls] Final PR-AUC: %.3f', average_precision_score(y_va_np, val_proba))
     best_params = {**bp, 'n_epochs_final': n_epochs_final, 'patience': patience,
                    'device': str(device), 'batch_size': batch_size}
+    optuna.logging.set_verbosity(_optuna_prev_verbosity)
     return (final_model, prep), train_proba, val_proba, calibrate_proba(val_proba, y_va_np, infer_proba), best_params
 
 

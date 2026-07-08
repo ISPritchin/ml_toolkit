@@ -119,6 +119,7 @@ class NGBoostPreset(BasePreset):
     def _tune(self, X_tr, y_tr, X_va, y_va, Dist):
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -153,6 +154,7 @@ class NGBoostPreset(BasePreset):
         best = dict(study.best_trial.user_attrs['ngb_params'])
         model = self._build_model(Dist, **best)
         model.fit(X_tr, y_tr, X_val=X_va, Y_val=y_va, early_stopping_rounds=self.early_stopping_rounds)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return model, best
 
     # ── fit ─────────────────────────────────────────────────────────────────

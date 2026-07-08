@@ -185,6 +185,7 @@ class EasyEnsembleClassifier(BasePreset):
         from catboost import CatBoostClassifier, Pool
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
         tr_pool = Pool(X_sub, y_sub, cat_features=self.cat_features_)
@@ -214,12 +215,14 @@ class EasyEnsembleClassifier(BasePreset):
                                     pruner=make_pruner())
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return dict(study.best_trial.user_attrs['cb_params'])
 
     def _tune_lgb(self, X_sub: pd.DataFrame, y_sub: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray) -> dict[str, Any]:
         import lightgbm as lgb
         import optuna
 
+        _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -254,6 +257,7 @@ class EasyEnsembleClassifier(BasePreset):
                                     sampler=optuna.samplers.TPESampler(seed=self.random_seed))
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return dict(study.best_trial.user_attrs['cb_params'])
 
     # ── fit ───────────────────────────────────────────────────────────────────
