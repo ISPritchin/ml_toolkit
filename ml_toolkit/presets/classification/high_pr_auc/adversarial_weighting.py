@@ -1,7 +1,7 @@
 """AdversarialValidationWeighting: importance weighting train-примеров вместо
 
 удаления признаков (см. DriftRobustClassifier/044 — тот выбрасывает дрейфующие
-КОЛОНКИ целиком; здесь колонки остаются, а переweight'иваются СТРОКИ train).
+КОЛОНКИ целиком; здесь колонки остаются, а перевзвешиваются СТРОКИ train).
 
 Механика:
   1. Обучаем adversarial-классификатор train(label=0) vs valid(label=1) на

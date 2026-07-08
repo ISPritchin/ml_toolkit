@@ -348,7 +348,7 @@ def resolve_pruner(model_settings: dict[str, Any]) -> Any:
         if spec not in named:
             raise ValueError(
                 f'Неизвестный optuna_pruner={spec!r}. Доступные: {sorted(named)}. '
-                f'Для произвольного пруnера передайте экземпляр optuna.pruners.BasePruner.'
+                f'Для произвольного прунера передайте экземпляр optuna.pruners.BasePruner.'
             )
         return named[spec]()
     raise TypeError(
@@ -571,7 +571,7 @@ def fit_multiclass_calibrators(
 def apply_multiclass_calibrators(
     proba: np.ndarray, calibrators: list[IsotonicRegression]
 ) -> np.ndarray:
-    """Применяет покласcовые калибраторы и нормирует строки к сумме 1.
+    """Применяет поклассовые калибраторы и нормирует строки к сумме 1.
 
     Args:
         proba: Матрица сырых вероятностей (n_samples, K).

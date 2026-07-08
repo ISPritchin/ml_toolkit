@@ -73,7 +73,7 @@ def make_pruner(n_warmup_steps: int = 10) -> optuna.pruners.MedianPruner:
     """MedianPruner с прогревом: первые n_warmup_steps итераций каждого trial
 
     не сравниваются с другими — ранние boosting-итерации шумные, отсечение по
-    ним даёт много ложных пруnов.
+    ним даёт много ложных прунов.
     """
     return optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps)
 

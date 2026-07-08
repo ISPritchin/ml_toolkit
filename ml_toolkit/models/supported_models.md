@@ -1473,7 +1473,7 @@ feature transformer + `LogisticRegression`.
 3. **[Greedy Function Approximation: A Gradient Boosting Machine](https://www.jstor.org/stable/2699986)**
    — Friedman, Annals of Statistics, 2001. *(тот же автор, GBM как эволюция MARS)*
    *О чём:* Развитие идей MARS в направлении gradient boosting; связь между MARS-approximation
-   и GBM; почему MARS является predecessором современного GBDT.
+   и GBM; почему MARS является предшественником современного GBDT.
    *Польза:* Исторический контекст; понимание, почему MARS проигрывает GBM по точности,
    но выигрывает по интерпретируемости.
 

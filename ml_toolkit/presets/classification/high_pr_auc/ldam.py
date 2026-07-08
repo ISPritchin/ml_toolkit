@@ -37,7 +37,7 @@ class LDAMClassifier(_CustomLossClassifierBase):
     max_margin:
         Максимальный margin C среди классов (рекомендуется 0.1–1.0).
     reweight_epoch_frac:
-        Доля итераций, после которой включается DRW-переweighting (рекомендуется 0.5–0.95).
+        Доля итераций, после которой включается DRW-перевзвешивание (рекомендуется 0.5–0.95).
     beta:
         Коэффициент effective number of samples для DRW-весов (Cui et al., 2019).
         Не тюнится Optuna — фиксированный гиперпараметр.
