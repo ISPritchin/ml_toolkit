@@ -1,6 +1,6 @@
 [project]
 name = "ml-toolkit"
-version = "0.1.8"
+version = "0.1.9"
 description = "Переиспользуемые ML-примитивы: feature engineering, модели, отбор признаков, оценка/интерпретация"
 requires-python = ">=3.10"
 dependencies = [

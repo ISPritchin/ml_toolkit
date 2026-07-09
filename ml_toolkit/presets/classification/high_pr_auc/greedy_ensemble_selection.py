@@ -60,6 +60,12 @@ class GreedyForwardEnsembleSelection(BasePreset):
         Число bootstrap-повторов жадного отбора на val (регуляризация).
     random_seed:
         Зерно bootstrap-ресэмплинга val.
+    selected_features:
+        Признаки, передаваемые в predict_proba() каждой модели библиотеки.
+        None → все столбцы X_valid. Нужен, если модели библиотеки обучены на
+        подмножестве признаков (например, EasyEnsembleClassifier с
+        selected_features) — иначе в predict_proba попадут лишние столбцы,
+        которых модель не ожидает.
 
     Атрибуты после fit::
 
@@ -80,6 +86,7 @@ class GreedyForwardEnsembleSelection(BasePreset):
         max_members: int = 10,
         n_bags: int = 20,
         random_seed: int = 42,
+        selected_features: list[str] | None = None,
     ) -> None:
         super().__init__(params=None, n_optuna_trials=0)
         if len(model_library) < 2:
@@ -92,6 +99,7 @@ class GreedyForwardEnsembleSelection(BasePreset):
         self.max_members = max_members
         self.n_bags = n_bags
         self.random_seed = random_seed
+        self.selected_features = selected_features or []
 
         self.weights_: np.ndarray = np.array([])
         self.pick_counts_: np.ndarray = np.array([])
@@ -128,9 +136,11 @@ class GreedyForwardEnsembleSelection(BasePreset):
         _, _, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         y_va = y_valid.values
         n_models = len(self.model_library)
-        self.selected_features_ = list(X_valid.columns)
+        feats = self._resolve_features(X_valid, selected_features or self.selected_features or None)
+        self.selected_features_ = feats
+        X_va_feats = X_valid[feats]
 
-        va_matrix = np.stack([_get_proba(m, X_valid) for m in self.model_library], axis=1)
+        va_matrix = np.stack([_get_proba(m, X_va_feats) for m in self.model_library], axis=1)
         single_scores = [float(average_precision_score(y_va, va_matrix[:, j])) for j in range(n_models)]
         logger.info('[GreedyEnsembleSelection] library PR-AUCs: %s', [f'{s:.4f}' for s in single_scores])
 
@@ -163,5 +173,10 @@ class GreedyForwardEnsembleSelection(BasePreset):
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
-        preds = np.stack([_get_proba(m, X) for m in self.model_library], axis=1)
-        return preds @ self.weights_
+        # Модели с weights_[j] == 0 не выбраны ни в одном бэге — их вклад в сумму
+        # всё равно нулевой, пропускаем predict_proba вместо того, чтобы считать
+        # и умножать на 0 (не влияет на результат, экономит время на большой библиотеке).
+        X_feats = X[self.selected_features_]
+        active = np.flatnonzero(self.weights_)
+        preds = np.stack([_get_proba(self.model_library[j], X_feats) for j in active], axis=1)
+        return preds @ self.weights_[active]
