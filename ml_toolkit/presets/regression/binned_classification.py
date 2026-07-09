@@ -61,7 +61,7 @@ class RegressionByBinnedClassification(BasePreset):
         Число Optuna trials, тюнящих архитектуру CatBoost. Trial отбирается
         по MAE декодированного прогноза на валидации (не по точности
         классификации бина — итоговая метрика этого пресета непрерывная).
-    param_space / optuna_timeout / optuna_verbose / random_seed:
+    param_space / optuna_timeout / optuna_verbose / optuna_pruner / random_seed:
         См. другие Optuna-пресеты пакета.
 
     Атрибуты после fit::
@@ -88,6 +88,7 @@ class RegressionByBinnedClassification(BasePreset):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
+        optuna_pruner: str | object | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -106,6 +107,7 @@ class RegressionByBinnedClassification(BasePreset):
         self.param_space = param_space
         self.optuna_timeout = optuna_timeout
         self.optuna_verbose = optuna_verbose
+        self.optuna_pruner = optuna_pruner
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -172,7 +174,7 @@ class RegressionByBinnedClassification(BasePreset):
 
         study = optuna.create_study(direction='minimize',
                                     sampler=optuna.samplers.TPESampler(seed=self.random_seed),
-                                    pruner=make_pruner())
+                                    pruner=make_pruner(self.optuna_pruner))
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
         best = dict(study.best_trial.user_attrs['cb_params'])

@@ -94,6 +94,7 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         selected_features: list[str] | None,
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_verbose: bool = False,
+        optuna_pruner: str | Any | None = 'none',
     ) -> None:
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.loss_params = dict(loss_params)
@@ -101,6 +102,7 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         self.optuna_timeout = optuna_timeout
         self.param_space = param_space
         self.optuna_verbose = optuna_verbose
+        self.optuna_pruner = optuna_pruner
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -194,7 +196,7 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         study = optuna.create_study(
             direction='maximize',
             sampler=optuna.samplers.TPESampler(seed=self.random_seed),
-            pruner=make_pruner(),
+            pruner=make_pruner(self.optuna_pruner),
         )
         # Безопасно только для дефолтного search space (см. binary _custom_loss_base.py
         # для подробного объяснения) — при кастомном param_space пропускаем enqueue

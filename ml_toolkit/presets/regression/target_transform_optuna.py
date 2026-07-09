@@ -195,7 +195,7 @@ class TargetTransformOptunaRegressor(BasePreset):
         'transform' (иначе выбирается trial.suggest_categorical по transforms)
         и/или любой архитектурный ключ CatBoost. Действует только при
         n_optuna_trials > 0.
-    optuna_timeout / optuna_verbose / random_seed:
+    optuna_timeout / optuna_verbose / optuna_pruner / random_seed:
         См. другие Optuna-пресеты пакета.
 
     Атрибуты после fit::
@@ -220,6 +220,7 @@ class TargetTransformOptunaRegressor(BasePreset):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
+        optuna_pruner: str | object | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -230,6 +231,7 @@ class TargetTransformOptunaRegressor(BasePreset):
         self.param_space = param_space
         self.optuna_timeout = optuna_timeout
         self.optuna_verbose = optuna_verbose
+        self.optuna_pruner = optuna_pruner
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -304,7 +306,7 @@ class TargetTransformOptunaRegressor(BasePreset):
         study = optuna.create_study(
             direction='minimize',
             sampler=optuna.samplers.TPESampler(seed=self.random_seed),
-            pruner=make_pruner(),
+            pruner=make_pruner(self.optuna_pruner),
         )
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)

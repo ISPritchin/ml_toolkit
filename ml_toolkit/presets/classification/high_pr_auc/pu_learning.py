@@ -77,6 +77,11 @@ class PULearningClassifier(BasePreset):
     optuna_verbose:
         Если True — не глушит логи Optuna. Если False (по умолчанию) —
         форсирует WARNING на время поиска.
+    optuna_pruner:
+        None/строковый алиас ('median'/'hyperband'/'percentile'/
+        'successive_halving'/'none')/готовый optuna.pruners.BasePruner —
+        см. ml_toolkit.models model_settings.md. 'none' (по умолчанию) —
+        прунинг выключен.
     c_lower_bound:
         Минимально допустимое значение c (защита от деления на очень малое).
         При c < c_lower_bound выдаётся предупреждение.
@@ -108,6 +113,7 @@ class PULearningClassifier(BasePreset):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
+        optuna_pruner: str | object | None = 'none',
         c_lower_bound: float = 0.1,
         c_estimation_frac: float = 0.5,
         random_seed: int = 42,
@@ -120,6 +126,7 @@ class PULearningClassifier(BasePreset):
         self.optuna_timeout = optuna_timeout
         self.param_space = param_space
         self.optuna_verbose = optuna_verbose
+        self.optuna_pruner = optuna_pruner
         self.base_params = base_params
         self.c_lower_bound = c_lower_bound
         self.c_estimation_frac = c_estimation_frac
@@ -173,7 +180,7 @@ class PULearningClassifier(BasePreset):
 
         study = optuna.create_study(
             direction='maximize', sampler=optuna.samplers.TPESampler(seed=self.random_seed),
-            pruner=make_pruner(),
+            pruner=make_pruner(self.optuna_pruner),
         )
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)

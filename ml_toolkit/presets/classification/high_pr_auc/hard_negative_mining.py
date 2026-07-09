@@ -80,6 +80,11 @@ class HardNegativeMiner(BasePreset):
         форсирует WARNING на время поиска.
     calibrate:
         Применять ли изотоническую калибровку к valid_pred_.
+    optuna_pruner:
+        None/строковый алиас ('median'/'hyperband'/'percentile'/
+        'successive_halving'/'none')/готовый optuna.pruners.BasePruner —
+        см. ml_toolkit.models model_settings.md. 'none' (по умолчанию) —
+        прунинг выключен.
     random_seed:
         Зерно CatBoost и Optuna sampler'а.
 
@@ -102,6 +107,7 @@ class HardNegativeMiner(BasePreset):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
+        optuna_pruner: str | object | None = 'none',
         calibrate: bool = True,
         random_seed: int = 42,
         cat_features: list[str] | None = None,
@@ -111,6 +117,7 @@ class HardNegativeMiner(BasePreset):
         self.optuna_timeout = optuna_timeout
         self.param_space = param_space
         self.optuna_verbose = optuna_verbose
+        self.optuna_pruner = optuna_pruner
         self.n_rounds = n_rounds
         self.hard_percentile = hard_percentile
         self.hard_weight = hard_weight
@@ -159,7 +166,7 @@ class HardNegativeMiner(BasePreset):
         logger.info('[HNM] Optuna round 0: %d trials', self.n_optuna_trials)
         study = optuna.create_study(direction='maximize',
                                     sampler=optuna.samplers.TPESampler(seed=self.random_seed),
-                                    pruner=make_pruner())
+                                    pruner=make_pruner(self.optuna_pruner))
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
         best = dict(study.best_trial.user_attrs['cb_params'])

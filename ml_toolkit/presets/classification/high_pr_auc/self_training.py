@@ -92,6 +92,11 @@ class SelfTrainingBooster(BasePreset):
     optuna_verbose:
         Если True — не глушит логи Optuna. Если False (по умолчанию) —
         форсирует WARNING на время поиска.
+    optuna_pruner:
+        None/строковый алиас ('median'/'hyperband'/'percentile'/
+        'successive_halving'/'none')/готовый optuna.pruners.BasePruner —
+        см. ml_toolkit.models model_settings.md. 'none' (по умолчанию) —
+        прунинг выключен.
     random_seed:
         Зерно CatBoost и Optuna sampler'а.
 
@@ -119,6 +124,7 @@ class SelfTrainingBooster(BasePreset):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
+        optuna_pruner: str | object | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -132,6 +138,7 @@ class SelfTrainingBooster(BasePreset):
         self.param_space = param_space
         self.optuna_timeout = optuna_timeout
         self.optuna_verbose = optuna_verbose
+        self.optuna_pruner = optuna_pruner
         self.random_seed = random_seed
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
@@ -198,7 +205,7 @@ class SelfTrainingBooster(BasePreset):
                     self.n_optuna_trials)
         study = optuna.create_study(direction='maximize',
                                     sampler=optuna.samplers.TPESampler(seed=self.random_seed),
-                                    pruner=make_pruner())
+                                    pruner=make_pruner(self.optuna_pruner))
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=self.optuna_timeout,
                        show_progress_bar=False)
         optuna.logging.set_verbosity(_optuna_prev_verbosity)

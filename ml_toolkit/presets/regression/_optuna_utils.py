@@ -13,6 +13,8 @@ from typing import Any
 
 import optuna
 
+from ml_toolkit.models._utils import resolve_pruner
+
 # (kind, (low, high), suggest_kwargs) — тот же набор границ архитектурных
 # гиперпараметров CatBoost, что и в classification._optuna_utils; для регрессии
 # используется идентично (iterations/max_depth/learning_rate/l2_leaf_reg/
@@ -52,13 +54,26 @@ def catboost_arch_space(
     return out
 
 
-def make_pruner(n_warmup_steps: int = 10) -> optuna.pruners.MedianPruner:
-    """MedianPruner с прогревом: первые n_warmup_steps итераций каждого trial
+def make_pruner(
+    spec: str | optuna.pruners.BasePruner | None = 'none',
+    n_warmup_steps: int = 10,
+) -> optuna.pruners.BasePruner:
+    """Резолвит прунер пресета из `optuna_pruner`-параметра конструктора.
 
-    не сравниваются с другими — ранние boosting-итерации шумные, отсечение по
-    ним даёт много ложных прунов.
+    `spec='none'` (дефолт) — прунинг выключен (`NopPruner`): раньше был жёстко
+    включён MedianPruner всегда, без возможности отключить, что могло
+    отсекать trial'ы с медленным, но в итоге лучшим сходом (низкий
+    learning_rate/высокая регуляризация). `spec=None`/`'median'` — MedianPruner
+    с прогревом `n_warmup_steps` (первые N итераций каждого trial не
+    сравниваются с другими — ранние boosting-итерации шумные, отсечение по
+    ним даёт много ложных прунов); остальные строковые алиасы
+    ('hyperband'/'percentile'/'successive_halving') и готовый экземпляр
+    optuna.pruners.BasePruner — через тот же resolve_pruner, что и в
+    ml_toolkit.models (без прогрева — он специфичен для MedianPruner).
     """
-    return optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps)
+    if spec in (None, 'median'):
+        return optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps)
+    return resolve_pruner({'optuna_pruner': spec})
 
 
 class CatBoostPruningCallback:

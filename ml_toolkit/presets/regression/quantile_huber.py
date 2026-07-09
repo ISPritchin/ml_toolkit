@@ -49,7 +49,7 @@ class QuantileHuberRegressor(_CustomLossRegressorBase):
     n_optuna_trials:
         Число Optuna trials, тюнящих kappa + архитектуру CatBoost. Trial
         отбирается по pinball loss на `quantile` (не по MAE).
-    param_space / optuna_timeout / optuna_verbose / random_seed:
+    param_space / optuna_timeout / optuna_verbose / optuna_pruner / random_seed:
         См. другие Optuna-пресеты пакета.
 
     Пример::
@@ -76,6 +76,7 @@ class QuantileHuberRegressor(_CustomLossRegressorBase):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
+        optuna_pruner: str | Any | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -89,6 +90,7 @@ class QuantileHuberRegressor(_CustomLossRegressorBase):
             param_space=param_space,
             optuna_timeout=optuna_timeout,
             optuna_verbose=optuna_verbose,
+            optuna_pruner=optuna_pruner,
             random_seed=random_seed,
             cat_features=cat_features,
             selected_features=selected_features,
