@@ -178,15 +178,15 @@ def test_growth_since_start_ignores_leading_zeros():
 
 # ── preset round-trip ─────────────────────────────────────────────────────────
 
-def test_preset_monthly_loads_and_runs():
-    """Пресет monthly.yaml должен грузиться и запускаться без ошибок."""
+def test_preset_minimum_loads_and_runs():
+    """Пресет minimum.yaml должен грузиться и запускаться без ошибок."""
     from pathlib import Path
 
     import yaml
 
     from ml_toolkit.transformers import TRANSFORMERS
 
-    preset_path = Path(__file__).parent.parent / 'ml_toolkit' / 'transformers' / 'presets' / 'monthly.yaml'
+    preset_path = Path(__file__).parent.parent / 'ml_toolkit' / 'transformers' / 'presets' / 'minimum.yaml'
     preset = yaml.safe_load(preset_path.read_text())
 
     values = np.array(list(range(24)), dtype=np.float64)
@@ -200,14 +200,12 @@ def test_preset_monthly_loads_and_runs():
             col = f'{name}__{suffix}' if suffix else name
             results[col] = arr
 
+    # minimum.yaml на сегодня содержит только slope - остальные ассерты были
+    # актуальны для полного monthly.yaml, который больше не поставляется
+    # (нет автоматического "полного" пресета по умолчанию, см. CLAUDE.md).
     assert 'slope__w6' in results
     assert 'slope__w12' in results
     assert 'slope__w24' in results
-    assert 'slope_ratio__w6_w12' in results
-    assert 'momentum__h3' in results
-    assert 'streak__up' in results
-    assert 'streak__down' in results
-    assert 'growth_since_start' in results
 
 
 # Импорт для теста streak boundary (нужен прямой доступ к _kernel)

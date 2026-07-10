@@ -72,6 +72,7 @@ from .kernels import (
     roughness_ratio,
     run_above_mean,
     seasonal_autocorr,
+    segment_gap,
     sign_change_count,
     skew_proxy,
     slope,
@@ -161,6 +162,8 @@ TRANSFORMERS: dict = {
         # autocorr & seasonal
         autocorr,
         seasonal_autocorr,
+        # segmentation
+        segment_gap,
         # log growth
         geometric_return,
         log_level,

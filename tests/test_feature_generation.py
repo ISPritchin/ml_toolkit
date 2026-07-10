@@ -73,6 +73,7 @@ def test_select_features_writes_output_and_returns_accepted_cols(tmp_path):
         out_path=tmp_path / 'out.parquet',
         corr_threshold=None,  # без фильтра - детерминированный список кандидатов
         transformer_names=['slope'],
+        preset='minimum',
     )
 
     assert accepted_cols == ['value__slope__w6', 'value__slope__w12', 'value__slope__w24']
@@ -98,6 +99,7 @@ def test_apply_selected_features_reuses_accepted_cols_on_differently_named_entit
         out_path=tmp_path / 'source.parquet',
         corr_threshold=None,
         transformer_names=['slope'],
+        preset='minimum',
     )
 
     # Второй датасет с другим именем колонки-сущности - движок не должен об этом
@@ -113,6 +115,7 @@ def test_apply_selected_features_reuses_accepted_cols_on_differently_named_entit
         accepted_cols=accepted_cols,
         out_path=tmp_path / 'applied.parquet',
         transformer_names=['slope'],
+        preset='minimum',
     )
 
     applied = pl.read_parquet(tmp_path / 'applied.parquet')
@@ -337,18 +340,17 @@ def test_generate_feature_groups_per_group_own_params(tmp_path):
 def test_generate_feature_groups_accepts_named_preset_from_disk(tmp_path):
     df = _two_product_df('entity_id')
 
-    # "descriptive" - реальный пресет из ml_toolkit/transformers/presets/,
-    # применяется целиком (все трансформеры файла).
+    # "minimum" - реальный пресет из ml_toolkit/transformers/presets/,
+    # применяется целиком (все трансформеры файла, здесь - только slope).
     result_cols = generate_feature_groups(
         df,
         entity_column_name='entity_id',
         ts_column_name='ts_key',
-        feature_spec=[('trans_a', 'descriptive')],
+        feature_spec=[('trans_a', 'minimum')],
         out_path=tmp_path / 'out.parquet',
     )
 
-    assert any(c.startswith('trans_a__window_mean') for c in result_cols)
-    assert any(c.startswith('trans_a__rolling_std') for c in result_cols)
+    assert result_cols == ['trans_a__slope__w6', 'trans_a__slope__w12', 'trans_a__slope__w24']
 
 
 def test_generate_feature_groups_conflicting_presets_for_same_column_raises(tmp_path):

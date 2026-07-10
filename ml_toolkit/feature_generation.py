@@ -79,12 +79,14 @@ Phase C — Итоговый датасет:
     compute(values, position, params) -> (arrays, suffixes)
 
 Параметры трансформеров (окна, лаги и т.п.) задаются через пресет —
-словарь {feature_name: params_dict}. В select_features/apply_selected_features
-пресет передаётся общим параметром preset=<path>/<dict> (None по умолчанию грузит
-ml_toolkit/transformers/presets/monthly.yaml); в generate_feature_groups/
-apply_feature_groups пресет — второй элемент каждой пары в feature_spec,
-(columns, preset), и обязателен — автоматического пресета по умолчанию там нет,
-так что разным группам колонок можно (и нужно) назначать свои пресеты явно.
+словарь {feature_name: params_dict}. Автоматического пресета по умолчанию нет
+нигде в модуле — preset обязателен и должен быть задан явно везде: в
+select_features/apply_selected_features — общим параметром preset=<path>/<dict>
+(preset=None поднимает ValueError); в generate_feature_groups/
+apply_feature_groups — вторым элементом каждой пары в feature_spec, (columns,
+preset), так что разным группам колонок можно (и нужно) назначать свои пресеты
+явно. Готовые именованные пресеты ищутся в ml_toolkit/transformers/presets/
+(например, preset='minimum').
 
 Именование признаков:
   - Если suffix непустой: {product_col}__{feature}__{suffix}
@@ -107,11 +109,14 @@ from tqdm import tqdm
 import yaml
 
 from .transformers import TRANSFORMERS
+from .transformers._segmentation import (
+    compute_segment_position,
+    segment_suffix_fragment,
+    validate_segment_config,
+)
 from .transformers._windowing import compute_position_within_entity
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_PRESET_PATH = Path(__file__).parent / 'transformers' / 'presets' / 'monthly.yaml'
 
 # Размер row group для временных parquet-файлов. Одинаковое значение для всех
 # файлов гарантирует выравнивание границ — _build_output_from_parquets читает
@@ -155,37 +160,107 @@ PresetArg = Path | str | dict[str, dict]
 FeatureSpecEntry = tuple[ColumnsArg, PresetArg]
 
 
+def _resolve_segment_ref(segment_ref: str | dict, segments_registry: dict[str, dict], context: str) -> dict:
+    """Резолвит значение ключа `segment` в конкретный конфиг сегментации.
+
+    Args:
+        segment_ref: Либо строка-имя, ссылающаяся на секцию `segments:` пресета,
+            либо уже готовый inline-словарь `{strategy: ..., ...}`.
+        segments_registry: Секция `segments:` пресета ({имя: конфиг}), может быть
+            пустой, если пресет не содержит именованных сегментов.
+        context: Человекочитаемый контекст для сообщения об ошибке.
+
+    Returns:
+        Резолвленный и провалидированный конфиг сегмента.
+
+    Raises:
+        ValueError: Строка не найдена в segments_registry, либо конфиг не проходит
+            `validate_segment_config` (неизвестная стратегия / не хватает ключей).
+        TypeError: segment_ref не строка и не словарь.
+
+    """
+    if isinstance(segment_ref, str):
+        if segment_ref not in segments_registry:
+            raise ValueError(
+                f"{context}: segment='{segment_ref}' не найден в секции 'segments:' пресета. "
+                f'Доступные: {sorted(segments_registry)}'
+            )
+        cfg = segments_registry[segment_ref]
+    elif isinstance(segment_ref, dict):
+        cfg = segment_ref
+    else:
+        raise TypeError(
+            f'{context}: segment должен быть строкой (именем из "segments:") или '
+            f'словарём, получено {type(segment_ref)}'
+        )
+    return validate_segment_config(cfg, context=context)
+
+
 def _load_preset(preset: Path | str | dict | None) -> dict[str, dict]:
     """Загружает пресет параметров трансформеров.
 
     Args:
         preset: Одна из:
-            - None → ml_toolkit/transformers/presets/monthly.yaml (по умолчанию)
-            - Строка-имя (например, "descriptive") → ml_toolkit/transformers/presets/{имя}.yaml
+            - Строка-имя (например, "minimum") → ml_toolkit/transformers/presets/{имя}.yaml
             - Путь Path или str → точный путь к yaml-файлу
             - dict → готовый словарь параметров
+            - None → недопустимо, поднимает ValueError. Автоматического пресета
+              по умолчанию нет нигде в модуле — неявный дефолт вводит в
+              заблуждение (можно случайно навариться на "случайном" наборе
+              трансформеров, даже не заметив, что preset не был передан).
+
+        Зарезервированный ключ верхнего уровня `segments:` (если есть) описывает
+        именованные конфиги сегментации ({имя: {strategy: ..., ...}}) и не
+        трактуется как трансформер. Если у какого-то трансформера в params есть
+        ключ `segment`, он резолвится: строка → поиск в `segments:` этого же
+        пресета, словарь → используется как есть (после валидации структуры).
+        Именованные сегменты не шарятся между разными пресетами/вызовами
+        `_load_preset` — секция `segments:` должна присутствовать в каждом
+        пресете, который на неё ссылается.
 
     Returns:
-        {feature_name: params_dict} для каждого трансформера в пресете.
+        {feature_name: params_dict} для каждого трансформера в пресете (без
+        ключа 'segments' — он вычерпан в резолв конкретных `segment` ссылок).
+
+    Raises:
+        ValueError: preset is None.
 
     """
     if preset is None:
-        preset = _DEFAULT_PRESET_PATH
+        raise ValueError(
+            'preset обязателен и должен быть задан явно — автоматического '
+            'пресета по умолчанию нет. Передайте имя/путь к yaml-файлу '
+            '(например, "minimum") или словарь {transformer_name: params}.'
+        )
 
     if isinstance(preset, dict):
-        return {k: (v or {}) for k, v in preset.items()}
+        raw = preset
+    else:
+        if isinstance(preset, str):
+            preset_path = Path(preset)
+            # Если это просто имя без пути (нет /, \, и не существует как файл),
+            # ищем в директории presets
+            if not any(sep in preset for sep in ('/', '\\')) and not preset_path.exists():
+                preset_path = Path(__file__).parent / 'transformers' / 'presets' / f'{preset}.yaml'
+            preset = preset_path
 
-    if isinstance(preset, str):
-        preset_path = Path(preset)
-        # Если это просто имя без пути (нет /, \, и не существует как файл),
-        # ищем в директории presets
-        if not any(sep in preset for sep in ('/', '\\')) and not preset_path.exists():
-            preset_path = Path(__file__).parent / 'transformers' / 'presets' / f'{preset}.yaml'
-        preset = preset_path
+        with open(preset, encoding='utf-8') as f:
+            raw = yaml.safe_load(f)
 
-    with open(preset, encoding='utf-8') as f:
-        raw = yaml.safe_load(f)
-    return {k: (v or {}) for k, v in raw.items()}
+    segments_registry = raw.get('segments') or {}
+
+    result: dict[str, dict] = {}
+    for name, params in raw.items():
+        if name == 'segments':
+            continue
+        params = params or {}
+        if 'segment' in params:
+            params = dict(params)
+            params['segment'] = _resolve_segment_ref(
+                params['segment'], segments_registry, context=f"пресет, трансформер '{name}'"
+            )
+        result[name] = params
+    return result
 
 
 def _select_transformers(
@@ -302,7 +377,11 @@ def _resolve_feature_spec(
     объединяются — совпадающая пара (колонка, трансформер) с одинаковыми
     параметрами вычисляется в Phase A ровно один раз. Если при этом две группы
     просят один и тот же (колонка, трансформер) с РАЗНЫМИ параметрами — это
-    настоящий конфликт, не тихий дедуп: поднимается `ValueError`.
+    настоящий конфликт, не тихий дедуп: поднимается `ValueError`. Исключение:
+    если единственное различие — разный резолвленный `segment` (params содержит
+    ключ 'segment'), это не конфликт, а осознанный запрос того же трансформера
+    с разной сегментацией — оба варианта сохраняются как разные кандидаты
+    (различаются суффиксом колонки, см. `segment_suffix_fragment`).
 
     Args:
         df: Датасет, схема которого используется для резолва селекторов в columns.
@@ -350,13 +429,16 @@ def _resolve_feature_spec(
         for col in cols:
             bucket = requested.setdefault(col, {})
             for name, module, params in selected:
-                if name in bucket and bucket[name][1] != params:
+                segment_cfg = params.get('segment')
+                seg_sig = segment_suffix_fragment(segment_cfg) if segment_cfg else None
+                key = (name, seg_sig)
+                if key in bucket and bucket[key][1] != params:
                     raise ValueError(
                         f"feature_spec: колонка '{col}', трансформер '{name}' "
                         f"запрошен с разными параметрами в разных группах "
-                        f"({bucket[name][1]!r} vs {params!r})"
+                        f"({bucket[key][1]!r} vs {params!r})"
                     )
-                bucket[name] = (module, params)
+                bucket[key] = (module, params)
 
     schema_names = set(df.collect_schema().names())
     unknown = set(requested) - schema_names
@@ -364,7 +446,7 @@ def _resolve_feature_spec(
         raise ValueError(f'feature_spec ссылается на колонки, отсутствующие в df: {sorted(unknown)}')
 
     return {
-        col: [(name, module, params) for name, (module, params) in bucket.items()]
+        col: [(name, module, params) for (name, _seg_sig), (module, params) in bucket.items()]
         for col, bucket in requested.items()
     }
 
@@ -390,14 +472,17 @@ def _temp_working_dir(tmp_dir: Path | str | None):
         yield p
 
 
-def _pearson_excluding_both_zero(left: np.ndarray, right: np.ndarray) -> float:
-    """Корреляция Пирсона, исключая наблюдения, где оба значения равны нулю.
+def _pearson_excluding_invalid_pairs(left: np.ndarray, right: np.ndarray) -> float:
+    """Корреляция Пирсона, исключая наблюдения, где оба значения равны нулю, либо
+    хотя бы одно из них — NaN.
 
     Нули-оба не считаются «согласием» по спецификации — они убираются из выборки
-    перед расчётом. Если после фильтрации осталось меньше двух точек или один из
-    рядов константен — возвращает 0.0.
+    перед расчётом. NaN появляется у сегментированных фич (см. `_segmentation.py`)
+    в строках вне сегмента — такая точка не несёт информации ни об одном из двух
+    рядов и не может участвовать в расчёте корреляции. Если после фильтрации
+    осталось меньше двух точек или один из рядов константен — возвращает 0.0.
     """
-    mask = ~((left == 0.0) & (right == 0.0))
+    mask = ~((left == 0.0) & (right == 0.0)) & ~np.isnan(left) & ~np.isnan(right)
     if mask.sum() < 2:
         return 0.0
     l_flt, r_flt = left[mask], right[mask]
@@ -496,6 +581,17 @@ def _generate_candidate_features_to_parquets(
     position_within_entity = compute_position_within_entity(entity_codes)
     del entity_codes
 
+    mask_cache: dict[str, np.ndarray] = {}
+
+    def _resolve_mask_array(mask_column: str) -> np.ndarray:
+        if mask_column not in mask_cache:
+            if isinstance(df, Path):
+                arr = pl.read_parquet(df, columns=[mask_column])[mask_column].to_numpy()
+            else:
+                arr = df_sorted[mask_column].to_numpy()
+            mask_cache[mask_column] = np.asarray(arr, dtype=np.bool_)
+        return mask_cache[mask_column]
+
     all_candidate_cols: list[str] = []
     col_to_file: dict[str, Path] = {}
 
@@ -512,7 +608,36 @@ def _generate_candidate_features_to_parquets(
             product_values = df_sorted[product_col].to_numpy().astype(np.float64)
 
         for transformer_name, module, params in product_col_transformers[product_col]:
-            arrays, suffixes = module.compute(product_values, position_within_entity, params)
+            segment_cfg = params.get('segment')
+
+            if segment_cfg is not None and transformer_name != 'segment_gap':
+                # Сегментированный трансформер: считаем альтернативную позицию
+                # (position_within_segment) через тот же single-pass примитив,
+                # что и segment_gap, зовём compute() с ней вместо
+                # position_within_entity, затем зануляем NaN'ом все строки вне
+                # сегмента — кернел этого не делает сам, он агностичен к тому,
+                # почему позиция сбрасывается в 0.
+                strategy = segment_cfg['strategy']
+                external_mask = (
+                    _resolve_mask_array(segment_cfg['mask_column']) if strategy == 'mask' else None
+                )
+                seg_position, in_segment = compute_segment_position(
+                    product_values, position_within_entity, strategy, segment_cfg,
+                    external_mask=external_mask,
+                )
+                call_params = {k: v for k, v in params.items() if k != 'segment'}
+                arrays, suffixes = module.compute(product_values, seg_position, call_params)
+                arrays = [np.where(in_segment, np.asarray(arr, dtype=np.float64), np.nan) for arr in arrays]
+            else:
+                # segment_gap сам строит сегментацию внутри compute() (нужна
+                # его собственная позиция раскрытия, а не подмена) и не должен
+                # зануляться NaN'ом — его единственная задача сказать, где
+                # разрывы, поэтому именно в разрывах ему нужно значение 1.0.
+                arrays, suffixes = module.compute(product_values, position_within_entity, params)
+
+            if segment_cfg is not None:
+                seg_fragment = segment_suffix_fragment(segment_cfg)
+                suffixes = [f'{s}__{seg_fragment}' if s else seg_fragment for s in suffixes]
 
             group_arrays: dict[str, np.ndarray] = {}
             for suffix, arr in zip(suffixes, arrays):
@@ -520,7 +645,11 @@ def _generate_candidate_features_to_parquets(
                 group_arrays[col] = np.asarray(arr, dtype=np.float32)
                 all_candidate_cols.append(col)
 
-            tmp_path = tmp_dir / f'{name}_{product_col}__{transformer_name}.parquet'
+            # segment_cfg входит в имя файла: без этого два варианта одного
+            # трансформера с разной сегментацией писались бы в один и тот же
+            # файл, и второй write_parquet затирал бы первый целиком.
+            file_tag = f'{transformer_name}__{seg_fragment}' if segment_cfg is not None else transformer_name
+            tmp_path = tmp_dir / f'{name}_{product_col}__{file_tag}.parquet'
             pl.DataFrame(group_arrays).write_parquet(tmp_path, row_group_size=_ROW_GROUP_SIZE)
             for col in group_arrays:
                 col_to_file[col] = tmp_path
@@ -552,7 +681,7 @@ def _streaming_correlation_filter(
     нагрузка: n_accepted × n_sample_rows float32 + 1 кандидат — против
     n_candidates × n_rows в прежнем подходе.
 
-    Нули-оба исключаются перед расчётом корреляции (см. _pearson_excluding_both_zero).
+    Нули-оба и NaN исключаются перед расчётом корреляции (см. _pearson_excluding_invalid_pairs).
     Порядок кандидатов влияет на итог (жадный алгоритм).
 
     Args:
@@ -597,7 +726,7 @@ def _streaming_correlation_filter(
 
         is_redundant = False
         for accepted_col in accepted_cols:
-            corr = _pearson_excluding_both_zero(candidate_arr, accepted_arrays[accepted_col])
+            corr = _pearson_excluding_invalid_pairs(candidate_arr, accepted_arrays[accepted_col])
             if abs(corr) > threshold:
                 is_redundant = True
                 logger.debug(
@@ -913,9 +1042,9 @@ def select_features(
             None → системная temp-директория (удаляется автоматически по выходу).
             Если задан — директория создаётся и файлы остаются после завершения
             (удобно для отладки).
-        preset: Пресет параметров трансформеров — одно из:
-            - None → monthly.yaml (по умолчанию)
-            - "descriptive" / "trend" / "stability" / "lifecycle" → именованный пресет
+        preset: Пресет параметров трансформеров — **обязателен**, автоматического
+            пресета по умолчанию нет (preset=None поднимает ValueError). Одно из:
+            - Строка-имя (например, "minimum") → ищется в ml_toolkit/transformers/presets/
             - Path / str с полным путём → точный yaml-файл
             - dict → готовый словарь {feature_name: params}
         name: Метка для временных файлов и логов (например, имя датасета в
@@ -925,7 +1054,8 @@ def select_features(
         Список принятых колонок (`accepted_cols`) в порядке отбора.
 
     Raises:
-        ValueError: Если в transformer_names встретилось неизвестное имя.
+        ValueError: Если preset не задан (None), или если в transformer_names
+            встретилось неизвестное имя.
 
     """
     preset_dict = _load_preset(preset)
@@ -1081,14 +1211,16 @@ def apply_selected_features(
         transformer_names: Подмножество AVAILABLE_TRANSFORMER_NAMES. Должно
             совпадать с тем, что передавалось в парный `select_features`, иначе
             параметры трансформеров разойдутся между датасетами.
-        preset: Пресет параметров трансформеров (см. `select_features`). Должен
-            совпадать с тем, что передавалось в парный `select_features`.
+        preset: Пресет параметров трансформеров — **обязателен** (см.
+            `select_features`), должен совпадать с тем, что передавалось в
+            парный `select_features`.
         tmp_dir: Путь для временных parquet-файлов с кандидатами фич.
             None → системная temp-директория (удаляется автоматически по выходу).
         name: Метка для логов/tqdm (например, имя датасета в вызывающей задаче).
 
     Raises:
-        ValueError: Если в transformer_names встретилось неизвестное имя.
+        ValueError: Если preset не задан (None), или если в transformer_names
+            встретилось неизвестное имя.
 
     """
     preset_dict = _load_preset(preset)

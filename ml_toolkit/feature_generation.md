@@ -81,23 +81,26 @@ from ml_toolkit.feature_generation import AVAILABLE_TRANSFORMER_NAMES
 Если параметры трансформера уже есть в одном из готовых yaml-файлов репозитория (`ml_toolkit/transformers/presets/`) — не обязательно переписывать их в inline-словарь, можно сослаться на пресет по имени или пути. Второй элемент пары в `feature_spec` — это:
 
 - `dict[str, dict]` — явный словарь `{transformer_name: params}`, как в примерах выше;
-- `str` — имя пресета (например, `"descriptive"`, `"monthly"`), ищется в `ml_toolkit/transformers/presets/{имя}.yaml`, или полный путь строкой;
+- `str` — имя пресета (например, `"minimum"`), ищется в `ml_toolkit/transformers/presets/{имя}.yaml`, или полный путь строкой;
 - `Path` — точный путь к yaml-файлу.
 
-Пресет из файла применяется **целиком** — все трансформеры, перечисленные в нём:
+В репозитории нет готового "полного" пресета со всеми 81 трансформерами и нет
+дефолтного имени — только то, что вы сами положите в `presets/` (сейчас там
+лежит `minimum.yaml` с одним `slope`, как отправная точка). Пресет из файла
+применяется **целиком** — все трансформеры, перечисленные в нём:
 
 ```python
 result_cols = generate_feature_groups(
     df, entity_column_name="id_key", ts_column_name="ts_key",
     feature_spec=[
-        ("trans_sum", "monthly"),        # все трансформеры из monthly.yaml
+        ("trans_sum", "minimum"),        # все трансформеры из minimum.yaml
         ("trans_cnt", {"ewma": {"alphas": [0.3]}}),  # а для этой колонки — только ewma вручную
     ],
     out_path="out.parquet",
 )
 ```
 
-Вот как выглядит запись `slope` в `ml_toolkit/transformers/presets/monthly.yaml`:
+Вот как выглядит запись `slope` в `ml_toolkit/transformers/presets/minimum.yaml`:
 
 ```yaml
 slope:
@@ -110,17 +113,17 @@ slope:
 import yaml
 from pathlib import Path
 
-preset = yaml.safe_load(Path("ml_toolkit/transformers/presets/monthly.yaml").read_text())
+preset = yaml.safe_load(Path("ml_toolkit/transformers/presets/minimum.yaml").read_text())
 preset["slope"]["windows"] = [3, 6, 12]   # свои окна вместо [6, 12, 24]
 
 result_cols = generate_feature_groups(
     df, entity_column_name="id_key", ts_column_name="ts_key",
-    feature_spec=[("trans_sum", preset)],   # весь monthly.yaml, но с изменённым slope
+    feature_spec=[("trans_sum", preset)],   # весь minimum.yaml, но с изменённым slope
     out_path="out.parquet",
 )
 ```
 
-Какие ключи принимает конкретный трансформер — смотрите в его модуле `ml_toolkit/transformers/kernels/{name}.py` (докстринг там всегда содержит раздел `Preset` с примером) или в самом `monthly.yaml`. Трансформеры без параметров (например, `streak`, `growth_since_start`) — это просто `{}`.
+Какие ключи принимает конкретный трансформер — смотрите в его модуле `ml_toolkit/transformers/kernels/{name}.py` (докстринг там всегда содержит раздел `Preset` с примером). Трансформеры без параметров (например, `streak`, `growth_since_start`) — это просто `{}`.
 
 Если разные группы `feature_spec` называют одну и ту же колонку с одним и тем же трансформером, но **разными** параметрами — это конфликт: `ValueError` вместо тихого выбора одного из вариантов.
 
@@ -163,7 +166,7 @@ result_cols = generate_feature_groups(
 
 ### Частный случай: один и тот же набор трансформеров на все колонки
 
-Если разных наборов не нужно и вы хотите **всегда** прогонять корреляционный фильтр (включён по умолчанию, `corr_threshold=0.9`) — есть более короткая uniform-обёртка `select_features`/`apply_selected_features`. В отличие от группового API, здесь `transformer_names`/`preset` — обычные необязательные параметры с понятным дефолтом (весь `monthly.yaml`), это исторически сложившийся более простой интерфейс:
+Если разных наборов не нужно и вы хотите **всегда** прогонять корреляционный фильтр (включён по умолчанию, `corr_threshold=0.9`) — есть более короткая uniform-обёртка `select_features`/`apply_selected_features`. `preset` здесь — точно такой же обязательный параметр без автоматического дефолта, как и в групповом API (`preset=None` поднимает `ValueError`); единственное отличие от `generate_feature_groups` — `transformer_names` может дополнительно сузить пресет до подмножества трансформеров:
 
 ```python
 from ml_toolkit.feature_generation import select_features, apply_selected_features
@@ -174,8 +177,8 @@ accepted_cols = select_features(
     ts_column_name="ts_key",
     product_cols=["trans_sum", "trans_cnt"],   # одни и те же трансформеры на обе колонки
     out_path="out.parquet",
+    preset={"slope": {"windows": [6, 12, 24]}, "ewma": {"alphas": [0.3]}},  # обязателен
     transformer_names=["slope", "ewma"],        # None — все трансформеры пресета
-    preset=None,                                 # None — monthly.yaml
 )
 ```
 
@@ -194,13 +197,13 @@ accepted_cols = select_features(
 | `tmp_dir` | Только у `select_features`/`generate_feature_groups` — папка для временных parquet с кандидатами. `None` → системная temp (авто-удаление). Задайте явно, чтобы файлы остались для отладки. |
 | `name` | Метка для логов/tqdm — например, имя датасета в вызывающей задаче ("subset" / "holding"). |
 
-`preset`/параметры трансформеров — не общий параметр всех четырёх функций: в `select_features`/`apply_selected_features` это отдельные kwargs `transformer_names`+`preset` с дефолтом на весь `monthly.yaml`; в `generate_feature_groups`/`apply_feature_groups` это второй, обязательный элемент каждой пары в `feature_spec` (без дефолта — см. выше).
+`preset`/параметры трансформеров — не общий параметр всех четырёх функций, но обязателен без исключений: в `select_features`/`apply_selected_features` это отдельные kwargs `transformer_names`+`preset` (preset=None — `ValueError`, автоматического дефолта нет); в `generate_feature_groups`/`apply_feature_groups` это второй, обязательный элемент каждой пары в `feature_spec` (см. выше).
 
 ---
 
 ## Реестр трансформеров
 
-81 трансформер, сгруппированных тематически (полный список — `ml_toolkit/transformers/__init__.py`, параметры каждого — `ml_toolkit/transformers/presets/monthly.yaml`):
+81 трансформер, сгруппированных тематически (полный список — `ml_toolkit/transformers/__init__.py`, параметры каждого — докстринг соответствующего модуля в `ml_toolkit/transformers/kernels/`):
 
 - *trend*: `slope`, `slope_ratio`, `momentum`, `direction_flag`, `max_abs_jump`, `streak`, `growth_since_start`
 - *volatility*: `rolling_std`, `rolling_cv`, `rolling_min_max`, `extreme_share`, `skew_proxy`
@@ -226,6 +229,7 @@ accepted_cols = select_features(
 | `feature_spec` пуст (`[]`) | `ValueError` |
 | Элемент `feature_spec` — не пара `(columns, preset)` | `ValueError` |
 | Второй элемент пары не задан (`None`) | `ValueError` — автоматического пресета по умолчанию нет |
+| `select_features`/`apply_selected_features`: `preset=None` | `ValueError` — то же самое правило, дефолта нет и здесь |
 | Неизвестное имя трансформера (ключ словаря) | `ValueError` со списком `AVAILABLE_TRANSFORMER_NAMES` |
 | Строка/селектор в `feature_spec` резолвится в колонку вне схемы `df` | `ValueError` с именами отсутствующих колонок |
 | Селектор ни во что не резолвится (например, датасет без опциональных колонок) | `logger.warning`, группа молча пропускается |
