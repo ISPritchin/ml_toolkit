@@ -60,3 +60,11 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'tenure_months')[-1] == pytest.approx(15.0, abs=1e-06)
     assert math.isfinite(_get(arrs, sfxs, 'first_active_flag')[-1]), 'first_active_flag must be finite'
     assert _get(arrs, sfxs, 'first_active_flag')[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_full_output_vector():
+    # 9 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, 'tenure_months') == pytest.approx([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'first_active_flag') == pytest.approx([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)

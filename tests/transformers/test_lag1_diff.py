@@ -63,3 +63,12 @@ def test_with_mixed_zeros():
     assert math.isfinite(_get(arrs, sfxs, 'pct_change')[-1]), 'pct_change must be finite'
     # v_prev = 0 → изменение в % не определено → 0 (раньше 3.5e10)
     assert _get(arrs, sfxs, 'pct_change')[-1] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_full_output_vector():
+    # 9 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, 'diff') == pytest.approx([0.0, -6.0, 12.0, -3.0, -9.0, 15.0, -11.0, -4.0, 20.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'log_diff') == pytest.approx([0.0, -1.94591, 2.564949, -0.262364, -2.302585, 2.772589, -1.163151, -1.609438, 3.044522], abs=1e-6)
+    assert _get(arrs, sfxs, 'pct_change') == pytest.approx([0.0, -1.0, 0.0, -0.25, -1.0, 0.0, -0.733333, -1.0, 0.0], abs=1e-6)

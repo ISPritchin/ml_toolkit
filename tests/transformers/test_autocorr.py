@@ -66,3 +66,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'lag2_w12')[-1] == pytest.approx(-0.43361060227498427, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'partial_lag2')[-1]), 'partial_lag2 must be finite'
     assert _get(arrs, sfxs, 'partial_lag2')[-1] == pytest.approx(-0.4298376072839067, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 14 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11, 0, 18, 7, 25]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, 'lag1') == pytest.approx([0.0, 0.0, -1.0, -0.240192, -0.355036, -0.582772, -0.572503, -0.435611, -0.563112, -0.314063, -0.348228, -0.439425, -0.414521, -0.364054], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag2') == pytest.approx([0.0, 0.0, 0.0, 1.0, -0.720577, -0.361403, -0.069397, -0.373149, -0.404802, -0.416478, -0.553161, -0.423989, -0.37197, -0.033972], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag3') == pytest.approx([0.0, 0.0, 0.0, 0.0, 1.0, 0.993399, 0.813157, 0.861163, 0.918559, 0.86118, 0.882759, 0.888101, 0.862693, 0.474573], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag1_w12') == pytest.approx([0.0, 0.0, -1.0, -0.240192, -0.355036, -0.582772, -0.572503, -0.435611, -0.563112, -0.314063, -0.348228, -0.439425, -0.47297, -0.416079], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag2_w12') == pytest.approx([0.0, 0.0, 0.0, 1.0, -0.720577, -0.361403, -0.069397, -0.373149, -0.404802, -0.416478, -0.553161, -0.423989, -0.369416, -0.042995], abs=1e-6)
+    assert _get(arrs, sfxs, 'partial_lag2') == pytest.approx([0.0, 0.0, 0.0, 1.0, -0.968737, -1.061553, -0.590794, -0.694737, -1.057097, -0.571481, -0.767491, -0.764753, -0.656623, -0.191947], abs=1e-6)

@@ -53,3 +53,13 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'a30')[-1] == pytest.approx(19.413219724110796, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'diff_a30')[-1]), 'diff_a30 must be finite'
     assert _get(arrs, sfxs, 'diff_a30')[-1] == pytest.approx(15.586780275889204, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'alphas': [0.3, 0.5]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'alphas': [0.3, 0.5]})
+    assert _get(arrs, sfxs, 'a30') == pytest.approx([6.0, 4.2, 6.54, 7.278, 5.0946, 8.06622, 6.846354, 4.792448, 9.354713], abs=1e-6)
+    assert _get(arrs, sfxs, 'diff_a30') == pytest.approx([0.0, -4.2, 5.46, 1.722, -5.0946, 6.93378, -2.846354, -4.792448, 10.645287], abs=1e-6)
+    assert _get(arrs, sfxs, 'a50') == pytest.approx([6.0, 3.0, 7.5, 8.25, 4.125, 9.5625, 6.78125, 3.390625, 11.695312], abs=1e-6)
+    assert _get(arrs, sfxs, 'diff_a50') == pytest.approx([0.0, -3.0, 4.5, 0.75, -4.125, 5.4375, -2.78125, -3.390625, 8.304688], abs=1e-6)

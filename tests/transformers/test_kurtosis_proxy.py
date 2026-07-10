@@ -59,3 +59,14 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'upper_tail_w6')[-1] == pytest.approx(95 / 105, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'lower_tail_w6')[-1]), 'lower_tail_w6 must be finite'
     assert _get(arrs, sfxs, 'lower_tail_w6')[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'kurt_w4') == pytest.approx([0.0, -2.0, -1.5, -1.154286, -1.847751, -1.0, -1.338624, -0.877883, -1.709949], abs=1e-6)
+    assert _get(arrs, sfxs, 'p75_p25_w4') == pytest.approx([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'p90_p10_w4') == pytest.approx([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'upper_tail_w4') == pytest.approx([0.0, 1.0, 0.666667, 0.444444, 0.571429, 0.416667, 0.535714, 0.789474, 0.512821], abs=1e-6)
+    assert _get(arrs, sfxs, 'lower_tail_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)

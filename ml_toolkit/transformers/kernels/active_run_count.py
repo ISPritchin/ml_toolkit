@@ -19,9 +19,9 @@ Preset (monthly.yaml):
 
 Interpretation:
     active_run_count_w12 = 1 при active_months_w12 = 12 — непрерывный клиент.
-    active_run_count_w12 = 4 при active_months_w12 = 4 — одиночные всплески (B2B-проекты).
-    active_run_count_w12 = 8–10 при active_months_w12 = 10 — почти каждый месяц активен,
-    но есть короткие паузы, типичные для сезонного ритма.
+    active_run_count_w12 = 4 при active_months_w12 = 4 — одиночные всплески.
+    active_run_count_w12 = 3 при active_months_w12 = 10 — почти каждый месяц активен, но
+    2 паузы разбивают поток на 3 отдельные вспышки.
 
 Example:
     Ряд (6 мес): [10, 0, 5, 0, 8, 3]

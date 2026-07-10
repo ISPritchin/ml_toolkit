@@ -48,3 +48,11 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'current')[-1] == pytest.approx(0.0, abs=1e-06)
     # longest zero run is 2 ({4,5} or {12,13})
     assert _get(arrs, sfxs, 'max')[-1] == pytest.approx(2.0, abs=1e-06)
+
+
+def test_full_output_vector():
+    # 9 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, 'current') == pytest.approx([0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'max') == pytest.approx([0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], abs=1e-6)

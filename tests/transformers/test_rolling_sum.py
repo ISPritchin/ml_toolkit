@@ -50,3 +50,10 @@ def test_with_mixed_zeros():
     arrs, sfxs = _run(values, {'windows': [6]})
     # sum of [10,0,60,0,0,35]
     assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(105.0, abs=1e-06)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4') == pytest.approx([6.0, 6.0, 18.0, 27.0, 21.0, 36.0, 28.0, 19.0, 39.0], abs=1e-6)

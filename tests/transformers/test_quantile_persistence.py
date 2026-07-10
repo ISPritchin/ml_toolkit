@@ -56,3 +56,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'q_stability_w6')[-1] == pytest.approx(0.7113248658381998, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'above_ewma_w6')[-1]), 'above_ewma_w6 must be finite'
     assert _get(arrs, sfxs, 'above_ewma_w6')[-1] == pytest.approx(0.3333333333333333, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'above_med_w4') == pytest.approx([0.0, 0.5, 0.333333, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], abs=1e-6)
+    assert _get(arrs, sfxs, 'top_q_w4') == pytest.approx([1.0, 1.0, 0.666667, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], abs=1e-6)
+    assert _get(arrs, sfxs, 'bot_q_w4') == pytest.approx([1.0, 0.5, 0.333333, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25], abs=1e-6)
+    assert _get(arrs, sfxs, 'rank_trend_w4') == pytest.approx([0.0, -0.5, 0.666667, -0.25, -0.25, 0.75, -0.5, -0.25, 0.75], abs=1e-6)
+    assert _get(arrs, sfxs, 'q_stability_w4') == pytest.approx([1.0, 0.666667, 0.591752, 0.552786, 0.698489, 0.552786, 0.552786, 0.698489, 0.552786], abs=1e-6)
+    assert _get(arrs, sfxs, 'above_ewma_w4') == pytest.approx([0.0, 0.5, 0.333333, 0.5, 0.5, 0.75, 0.5, 0.25, 0.5], abs=1e-6)

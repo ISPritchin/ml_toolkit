@@ -52,3 +52,11 @@ def test_with_mixed_zeros():
     arrs, sfxs = _run(values, {'half_windows': [3]})
     assert math.isfinite(_get(arrs, sfxs, 'h3')[-1]), 'h3 must be finite'
     assert _get(arrs, sfxs, 'h3')[-1] == pytest.approx(-0.5000000000214286, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 10 значений, params={'half_windows': [2, 4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11]
+    arrs, sfxs = _run(values, {'half_windows': [2, 4]})
+    assert _get(arrs, sfxs, 'h2') == pytest.approx([0.0, 0.0, 0.0, 2.5, -0.25, -0.285714, 1.111111, -0.733333, 0.052632, 6.75], abs=1e-6)
+    assert _get(arrs, sfxs, 'h4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.296296, 0.857143, -0.027778], abs=1e-6)

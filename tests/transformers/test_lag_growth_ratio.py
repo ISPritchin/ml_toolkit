@@ -42,3 +42,11 @@ def test_decline_gives_negative_ratio():
     assert _get(arrs, sfxs, 'lag3')[-1] == pytest.approx(-0.6, abs=1e-4)
 
 # test_with_mixed_zeros skipped for lag_growth_ratio: 'lags'
+
+
+def test_full_output_vector():
+    # 10 значений, params={'lags': [2, 4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11]
+    arrs, sfxs = _run(values, {'lags': [2, 4]})
+    assert _get(arrs, sfxs, 'lag2') == pytest.approx([0.0, 0.0, 1.0, 0.0, -1.0, 0.666667, 0.0, -1.0, 4.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag4') == pytest.approx([0.0, 0.0, 0.0, 0.0, -1.0, 0.0, -0.666667, -1.0, 0.0, -0.266667], abs=1e-6)

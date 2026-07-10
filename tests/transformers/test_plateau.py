@@ -90,3 +90,14 @@ def test_with_mixed_zeros():
     assert math.isfinite(_get(arrs, sfxs, 'plateau_exit_recency')[-1]), 'plateau_exit_recency must be finite'
     # выход из плато (0→35) в текущем месяце → 0 месяцев с выхода
     assert _get(arrs, sfxs, 'plateau_exit_recency')[-1] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'flat_share_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'longest_flat_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'near_mean_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'current_flat_streak') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'plateau_exit_recency') == pytest.approx([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], abs=1e-6)

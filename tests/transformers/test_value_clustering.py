@@ -57,3 +57,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'density_w6')[-1] == pytest.approx(0.5833333333300926, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'herfindahl_w6')[-1]), 'herfindahl_w6 must be finite'
     assert _get(arrs, sfxs, 'herfindahl_w6')[-1] == pytest.approx(0.44671201814058953, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'top1_share_w4') == pytest.approx([1.0, 1.0, 0.666667, 0.444444, 0.571429, 0.416667, 0.535714, 0.789474, 0.512821], abs=1e-6)
+    assert _get(arrs, sfxs, 'top3_share_w4') == pytest.approx([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'bot3_share_w4') == pytest.approx([1.0, 1.0, 1.0, 0.555556, 0.428571, 0.583333, 0.464286, 0.210526, 0.487179], abs=1e-6)
+    assert _get(arrs, sfxs, 'concentration_w4') == pytest.approx([1.0, 1.0, 1.0, 1.8, 2.333333, 1.714286, 2.153846, 4.75, 2.052632], abs=1e-6)
+    assert _get(arrs, sfxs, 'density_w4') == pytest.approx([1.0, 1.0, 0.75, 0.75, 0.875, 0.8, 0.622222, 0.633333, 0.65], abs=1e-6)
+    assert _get(arrs, sfxs, 'herfindahl_w4') == pytest.approx([1.0, 1.0, 0.555556, 0.358025, 0.510204, 0.347222, 0.410714, 0.66759, 0.421433], abs=1e-6)

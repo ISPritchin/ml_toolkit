@@ -58,3 +58,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'speed_w6')[-1] == pytest.approx(7.0, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'is_recovering_now')[-1]), 'is_recovering_now must be finite'
     assert _get(arrs, sfxs, 'is_recovering_now')[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'completeness_w4') == pytest.approx([0.0, 0.0, 1.0, 0.75, 0.0, 1.0, 0.266667, 0.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'drawdown_dur_w4') == pytest.approx([0.0, 1.0, 2.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'post_trough_gain_w4') == pytest.approx([0.0, 0.0, 2.0, 1.333333, 0.0, 1.666667, 0.571429, 0.0, 2.051282], abs=1e-6)
+    assert _get(arrs, sfxs, 'trough_is_recent_w4') == pytest.approx([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'speed_w4') == pytest.approx([0.0, 0.0, 6.0, 3.0, 0.0, 7.5, 1.333333, 0.0, 10.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'is_recovering_now') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)

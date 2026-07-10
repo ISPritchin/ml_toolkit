@@ -51,3 +51,10 @@ def test_with_mixed_zeros():
     arrs, sfxs = _run(values, {'windows': [6]})
     assert math.isfinite(_get(arrs, sfxs, 'share_of_tenure_active')[-1]), 'share_of_tenure_active must be finite'
     assert _get(arrs, sfxs, 'share_of_tenure_active')[-1] == pytest.approx(0.5333333333333333, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, 'share_of_tenure_active') == pytest.approx([1.0, 0.5, 0.666667, 0.75, 0.6, 0.666667, 0.714286, 0.625, 0.666667], abs=1e-6)

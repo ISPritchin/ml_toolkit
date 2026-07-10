@@ -66,3 +66,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'lag12_consistency')[-1] == pytest.approx((2 / 9) ** 0.5, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'yoy_accel')[-1]), 'yoy_accel must be finite'
     assert _get(arrs, sfxs, 'yoy_accel')[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_full_output_vector():
+    # 14 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11, 0, 18, 7, 25]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, 'lag3_ratio') == pytest.approx([0.0, 0.0, 0.0, 0.5, 0.0, 0.25, -0.555556, 0.0, 0.333333, 1.75, 0.0, -0.1, -0.363636, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag9_ratio') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.833333, 0.0, 0.5, -0.222222, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag12_ratio') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.166667, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag3_trend') == pytest.approx([0.0, 0.0, 0.0, 0.166667, 0.166667, 0.25, -0.101852, -0.101852, -0.074074, 0.694444, 0.694444, 0.55, -0.154545, -0.154545], abs=1e-6)
+    assert _get(arrs, sfxs, 'lag12_consistency') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.083333], abs=1e-6)
+    assert _get(arrs, sfxs, 'yoy_accel') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)

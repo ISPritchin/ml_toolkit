@@ -34,3 +34,10 @@ def test_all_zeros_ratio_near_zero():
     assert abs(_get(arrs, sfxs, 'w3_w6')[-1]) < 1e-3
 
 # test_with_mixed_zeros skipped for level_ratio: 'pairs'
+
+
+def test_full_output_vector():
+    # 10 значений, params={'pairs': [[3, 6]]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11]
+    arrs, sfxs = _run(values, {'pairs': [[3, 6]]})
+    assert _get(arrs, sfxs, 'w3_w6') == pytest.approx([1.0, 1.0, 1.0, 1.037037, 1.296296, 1.142857, 0.95, 0.95, 1.0, 1.24], abs=1e-6)

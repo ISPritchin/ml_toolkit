@@ -43,6 +43,17 @@ def test_zeros_in_series():
     arrs, sfxs = _run([0, 0, 10])
     assert _get(arrs, sfxs, '')[-1] == pytest.approx(10.0)
 
+def test_full_output_vector():
+    # 6 значений: [5, 10, 20, 15, 15, 30]
+    # pos=0,1 -> 0 (недостаточно истории)
+    # pos=2: 20 - 2*10 + 5   = 5
+    # pos=3: 15 - 2*20 + 10  = -15
+    # pos=4: 15 - 2*15 + 20  = 5
+    # pos=5: 30 - 2*15 + 15  = 15
+    arrs, sfxs = _run([5, 10, 20, 15, 15, 30])
+    assert _get(arrs, sfxs, '') == pytest.approx([0.0, 0.0, 5.0, -15.0, 5.0, 15.0])
+
+
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):
     # [50, 30, 0, 80, 0, 0, 20, 40, 0, 10, 0, 60, 0, 0, 35]

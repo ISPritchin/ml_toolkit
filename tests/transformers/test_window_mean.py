@@ -46,3 +46,10 @@ def test_with_mixed_zeros():
     arrs, sfxs = _run(values, {'windows': [6]})
     # mean of [10,0,60,0,0,35]=17.5
     assert _get(arrs, sfxs, 'w6')[-1] == pytest.approx(17.5, abs=0.0001)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'w4') == pytest.approx([6.0, 3.0, 6.0, 6.75, 5.25, 9.0, 7.0, 4.75, 9.75], abs=1e-6)

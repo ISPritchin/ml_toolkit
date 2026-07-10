@@ -33,3 +33,10 @@ def test_activity_concentrated_at_start_low_share():
     assert _get(arrs, sfxs, 'r3_w6')[-1] == pytest.approx(0.0, abs=1e-4)
 
 # test_with_mixed_zeros skipped for recent_share: 'pairs'
+
+
+def test_full_output_vector():
+    # 10 значений, params={'pairs': [[3, 6]]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11]
+    arrs, sfxs = _run(values, {'pairs': [[3, 6]]})
+    assert _get(arrs, sfxs, 'r3_w6') == pytest.approx([1.0, 1.0, 1.0, 0.777778, 0.777778, 0.571429, 0.475, 0.475, 0.5, 0.62], abs=1e-6)

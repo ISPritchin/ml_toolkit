@@ -41,3 +41,10 @@ def test_with_mixed_zeros():
     arrs, sfxs = _run(values, {'pairs': [[6, 12]]})
     assert math.isfinite(_get(arrs, sfxs, 'w6_w12')[-1]), 'w6_w12 must be finite'
     assert _get(arrs, sfxs, 'w6_w12')[-1] == pytest.approx(-3.6514091737404684, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 10 значений, params={'pairs': [[3, 6]]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11]
+    arrs, sfxs = _run(values, {'pairs': [[3, 6]]})
+    assert _get(arrs, sfxs, 'w3_w6') == pytest.approx([0.0, 0.0, 0.0, 0.66196, 0.29902, 0.50756, 0.578227, 0.578227, 1.135434, 0.592025], abs=1e-6)

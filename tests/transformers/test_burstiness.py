@@ -64,3 +64,16 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'burst_cv_w6')[-1] == pytest.approx(0.0, abs=1e-6)
     assert math.isfinite(_get(arrs, sfxs, 'calm_share_w6')[-1]), 'calm_share_w6 must be finite'
     assert _get(arrs, sfxs, 'calm_share_w6')[-1] == pytest.approx(0.5, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'peak_mean_w4') == pytest.approx([1.0, 2.0, 2.0, 1.777778, 2.285714, 1.666667, 2.142857, 3.157895, 2.051282], abs=1e-6)
+    assert _get(arrs, sfxs, 'peak_med_w4') == pytest.approx([1.0, 2.0, 2.0, 1.6, 2.666667, 1.428571, 2.307692, 7.5, 2.105263], abs=1e-6)
+    assert _get(arrs, sfxs, 'gap_mean_w4') == pytest.approx([0.0, 1.0, 0.5, 0.5, 2.0, 0.5, 0.5, 2.0, 0.5], abs=1e-6)
+    assert _get(arrs, sfxs, 'burst_count_w4') == pytest.approx([1.0, 1.0, 2.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'burst_dur_w4') == pytest.approx([1.0, 1.0, 1.0, 1.5, 2.0, 1.5, 1.5, 2.0, 1.5], abs=1e-6)
+    assert _get(arrs, sfxs, 'burst_cv_w4') == pytest.approx([0.0, 0.0, 0.0, 0.333333, 0.0, 0.333333, 0.333333, 0.0, 0.333333], abs=1e-6)
+    assert _get(arrs, sfxs, 'calm_share_w4') == pytest.approx([0.0, 0.5, 0.333333, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25], abs=1e-6)

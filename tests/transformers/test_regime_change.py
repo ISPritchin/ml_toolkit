@@ -61,3 +61,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'asymmetry_w6')[-1] == pytest.approx(0.4999999999785714, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'current_regime_len')[-1]), 'current_regime_len must be finite'
     assert _get(arrs, sfxs, 'current_regime_len')[-1] == pytest.approx(3.0, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'magnitude_w4') == pytest.approx([0.0, 2.0, 1.837117, 1.690309, 1.306928, 1.425393, 0.890871, 1.031653, 1.692702], abs=1e-6)
+    assert _get(arrs, sfxs, 'split_pos_w4') == pytest.approx([0.0, 1.0, 2.0, 2.0, 1.0, 3.0, 2.0, 1.0, 3.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'flag_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'late_vs_early_w4') == pytest.approx([0.0, -2.0, 0.0, 1.690309, -0.280056, -0.534522, 0.890871, -0.895909, 0.061928], abs=1e-6)
+    assert _get(arrs, sfxs, 'asymmetry_w4') == pytest.approx([1.0, 1.0, 1.0, 1.166667, 1.0, 1.142857, 0.791667, 1.0, 1.263158], abs=1e-6)
+    assert _get(arrs, sfxs, 'current_regime_len') == pytest.approx([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], abs=1e-6)

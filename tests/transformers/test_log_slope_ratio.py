@@ -28,3 +28,10 @@ def test_decelerating_series_ratio_below_one():
     assert _get(arrs, sfxs, 'w3_w6')[-1] < 1.0
 
 # test_with_mixed_zeros skipped for log_slope_ratio: 'pairs'
+
+
+def test_full_output_vector():
+    # 10 значений, params={'pairs': [[3, 6]]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11]
+    arrs, sfxs = _run(values, {'pairs': [[3, 6]]})
+    assert _get(arrs, sfxs, 'w3_w6') == pytest.approx([0.0, -1.0, 1.0, 3.167265, -8.06976, 2.124775, 4.423253, -3.999498, 9.862016, 3.738823], abs=1e-6)

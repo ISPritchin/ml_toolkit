@@ -50,3 +50,10 @@ def test_with_mixed_zeros():
     arrs, sfxs = _run(values)
     # (35-50)/50=-0.3, first nonzero=50 at pos=0
     assert _get(arrs, sfxs, '')[-1] == pytest.approx(-0.3, abs=0.001)
+
+
+def test_full_output_vector():
+    # 9 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, '') == pytest.approx([0.0, -1.0, 1.0, 0.5, -1.0, 1.5, -0.333333, -1.0, 2.333333], abs=1e-6)

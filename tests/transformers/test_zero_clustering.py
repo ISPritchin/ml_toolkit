@@ -62,3 +62,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'front_back_w6')[-1] == pytest.approx(0.49999999925000005, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'zero_after_active')[-1]), 'zero_after_active must be finite'
     assert _get(arrs, sfxs, 'zero_after_active')[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'max_zero_run_w4') == pytest.approx([0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'zero_run_count_w4') == pytest.approx([0.0, 1.0, 1.0, 1.0, 2.0, 1.0, 1.0, 2.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'recent_vs_long_w4') == pytest.approx([0.0, 1.0, 1.0, 1.333333, 0.666667, 1.333333, 1.333333, 0.666667, 1.333333], abs=1e-6)
+    assert _get(arrs, sfxs, 'last_zero_rec_w4') == pytest.approx([1.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'front_back_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'zero_after_active') == pytest.approx([0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0], abs=1e-6)

@@ -59,3 +59,16 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'dev_asym_w6')[-1] == pytest.approx(0.0, abs=1e-6)
     assert math.isfinite(_get(arrs, sfxs, 'cross_count_w6')[-1]), 'cross_count_w6 must be finite'
     assert _get(arrs, sfxs, 'cross_count_w6')[-1] == pytest.approx(3.0, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'up_semi_w4') == pytest.approx([0.0, 3.0, 4.242641, 4.038874, 5.460082, 3.872983, 5.830952, 10.25, 8.143249], abs=1e-6)
+    assert _get(arrs, sfxs, 'down_semi_w4') == pytest.approx([0.0, 3.0, 6.0, 4.802343, 5.25, 9.0, 5.385165, 3.902456, 8.003905], abs=1e-6)
+    assert _get(arrs, sfxs, 'semi_ratio_w4') == pytest.approx([0.0, 1.0, 0.707107, 0.841021, 1.040016, 0.430331, 1.082781, 2.626551, 1.017409], abs=1e-6)
+    assert _get(arrs, sfxs, 'max_up_z_w4') == pytest.approx([0.0, 1.0, 1.224745, 1.183216, 1.260252, 1.069045, 1.425393, 1.669649, 1.269526], abs=1e-6)
+    assert _get(arrs, sfxs, 'max_down_z_w4') == pytest.approx([0.0, 1.0, 1.224745, 1.521278, 0.980196, 1.603567, 1.247219, 0.77374, 1.207598], abs=1e-6)
+    assert _get(arrs, sfxs, 'dev_asym_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'cross_count_w4') == pytest.approx([0.0, 1.0, 2.0, 1.0, 2.0, 2.0, 3.0, 2.0, 2.0], abs=1e-6)

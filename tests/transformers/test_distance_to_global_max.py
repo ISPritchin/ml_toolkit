@@ -45,3 +45,10 @@ def test_with_mixed_zeros():
     arrs, sfxs = _run(values, {'windows': [6]})
     assert math.isfinite(_get(arrs, sfxs, '')[-1]), ' must be finite'
     assert _get(arrs, sfxs, '')[-1] == pytest.approx(-0.5624999999929687, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, '') == pytest.approx([0.0, -1.0, 0.0, -0.25, -1.0, 0.0, -0.733333, -1.0, 0.0], abs=1e-6)

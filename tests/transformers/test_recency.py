@@ -58,3 +58,10 @@ def test_with_mixed_zeros():
     # последний месяц активен (35) → gap = 0; предпоследний (0) → gap = 2 (последняя активность = 60)
     assert _get(arrs, sfxs, 'recency_gap')[-1] == pytest.approx(0.0, abs=1e-9)
     assert _get(arrs, sfxs, 'recency_gap')[-2] == pytest.approx(2.0, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values)
+    assert _get(arrs, sfxs, 'recency_gap') == pytest.approx([0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0], abs=1e-6)

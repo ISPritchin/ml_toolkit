@@ -3,7 +3,6 @@
 Signal:
     Отражает, насколько интенсивно клиент использует продукт за весь период с первого
     ненулевого наблюдения. Близко к 1 — клиент активен практически каждый месяц.
-    Ниже 0.3 — хроническая нестабильность или проектный характер доходов.
 
 Formula:
     tenure = position - first_active_position + 1
@@ -12,7 +11,7 @@ Formula:
     Выход равен 0, если активности ещё не было (first_active_position == -1).
 
 Outputs:
-    {product}__activity_rate__share_of_tenure_active — доля активных месяцев за весь стаж
+    {product}__activity_rate__share_of_tenure_active — доля активных месяцев от первого ненулевого наблюдения
 
 Preset (monthly.yaml):
     activity_rate: {}

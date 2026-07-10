@@ -55,3 +55,15 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'cadence_shift_w6')[-1] == pytest.approx(0.0, abs=1e-6)
     assert math.isfinite(_get(arrs, sfxs, 'active_len_cv_w6')[-1]), 'active_len_cv_w6 must be finite'
     assert _get(arrs, sfxs, 'active_len_cv_w6')[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'gap_mean_w4') == pytest.approx([0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'gap_std_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'gap_cv_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'is_monthly_w4') == pytest.approx([1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'cadence_shift_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'active_len_cv_w4') == pytest.approx([0.0, 0.0, 0.0, 0.333333, 0.0, 0.333333, 0.333333, 0.0, 0.333333], abs=1e-6)

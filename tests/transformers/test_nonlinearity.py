@@ -56,3 +56,14 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'accel_std_w6')[-1] == pytest.approx(76.84196444651842, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'frac_concave_w6')[-1]), 'frac_concave_w6 must be finite'
     assert _get(arrs, sfxs, 'frac_concave_w6')[-1] == pytest.approx(0.25, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'quad_proxy_w4') == pytest.approx([0.0, 0.0, 3.0, 2.666667, -2.857143, -0.666667, 3.428571, -5.473684, 0.717949], abs=1e-6)
+    assert _get(arrs, sfxs, 'convexity_sign_w4') == pytest.approx([0.0, 0.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'mean_accel_w4') == pytest.approx([0.0, 0.0, 18.0, 1.5, -10.5, 9.0, -1.0, -9.5, 15.5], abs=1e-6)
+    assert _get(arrs, sfxs, 'accel_std_w4') == pytest.approx([0.0, 0.0, 0.0, 16.5, 4.5, 15.0, 25.0, 16.5, 8.5], abs=1e-6)
+    assert _get(arrs, sfxs, 'frac_concave_w4') == pytest.approx([0.0, 0.0, 0.0, 0.5, 1.0, 0.5, 0.5, 0.5, 0.0], abs=1e-6)

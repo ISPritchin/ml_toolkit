@@ -62,3 +62,16 @@ def test_with_mixed_zeros():
     assert _get(arrs, sfxs, 'phase_flag')[-1] == pytest.approx(2.0, rel=1e-4)
     assert math.isfinite(_get(arrs, sfxs, 'post_peak_slope_w6')[-1]), 'post_peak_slope_w6 must be finite'
     assert _get(arrs, sfxs, 'post_peak_slope_w6')[-1] == pytest.approx(-1.8571428571428572, rel=1e-4)
+
+
+def test_full_output_vector():
+    # 9 значений, params={'windows': [4]}
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs, sfxs = _run(values, {'windows': [4]})
+    assert _get(arrs, sfxs, 'peak_age_share') == pytest.approx([0.0, 0.0, 0.666667, 0.5, 0.4, 0.833333, 0.714286, 0.625, 0.888889], abs=1e-6)
+    assert _get(arrs, sfxs, 'post_peak_share') == pytest.approx([1.0, 1.0, 0.333333, 0.5, 0.6, 0.166667, 0.285714, 0.375, 0.111111], abs=1e-6)
+    assert _get(arrs, sfxs, 'completeness') == pytest.approx([1.0, 0.0, 1.0, 0.75, 0.0, 1.0, 0.266667, 0.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'ramp_norm') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'is_new_peak') == pytest.approx([1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'phase_flag') == pytest.approx([1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0, 2.0, 1.0], abs=1e-6)
+    assert _get(arrs, sfxs, 'post_peak_slope_w4') == pytest.approx([0.0, 6.0, 3.0, -2.1, 0.3, 0.0, -0.0, 1.1, 1.1], abs=1e-6)
