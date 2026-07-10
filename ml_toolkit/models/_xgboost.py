@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.metrics import average_precision_score, mean_absolute_error, roc_auc_score
+from sklearn.metrics import mean_absolute_error, roc_auc_score
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._undersampling import UndersampleSampler
@@ -88,9 +88,8 @@ class XGBoostRegressor(BaseModel):
         применяется внутри `fit()` к `train_pred_`/`valid_pred_`, и — при
         `params=None` — внутри самого Optuna-objective (метрика trial'ов
         считается на постобработанных предсказаниях, не на сырых). `predict()`
-        класса его не знает — для инференса используйте
-        `train_regression_model(name='xgboost', postprocess_fn=...)`, которая
-        оборачивает и `infer_pred`.
+        класса его не знает — для инференса примените `postprocess_fn` к
+        результату `predict()` вручную: `postprocess_fn(X_new, model.predict(X_new))`.
 
     Примеры::
 
@@ -406,49 +405,3 @@ class XGBoostClassifier(BaseModel):
             return apply_multiclass_calibrators(raw, self.calibrators_)
         return raw
 
-
-# ── Backward-compat functional wrappers ──────────────────────────────────────
-
-def train_regression(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = XGBoostRegressor(n_optuna_trials=n_optuna_trials, model_settings=model_settings)
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    _pp = postprocess_fn or (lambda _X, p: p)
-    train_pred = _pp(X_train, model.train_pred_)
-    valid_pred = _pp(X_valid, model.valid_pred_)
-    infer_pred = _pp(X_inference, model.predict(X_inference))
-    logger.info('[XGBoost Reg] Final MAE: %.3f', mean_absolute_error(y_valid, valid_pred))
-    return model._model, train_pred, valid_pred, infer_pred, model.best_params_
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = XGBoostClassifier(n_optuna_trials=n_optuna_trials, model_settings=model_settings or {})
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_proba = model.predict_proba(X_inference)
-    logger.info('[XGBoost Cls] Final PR-AUC: %.3f', average_precision_score(y_valid, model.valid_pred_))
-    return model._model, model.train_pred_, model.valid_pred_, infer_proba, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
-    """XGBoost поддерживает SHAP нативно; отдельная predict_fn не нужна."""
-    return

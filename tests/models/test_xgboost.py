@@ -13,9 +13,8 @@ import pytest
 
 xgboost = pytest.importorskip('xgboost')
 
-from ml_toolkit.models import train_classification_model, train_regression_model  # noqa: E402
 from ml_toolkit.models._xgboost import XGBoostClassifier, XGBoostRegressor  # noqa: E402
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 FAST_XGB = {'n_estimators': 40, 'max_depth': 3, 'learning_rate': 0.2}
 
@@ -63,36 +62,6 @@ class TestXGBoostRegressorBaseline:
         assert err_with_baseline < 0.5
         assert err_without_baseline > err_with_baseline * 5
 
-    def test_baseline_combines_with_postprocess_fn_and_optuna(self, regression_data):
-        """См. TestCatBoostRegressorBaseline в test_catboost.py — тот же трёхсторонний
-        тест (baseline_col + postprocess_fn + Optuna) для XGBoost.
-        """
-        rng = np.random.default_rng(5)
-        X_train, y_train, X_valid, y_valid = regression_data
-        X_train = X_train.copy()
-        X_valid = X_valid.copy()
-        X_train['baseline'] = y_train.to_numpy() + rng.normal(scale=0.05, size=len(y_train))
-        X_valid['baseline'] = y_valid.to_numpy() + rng.normal(scale=0.05, size=len(y_valid))
-        feats = ['f0', 'f1', 'f2', 'f3', 'f4']
-        shift = 1000.0
-
-        def add_shift(_X, pred):
-            return pred + shift
-
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='xgboost', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=feats, cat_features=[],
-            model_settings={'baseline_col': 'baseline'}, n_optuna_trials=2,
-            postprocess_fn=add_shift,
-        )
-
-        assert np.all(infer_pred > shift / 2)
-        assert np.all(train_pred > shift / 2)
-        assert np.all(valid_pred > shift / 2)
-
-        mae_after_removing_shift = np.abs((valid_pred - shift) - y_valid.to_numpy()).mean()
-        assert mae_after_removing_shift < 0.5
-
 
 class TestXGBoostRegressorOptuna:
     def test_requires_valid_set(self, regression_data):
@@ -137,6 +106,24 @@ class TestXGBoostRegressorCatFeatures:
         model.fit(X_train, y_train, X_valid, y_valid, cat_features=['cat_col'])
         assert model.best_params_['enable_categorical'] is True
         assert_valid_predictions(model, X_valid)
+
+    def test_multiple_categorical_features(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = XGBoostRegressor(params=FAST_XGB)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert model.cat_features_ == MULTI_CAT_FEATURES
+        assert model.best_params_['enable_categorical'] is True
+        assert_valid_predictions(model, X_valid)
+
+
+class TestXGBoostClassifierCatFeatures:
+    def test_multiple_categorical_features(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = XGBoostClassifier(params=FAST_XGB)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert model.cat_features_ == MULTI_CAT_FEATURES
+        assert model.best_params_['enable_categorical'] is True
+        assert_valid_proba(model, X_valid)
 
 
 class TestXGBoostClassifierExplicitParams:
@@ -280,31 +267,3 @@ class TestXGBoostOptunaPruner:
         with pytest.raises(ValueError, match='optuna_pruner'):
             model.fit(X_train, y_train, X_valid, y_valid)
 
-
-class TestXGBoostFunctionalAPI:
-    def test_train_regression_model_postprocess_applied_to_infer_pred(self, regression_data):
-        X_train, y_train, X_valid, y_valid = regression_data
-        shift = 1_000_000.0
-
-        def add_shift(_X, pred):
-            return pred + shift
-
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='xgboost', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            model_settings={}, n_optuna_trials=2,
-            postprocess_fn=add_shift,
-        )
-        assert np.all(infer_pred > shift / 2)
-        assert np.all(train_pred > shift / 2)
-        assert np.all(valid_pred > shift / 2)
-
-    def test_train_classification_model(self, classification_data):
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_proba, val_proba, infer_proba, best_params = train_classification_model(
-            name='xgboost', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={},
-        )
-        assert raw_model is not None
-        assert np.all((infer_proba >= 0) & (infer_proba <= 1))

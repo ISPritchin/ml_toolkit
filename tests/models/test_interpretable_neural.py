@@ -15,7 +15,7 @@ from ml_toolkit.models._interpretable_neural import (  # noqa: E402
     InterpretableNeuralClassifier,
     InterpretableNeuralRegressor,
 )
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 REG_PARAMS = {'hidden_dim': 16, 'n_layers': 1, 'lr': 1e-2, 'n_epochs': 30, 'n_interactions': 0}
 CLS_PARAMS = {'C': 1.0}
@@ -33,6 +33,14 @@ class TestInterpretableNeuralRegressor:
         X_train, y_train, X_valid, y_valid = regression_data
         model = InterpretableNeuralRegressor(n_optuna_trials=1)
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = InterpretableNeuralRegressor(params=REG_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_predictions(model, X_valid)
 
 
@@ -59,4 +67,12 @@ class TestInterpretableNeuralClassifier:
         X_train, y_train, X_valid, y_valid = classification_data
         model = InterpretableNeuralClassifier(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = InterpretableNeuralClassifier(params=CLS_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_proba(model, X_valid)

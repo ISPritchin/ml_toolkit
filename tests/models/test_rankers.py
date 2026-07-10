@@ -13,10 +13,9 @@ import numpy as np
 import pytest
 from sklearn.metrics import roc_auc_score
 
-from ml_toolkit.models import train_classification_model
 from ml_toolkit.models._catboost_ranker import CatBoostRanker
 from ml_toolkit.models._lightgbm_ranker import LightGBMRanker
-from tests.models.conftest import assert_valid_proba
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_proba
 
 FAST_CB_RANK = {'iterations': 40, 'max_depth': 3, 'learning_rate': 0.2, 'loss_function': 'YetiRank', 'verbose': False}
 FAST_LGB_RANK = {'n_estimators': 40, 'num_leaves': 7, 'max_depth': 3, 'objective': 'lambdarank', 'verbose': -1}
@@ -78,16 +77,12 @@ class TestCatBoostRanker:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_proba(model, X_valid)
 
-    def test_train_classification_model_functional_api(self, classification_data):
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_classification_model(
-            name='catboost_ranker', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={},
-        )
-        assert raw_model is not None
-        assert np.all((infer_pred >= 0) & (infer_pred <= 1))
-        assert isinstance(best_params, dict)
+    def test_multiple_categorical_features(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = CatBoostRanker(params=FAST_CB_RANK)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert model.cat_features_ == MULTI_CAT_FEATURES
+        assert_valid_proba(model, X_valid)
 
 
 class TestLightGBMRanker:
@@ -139,16 +134,12 @@ class TestLightGBMRanker:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_proba(model, X_valid)
 
-    def test_train_classification_model_functional_api(self, classification_data):
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_classification_model(
-            name='lightgbm_ranker', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={},
-        )
-        assert raw_model is not None
-        assert np.all((infer_pred >= 0) & (infer_pred <= 1))
-        assert isinstance(best_params, dict)
+    def test_multiple_categorical_features(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = LightGBMRanker(params=FAST_LGB_RANK)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert model.cat_features_ == MULTI_CAT_FEATURES
+        assert_valid_proba(model, X_valid)
 
 
 class TestXGBoostRanker:
@@ -198,32 +189,20 @@ class TestXGBoostRanker:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_proba(model, X_valid)
 
-    def test_train_classification_model_functional_api(self, classification_data):
+    def test_multiple_categorical_features(self, classification_data_multi_cat):
+        """XGBoostRanker не поддерживает category/object dtype нативно — _to_float() кодирует
+        любую object/category колонку в числовые коды (cat.codes) независимо от cat_features,
+        в отличие от XGBoostClassifier/Regressor (enable_categorical=True). Тест фиксирует
+        текущее поведение: обучение и предсказание работают, а не падают на нескольких
+        категориальных признаках разной кардинальности.
+        """
         pytest.importorskip('xgboost')
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_classification_model(
-            name='xgboost_ranker', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={},
-        )
-        assert raw_model is not None
-        assert np.all((infer_pred >= 0) & (infer_pred <= 1))
-        assert isinstance(best_params, dict)
+        from ml_toolkit.models._xgboost_ranker import XGBoostRanker
 
-
-class TestRankersNotSupportedForRegression:
-    def test_catboost_ranker_train_regression_not_implemented(self):
-        from ml_toolkit.models._catboost_ranker import train_regression
-        with pytest.raises(NotImplementedError):
-            train_regression()
-
-    def test_lightgbm_ranker_train_regression_not_implemented(self):
-        from ml_toolkit.models._lightgbm_ranker import train_regression
-        with pytest.raises(NotImplementedError):
-            train_regression()
-
-    def test_xgboost_ranker_train_regression_not_implemented(self):
-        pytest.importorskip('xgboost')
-        from ml_toolkit.models._xgboost_ranker import train_regression
-        with pytest.raises(NotImplementedError):
-            train_regression()
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = XGBoostRanker(params={
+            'n_estimators': 40, 'max_depth': 3, 'learning_rate': 0.2, 'objective': 'rank:ndcg',
+        })
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert model.cat_features_ == MULTI_CAT_FEATURES
+        assert_valid_proba(model, X_valid)

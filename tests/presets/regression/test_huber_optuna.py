@@ -35,6 +35,7 @@ def test_constructor_rejects_non_positive_delta():
 
 # ── 2. Optuna: delta + архитектура тюнятся, отбор по MAE ───────────────────
 
+@pytest.mark.slow
 def test_optuna_tunes_delta_and_architecture(regression_data):
     X_train, y_train, X_valid, y_valid = regression_data
     model = HuberOptunaRegressor(n_optuna_trials=4, random_seed=42)

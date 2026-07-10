@@ -64,6 +64,58 @@ def classification_data_with_cat():
     return X_train, y_train, X_valid, y_valid
 
 
+MULTI_CAT_FEATURES = ['cat_binary', 'cat_low_card', 'cat_high_card']
+
+
+def _make_multi_cat_frame(n: int, seed: int) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    """Строит DataFrame с тремя категориальными признаками разной кардинальности
+    (2 / 4 / 10 уровней) плюс числовые признаки. Возвращает (X, binary_effect, low_card_effect)
+    — эффекты используются вызывающим для построения таргета классификации/регрессии.
+    """
+    r = np.random.default_rng(seed)
+    X = pd.DataFrame(r.normal(size=(n, 3)), columns=[f'f{i}' for i in range(3)])
+    X['cat_binary'] = r.choice(['yes', 'no'], size=n)
+    X['cat_low_card'] = r.choice(['a', 'b', 'c', 'd'], size=n)
+    X['cat_high_card'] = r.choice([f'g{i}' for i in range(10)], size=n)
+    binary_effect = X['cat_binary'].map({'yes': 1.0, 'no': -1.0}).to_numpy()
+    low_card_effect = X['cat_low_card'].map({'a': 1.0, 'b': 0.5, 'c': -0.5, 'd': -1.0}).to_numpy()
+    return X, binary_effect, low_card_effect
+
+
+@pytest.fixture
+def classification_data_multi_cat():
+    """Классификация с тремя категориальными признаками разной кардинальности (2/4/10 уровней)."""
+    n_train, n_valid = 300, 80
+
+    def _make(n, seed):
+        X, binary_effect, low_card_effect = _make_multi_cat_frame(n, seed)
+        r = np.random.default_rng(seed + 1)
+        y = pd.Series(
+            (X['f0'] + binary_effect + low_card_effect + r.normal(scale=0.5, size=n) > 0).astype(int)
+        )
+        return X, y
+
+    X_train, y_train = _make(n_train, 20)
+    X_valid, y_valid = _make(n_valid, 21)
+    return X_train, y_train, X_valid, y_valid
+
+
+@pytest.fixture
+def regression_data_multi_cat():
+    """Регрессия с тремя категориальными признаками разной кардинальности (2/4/10 уровней)."""
+    n_train, n_valid = 300, 80
+
+    def _make(n, seed):
+        X, binary_effect, low_card_effect = _make_multi_cat_frame(n, seed)
+        r = np.random.default_rng(seed + 1)
+        y = pd.Series(X['f0'] * 2.0 + binary_effect + low_card_effect + r.normal(scale=0.5, size=n))
+        return X, y
+
+    X_train, y_train = _make(n_train, 30)
+    X_valid, y_valid = _make(n_valid, 31)
+    return X_train, y_train, X_valid, y_valid
+
+
 def assert_valid_proba(model, X_valid) -> np.ndarray:
     proba = model.predict_proba(X_valid)
     assert proba.shape == (len(X_valid),)

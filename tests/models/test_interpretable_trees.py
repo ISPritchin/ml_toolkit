@@ -16,7 +16,7 @@ from ml_toolkit.models._interpretable_trees import (  # noqa: E402
     InterpretableTreeClassifier,
     InterpretableTreeRegressor,
 )
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 SDT_PARAMS = {'depth': 2, 'lr': 0.05, 'n_epochs': 30, 'patience': 10}
 LLF_PARAMS = {'n_estimators': 20, 'max_depth': 4, 'n_neighbors': 20, 'ridge_alpha': 1.0, 'random_state': 42}
@@ -36,12 +36,28 @@ class TestSoftDecisionTreeRegressor:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_predictions(model, X_valid)
 
+    def test_multiple_categorical_features_excluded(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = InterpretableTreeRegressor(params=SDT_PARAMS, model_settings={'name': 'soft_decision_tree'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_predictions(model, X_valid)
+
 
 class TestSoftDecisionTreeClassifier:
     def test_fit_predict_proba_explicit_params(self, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data
         model = InterpretableTreeClassifier(params=SDT_PARAMS, model_settings={'name': 'soft_decision_tree'})
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = InterpretableTreeClassifier(params=SDT_PARAMS, model_settings={'name': 'soft_decision_tree'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_proba(model, X_valid)
 
 
@@ -57,6 +73,14 @@ class TestLocallyLinearForestRegressor:
         X_train, y_train, X_valid, y_valid = regression_data
         model = InterpretableTreeRegressor(n_optuna_trials=2, model_settings={'name': 'locally_linear_forest'})
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = InterpretableTreeRegressor(params=LLF_PARAMS, model_settings={'name': 'locally_linear_forest'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_predictions(model, X_valid)
 
 
@@ -93,3 +117,11 @@ class TestLocallyLinearForestClassifier:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_proba(model, X_valid)
         assert model.best_params_['class_weight'] == 'balanced'
+
+    def test_multiple_categorical_features_excluded(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = InterpretableTreeClassifier(params=self.RF_PARAMS, model_settings={'name': 'locally_linear_forest'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_proba(model, X_valid)

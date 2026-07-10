@@ -1,6 +1,6 @@
 [project]
 name = "ml-toolkit"
-version = "0.1.24"
+version = "0.1.25"
 description = "Переиспользуемые ML-примитивы: feature engineering, модели, отбор признаков, оценка/интерпретация"
 requires-python = ">=3.10"
 dependencies = [
@@ -49,3 +49,6 @@ ml_toolkit = ["transformers/presets/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: tests taking >=1s (fit_with_optuna, SHAP full_battery, ...); skip with -m 'not slow'",
+]

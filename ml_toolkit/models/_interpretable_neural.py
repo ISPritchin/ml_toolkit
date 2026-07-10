@@ -20,7 +20,6 @@ import optuna
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.preprocessing import QuantileTransformer
 
 from ml_toolkit.models._base import BaseModel
@@ -306,61 +305,3 @@ class InterpretableNeuralClassifier(BaseModel):
         raw = self._model.predict_proba(X_t)[:, 1]
         return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
 
-
-# ── Backward-compat functional wrappers ──────────────────────────────────────
-
-def train_regression(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = InterpretableNeuralRegressor(n_optuna_trials=n_optuna_trials, model_settings=model_settings)
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    _pp = postprocess_fn or (lambda _X, p: p)
-    train_pred = _pp(X_train, model.train_pred_)
-    valid_pred = _pp(X_valid, model.valid_pred_)
-    infer_pred = _pp(X_inference, model.predict(X_inference))
-    logger.info('[GAMINET Reg] Final MAE: %.3f', mean_absolute_error(y_valid, valid_pred))
-    return (model._model, model._imputer, model._qt, model._num_feats_), train_pred, valid_pred, infer_pred, model.best_params_
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = InterpretableNeuralClassifier(n_optuna_trials=n_optuna_trials, model_settings=model_settings or {})
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_proba = model.predict_proba(X_inference)
-    logger.info('[GAMINET Cls] Final PR-AUC: %.3f', average_precision_score(y_valid, model.valid_pred_))
-    return (model._model, model._imputer, model._qt, model._num_feats_), model.train_pred_, model.valid_pred_, infer_proba, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> Any:
-    """Возвращает callable (X → np.ndarray) с препроцессингом (imputer + QT) для permutation importance."""
-    if task == 'regression':
-        _net, _imp, _qt, _nf = model
-        _dev = next(_net.parameters()).device
-        def _fn(X: Any) -> Any:
-            import torch as _t  # noqa: PLC0415
-            with _t.no_grad():
-                return _net(
-                    _t.tensor(_qt.transform(_imp.transform(X[_nf].to_numpy(dtype=float))),
-                              dtype=_t.float32, device=_dev)
-                ).cpu().numpy()
-        return _fn
-    _clf, _imp, _qt, _nf = model
-    return lambda X: _clf.predict_proba(_qt.transform(_imp.transform(X[_nf].to_numpy(dtype=float))))[:, 1]

@@ -9,9 +9,7 @@ NaN: медианная импутация через SimpleImputer внутри
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import logging
-from typing import Any
 
 import numpy as np
 import optuna
@@ -21,7 +19,6 @@ from sklearn.ensemble import ExtraTreesRegressor as _SKETRegressor
 from sklearn.ensemble import RandomForestClassifier as _SKRFClassifier
 from sklearn.ensemble import RandomForestRegressor as _SKRFRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.pipeline import Pipeline
 
 from ml_toolkit.models._base import BaseModel
@@ -267,58 +264,3 @@ def _predict_proba_pipeline(self: BaseModel, X: pd.DataFrame) -> np.ndarray:
     raw = self._model.predict_proba(X_enc[self.selected_features_])[:, 1]
     return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
 
-
-# ── Backward-compat functional wrappers ──────────────────────────────────────
-
-def train_regression(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    name = model_settings.get('name', 'random_forest')
-    EstClass = _REG_CLASSES[name]
-    ModelClass = RandomForestRegressor if name == 'random_forest' else ExtraTreesRegressor
-    model = ModelClass(n_optuna_trials=n_optuna_trials, model_settings=model_settings)
-    # Override internal class to use correct sklearn estimator
-    model._est_class = EstClass  # stored for reference
-    _fit_forest_reg(model, EstClass, name, X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    _pp = postprocess_fn or (lambda _X, p: p)
-    train_pred = _pp(X_train, model.train_pred_)
-    valid_pred = _pp(X_valid, model.valid_pred_)
-    infer_pred = _pp(X_inference, model.predict(X_inference))
-    logger.info('[%s Reg] Final MAE: %.3f', name.upper(), mean_absolute_error(y_valid, valid_pred))
-    return model._model, train_pred, valid_pred, infer_pred, model.best_params_
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    ms = model_settings or {}
-    name = ms.get('name', 'random_forest')
-    EstClass = _CLS_CLASSES[name]
-    ModelClass = RandomForestClassifier if name == 'random_forest' else ExtraTreesClassifier
-    model = ModelClass(n_optuna_trials=n_optuna_trials, model_settings=ms)
-    _fit_forest_cls(model, EstClass, name, X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_proba = model.predict_proba(X_inference)
-    logger.info('[%s Cls] Final PR-AUC: %.3f', name.upper(), average_precision_score(y_valid, model.valid_pred_))
-    return model._model, model.train_pred_, model.valid_pred_, infer_proba, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
-    """Sklearn Pipeline предоставляет feature_importances_ напрямую; predict_fn не нужна."""
-    return

@@ -12,7 +12,7 @@ pytest.importorskip('torch')
 pytest.importorskip('tabm')
 
 from ml_toolkit.models._tabm import TabMClassifier, TabMRegressor  # noqa: E402
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 FAST_PARAMS = {'k': 8, 'd_block': 32, 'n_blocks': 1, 'dropout': 0.0, 'lr': 1e-3, 'weight_decay': 1e-4}
 FAST_SETTINGS = {'n_epochs_final': 15, 'patience': 3, 'n_epochs_per_trial': 8}
@@ -32,6 +32,13 @@ class TestTabMRegressor:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_predictions(model, X_valid)
 
+    def test_fit_with_multiple_cat_features(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = TabMRegressor(params=FAST_PARAMS, model_settings=FAST_SETTINGS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert_valid_predictions(model, X_valid)
+        assert model._prep.cat_cardinalities == [2, 4, 10]
+
 
 class TestTabMClassifier:
     def test_fit_predict_proba_explicit_params(self, classification_data):
@@ -45,6 +52,13 @@ class TestTabMClassifier:
         model = TabMClassifier(params=FAST_PARAMS, model_settings=FAST_SETTINGS)
         model.fit(X_train, y_train, X_valid, y_valid, cat_features=['cat_col'])
         assert_valid_proba(model, X_valid)
+
+    def test_fit_with_multiple_cat_features(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = TabMClassifier(params=FAST_PARAMS, model_settings=FAST_SETTINGS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert_valid_proba(model, X_valid)
+        assert model._prep.cat_cardinalities == [2, 4, 10]
 
     def test_fit_with_optuna(self, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data

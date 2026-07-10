@@ -140,8 +140,8 @@ class LightGBMRegressor(BaseModel):
     .. note::
         Как и у `CatBoostRegressor`: `postprocess_fn` применяется только внутри
         `fit()` к `train_pred_`/`valid_pred_`. `predict()` класса его не знает —
-        для инференса используйте `train_regression_model(name='lightgbm',
-        postprocess_fn=...)`, которая оборачивает и `infer_pred`.
+        для инференса примените `postprocess_fn` к результату `predict()`
+        вручную: `postprocess_fn(X_new, model.predict(X_new))`.
 
     Примеры::
 
@@ -223,7 +223,7 @@ class LightGBMRegressor(BaseModel):
                          X_valid, y_valid, baseline_va, pp):
         import optuna
 
-        baseline_col = self.model_settings.get('baseline_col', 'fee_nds_amount')
+        baseline_col = self.model_settings.get('baseline_col')
         metric_fn, direction = resolve_metric_fn(
             self.model_settings, 'reg_metric', REG_METRICS['mae'][0], 'minimize', REG_METRICS,
         )
@@ -539,50 +539,3 @@ class LightGBMClassifier(BaseModel):
             return apply_multiclass_calibrators(raw, self.calibrators_)
         return raw
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Backward-совместимые функции (thin wrappers над классами)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def train_regression(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    ms = dict(model_settings)
-    if postprocess_fn is not None:
-        ms['postprocess_fn'] = postprocess_fn
-    model = LightGBMRegressor(n_optuna_trials=n_optuna_trials, model_settings=ms)
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    _pp = postprocess_fn or (lambda _X, p: p)
-    infer_pred = _pp(X_inference, model.predict(X_inference))
-    return model._model, model.train_pred_, model.valid_pred_, infer_pred, model.best_params_
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = LightGBMClassifier(n_optuna_trials=n_optuna_trials, model_settings=model_settings or {})
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_proba = model.predict_proba(X_inference)  # calibrated by class
-    return model._model, model.train_pred_, model.valid_pred_, infer_proba, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
-    """LightGBM поддерживает SHAP нативно; отдельная predict_fn не нужна."""
-    return

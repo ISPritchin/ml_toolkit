@@ -20,7 +20,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import logging
 from typing import Any
 
@@ -37,7 +36,6 @@ from sklearn.linear_model import (
     Ridge,
     TweedieRegressor,
 )
-from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -45,7 +43,8 @@ from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
     CLS_METRICS,
     REG_METRICS,
-    encode_cat_features,
+    apply_cat_encoder,
+    build_cat_encoder,
     fit_calibrator,
     resolve_metric_fn,
     resolve_timeout,
@@ -147,9 +146,12 @@ class LinearRegressor(BaseModel):
             raise ValueError(f'Unknown linear regression type: {name!r}. Valid: {sorted(_LINEAR_TYPE_NAMES)}')
 
         baseline_col: str | None = ms.get('baseline_col')
-        X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
-            X_train, X_valid if X_valid is not None else X_train,
-            X_train, self.selected_features_, self.cat_features_, ms,
+        self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
+            build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
+        X_train = apply_cat_encoder(X_train, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        X_valid_enc = (
+            apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+            if X_valid is not None else None
         )
 
         cat_set = set(self.cat_features_)
@@ -205,7 +207,8 @@ class LinearRegressor(BaseModel):
         return self
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
-        X_sc = self._prep.transform(X[self._num_feats_].to_numpy(dtype=float))
+        X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        X_sc = self._prep.transform(X_enc[self._num_feats_].to_numpy(dtype=float))
         return np.nan_to_num(self._model.predict(X_sc), nan=0.0, posinf=0.0, neginf=0.0)
 
 
@@ -234,9 +237,12 @@ class LinearClassifier(BaseModel):
         ms = self.model_settings
         _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
-        X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
-            X_train, X_valid if X_valid is not None else X_train,
-            X_train, self.selected_features_, self.cat_features_, ms,
+        self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
+            build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
+        X_train = apply_cat_encoder(X_train, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        X_valid_enc = (
+            apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+            if X_valid is not None else None
         )
 
         cat_set = set(self.cat_features_)
@@ -295,56 +301,8 @@ class LinearClassifier(BaseModel):
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
-        X_sc = self._prep.transform(X[self._num_feats_].to_numpy(dtype=float))
+        X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        X_sc = self._prep.transform(X_enc[self._num_feats_].to_numpy(dtype=float))
         raw = self._model.predict_proba(X_sc)[:, 1]
         return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
 
-
-# ── Backward-compat functional wrappers ──────────────────────────────────────
-
-def train_regression(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = LinearRegressor(n_optuna_trials=n_optuna_trials, model_settings=model_settings)
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    _pp = postprocess_fn or (lambda _X, p: p)
-    train_pred = _pp(X_train, model.train_pred_)
-    valid_pred = _pp(X_valid, model.valid_pred_)
-    infer_pred = _pp(X_inference, model.predict(X_inference))
-    name = model_settings.get('name', 'ridge')
-    logger.info('[%s Reg] Final MAE: %.3f', name.upper(), mean_absolute_error(y_valid, valid_pred))
-    return (model._model, model._prep, model._num_feats_), train_pred, valid_pred, infer_pred, model.best_params_
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    ms = model_settings or {}
-    model = LinearClassifier(n_optuna_trials=n_optuna_trials, model_settings=ms)
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_proba = model.predict_proba(X_inference)
-    name = ms.get('name', 'ridge')
-    logger.info('[%s Cls] Final PR-AUC: %.3f', name.upper(), average_precision_score(y_valid, model.valid_pred_))
-    return (model._model, model._prep, model._num_feats_), model.train_pred_, model.valid_pred_, infer_proba, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
-    """Линейные модели не поддерживают SHAP TreeExplainer; используется permutation importance."""
-    return

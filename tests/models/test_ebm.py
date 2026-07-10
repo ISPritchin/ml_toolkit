@@ -11,7 +11,7 @@ import pytest
 pytest.importorskip('interpret')
 
 from ml_toolkit.models._ebm import EBMClassifier, EBMRegressor  # noqa: E402
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 FAST_PARAMS = {'max_bins': 64, 'interactions': 0, 'max_rounds': 200, 'random_state': 42}
 
@@ -41,6 +41,26 @@ class TestEBMRegressor:
         assert 'cat_col' not in model._num_feats_
         assert_valid_predictions(model, X_valid)
 
+    def test_multiple_categorical_features_excluded_by_default(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = EBMRegressor(params=FAST_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_predictions(model, X_valid)
+
+    def test_multiple_categorical_features_included_with_onehot(self, regression_data_multi_cat):
+        """Regression test: predict() индексировал onehot-имена на неперекодированном X
+        и падал с KeyError — теперь энкодер сохраняется на self и переприменяется в predict().
+        """
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = EBMRegressor(params=FAST_PARAMS, model_settings={'cat_encoder': 'onehot'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+            assert any(f.startswith(f'{col}_') for f in model._num_feats_)
+        assert_valid_predictions(model, X_valid)
+
 
 class TestEBMClassifier:
     def test_fit_predict_proba_explicit_params(self, classification_data):
@@ -53,4 +73,21 @@ class TestEBMClassifier:
         X_train, y_train, X_valid, y_valid = classification_data
         model = EBMClassifier(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_excluded_by_default(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = EBMClassifier(params=FAST_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_included_with_onehot(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = EBMClassifier(params=FAST_PARAMS, model_settings={'cat_encoder': 'onehot'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+            assert any(f.startswith(f'{col}_') for f in model._num_feats_)
         assert_valid_proba(model, X_valid)

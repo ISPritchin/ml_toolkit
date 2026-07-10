@@ -1,9 +1,5 @@
 """Model dispatch layer.
 
-═══════════════════════════════════════════════════════════════
-Новый API (классы, все модели):
-═══════════════════════════════════════════════════════════════
-
     from ml_toolkit.models import LightGBMClassifier, CatBoostRegressor
     from ml_toolkit.models import RandomForestClassifier, XGBoostRegressor
     from ml_toolkit.models import LAMARegressor, TabMClassifier
@@ -26,28 +22,6 @@
     model.train_pred_         — предсказания на train
     model.valid_pred_         — предсказания на valid (None если не передан)
 
-═══════════════════════════════════════════════════════════════
-Старый функциональный API (все 22 модели, backward-compat):
-═══════════════════════════════════════════════════════════════
-
-Поддерживаемые имена:
-    Gradient Boosting:        'catboost', 'xgboost', 'lightgbm', 'lama', 'tabm'
-    Random Forest:            'random_forest', 'extra_trees', 'hist_gbm'
-    Specialized Trees:        'quantile_forest', 'oblique_forest', 'mondrian'
-    Linear:                   'ridge', 'elasticnet', 'huber', 'tweedie', 'quantile', 'bayesian_ridge'
-    GAM / Additive:           'ebm', 'pygam', 'mars'
-    Rule-based:               'rulefit', 'figs', 'skope_rules', 'brl', 'ripper'
-    Interpretable Trees:      'decision_tree', 'linear_tree', 'soft_decision_tree', 'locally_linear_forest'
-    Interpretable Neural:     'gaminet'
-
-    train_regression_model(name, X_train, y_train, X_valid, y_valid, X_inference,
-                            selected_features, cat_features, model_settings, n_optuna_trials)
-        -> (raw_model, train_pred, valid_pred, infer_pred, best_params)
-
-    train_classification_model(name, X_train, y_train, X_valid, y_valid, X_inference,
-                                selected_features, cat_features, n_optuna_trials, model_settings)
-        -> (raw_model, train_proba, val_proba, infer_proba_calibrated, best_params)
-
 Кастомные метрики (передаются через model_settings):
     reg_metric  — 'mae' (по умолч.) / 'rmse' / 'mape' / 'smape' / callable / (callable, direction)
     cls_metric  — 'pr_auc' (по умолч.) / 'roc_auc' / 'f1' / callable / (callable, direction)
@@ -59,18 +33,13 @@
     None / 'ordinal' → OrdinalEncoder (по умолч.)
     'onehot'         → OneHotEncoder
 
-Lazy imports: адаптер загружается только при вызове.
+Lazy imports: класс модели загружается только при первом обращении к нему.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import importlib
 import logging
-from typing import Any
-
-import numpy as np
-import pandas as pd
 
 from ml_toolkit.model_evaluation import (
     ClassificationEvaluator,
@@ -201,10 +170,6 @@ __all__ = [
     'recall_at_k',
     'lift_at_k',
     'f1_at_threshold',
-    # Функции (backward-совместимый API)
-    'train_regression_model',
-    'train_classification_model',
-    'make_predict_fn',
 ]
 
 # Линейные модели: все реализованы в одном модуле _linear.py
@@ -233,11 +198,6 @@ INTERPRETABLE_NEURAL_NAMES: frozenset[str] = frozenset({'gaminet'})
 # Ранжировщики (gradient boosting с ranking objectives)
 RANKER_NAMES: frozenset[str] = frozenset({'lightgbm_ranker', 'xgboost_ranker', 'catboost_ranker'})
 
-_KNOWN: set[str] = {
-    'catboost', 'xgboost', 'lightgbm', 'lama', 'tabm',
-    'rulefit', 'decision_tree', 'linear_tree',
-} | LINEAR_NAMES | FOREST_NAMES | GAM_NAMES | IMODELS_NAMES | INTERPRETABLE_TREE_NAMES | INTERPRETABLE_NEURAL_NAMES | RANKER_NAMES
-
 # LightGBM — один адаптер; boosting_type (gbdt/dart/goss) выбирается Optuna
 LIGHTGBM_VARIANTS: frozenset[str] = frozenset({'lightgbm'})
 
@@ -252,149 +212,3 @@ ALL_TREE_NAMES: frozenset[str] = (
     frozenset({'catboost', 'xgboost'}) | LIGHTGBM_VARIANTS | SKLEARN_TREE_NAMES | RANKER_NAMES
 )
 
-# Некоторые имена маппятся на один и тот же модуль
-_MODULE_ALIAS: dict[str, str] = {
-    **dict.fromkeys(LINEAR_NAMES, 'linear'),
-    'random_forest': 'forest',
-    'extra_trees': 'forest',
-    'hist_gbm': 'hist_gbm',
-    'quantile_forest': 'quantile_forest',
-    'oblique_forest': 'oblique_forest',
-    'mondrian': 'mondrian',
-    'ebm': 'ebm',
-    'pygam': 'gam',
-    'mars': 'mars',
-    'rulefit': 'rulefit',
-    **dict.fromkeys(IMODELS_NAMES, 'imodels'),
-    'decision_tree': 'decision_tree',
-    'linear_tree': 'linear_tree',
-    **dict.fromkeys(INTERPRETABLE_NEURAL_NAMES, 'interpretable_neural'),
-    **dict.fromkeys(INTERPRETABLE_TREE_NAMES, 'interpretable_trees'),
-}
-
-
-def _adapter(name: str) -> Any:
-    """Загружает модуль-адаптер для указанного имени модели (lazy import).
-
-    Args:
-        name: Имя модели из допустимого набора.
-
-    Returns:
-        Загруженный модуль с функциями `train_regression` и `train_classification`.
-
-    Raises:
-        ValueError: Если `name` не входит в `_KNOWN`.
-
-    """
-    if name not in _KNOWN:
-        raise ValueError(f'Unknown model {name!r}. Choose from: {sorted(_KNOWN)}')
-    module_name = _MODULE_ALIAS.get(name, name)
-    return importlib.import_module(f'ml_toolkit.models._{module_name}')
-
-
-def train_regression_model(
-    name: str,
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
-    """Обучает регрессионную модель через соответствующий адаптер.
-
-    Args:
-        name: Имя модели из `_KNOWN` (см. модуль).
-        X_train: Обучающая выборка.
-        y_train: Целевая переменная обучающей выборки.
-        X_valid: Валидационная выборка.
-        y_valid: Целевая переменная валидационной выборки.
-        X_inference: Инференс-выборка.
-        selected_features: Список признаков для обучения.
-        cat_features: Список категориальных признаков.
-        model_settings: Словарь настроек модели. Адаптеры, поддерживающие baseline
-            (CatBoost, LightGBM, LAMA, Linear), читают ``model_settings['baseline_col']``.
-        n_optuna_trials: Число trials Optuna для подбора гиперпараметров.
-        postprocess_fn: Опциональная функция постобработки (X, pred) → pred; применяется
-            внутри адаптера к Optuna-метрике и финальным предиктам (train/valid/infer).
-
-    Returns:
-        Кортеж (model, train_pred, valid_pred, infer_pred, best_params).
-
-    """
-    return _adapter(name).train_regression(
-        X_train=X_train, y_train=y_train,
-        X_valid=X_valid, y_valid=y_valid,
-        X_inference=X_inference,
-        selected_features=selected_features,
-        cat_features=cat_features,
-        model_settings=model_settings,
-        n_optuna_trials=n_optuna_trials,
-        postprocess_fn=postprocess_fn,
-    )
-
-
-def train_classification_model(
-    name: str,
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
-    """Обучает классификационную модель через соответствующий адаптер.
-
-    Args:
-        name: Имя модели из `_KNOWN` (см. модуль).
-        X_train: Обучающая выборка.
-        y_train: Бинарная целевая переменная (0/1) обучающей выборки.
-        X_valid: Валидационная выборка.
-        y_valid: Бинарная целевая переменная валидационной выборки.
-        X_inference: Инференс-выборка.
-        selected_features: Список признаков для обучения.
-        cat_features: Список категориальных признаков.
-        n_optuna_trials: Число trials Optuna.
-        model_settings: Дополнительные настройки модели (опционально).
-
-    Returns:
-        Кортеж (model, train_proba, val_proba, infer_proba_calibrated, best_params).
-
-    """
-    return _adapter(name).train_classification(
-        X_train=X_train, y_train=y_train,
-        X_valid=X_valid, y_valid=y_valid,
-        X_inference=X_inference,
-        selected_features=selected_features,
-        cat_features=cat_features,
-        n_optuna_trials=n_optuna_trials,
-        model_settings=model_settings or {},
-    )
-
-
-def make_predict_fn(
-    name: str,
-    model: Any,
-    task: str,
-    selected_features: list[str],
-) -> Callable[[pd.DataFrame], np.ndarray] | None:
-    """Возвращает callable predict_fn для данной модели, либо None если доступна встроенная важность.
-
-    Args:
-        name: Имя модели из `_KNOWN`.
-        model: Обученная модель (структура зависит от адаптера).
-        task: 'regression' или 'classification'.
-        selected_features: Список признаков, использованных при обучении.
-
-    Returns:
-        Функция ``f(X_df) -> np.ndarray`` или None.
-
-    """
-    return _adapter(name).make_predict_fn(model, task, selected_features)

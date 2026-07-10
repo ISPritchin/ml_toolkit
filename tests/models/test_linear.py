@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
-from ml_toolkit.models import train_classification_model, train_regression_model
 from ml_toolkit.models._linear import LinearClassifier, LinearRegressor
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 
 class TestLinearRegressorTypes:
@@ -90,6 +88,23 @@ class TestLinearRegressorTypes:
         assert 'cat_col' not in model._num_feats_
         assert_valid_predictions(model, X_valid)
 
+    def test_multiple_categorical_features_excluded_by_default(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = LinearRegressor(params={}, model_settings={'name': 'ridge'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_predictions(model, X_valid)
+
+    def test_multiple_categorical_features_included_with_onehot(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = LinearRegressor(params={}, model_settings={'name': 'ridge', 'cat_encoder': 'onehot'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+            assert any(f.startswith(f'{col}_') for f in model._num_feats_)
+        assert_valid_predictions(model, X_valid)
+
     def test_no_hardcoded_baseline_col_default(self, regression_data):
         """model_settings без 'baseline_col' не должен подмешивать никакой столбец
         по умолчанию — ml_toolkit не хардкодит имена колонок бизнес-задач.
@@ -158,24 +173,20 @@ class TestLinearClassifier:
         assert 'cat_col' not in model._num_feats_
         assert_valid_proba(model, X_valid)
 
+    def test_multiple_categorical_features_excluded_by_default(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = LinearClassifier(params={'C': 1.0})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_proba(model, X_valid)
 
-class TestLinearFunctionalAPI:
-    def test_train_regression_model_ridge(self, regression_data):
-        X_train, y_train, X_valid, y_valid = regression_data
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='ridge', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            model_settings={'name': 'ridge'}, n_optuna_trials=2,
-        )
-        assert isinstance(raw_model, tuple)
-        assert valid_pred.shape == (len(X_valid),)
+    def test_multiple_categorical_features_included_with_onehot(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = LinearClassifier(params={'C': 1.0}, model_settings={'cat_encoder': 'onehot'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+            assert any(f.startswith(f'{col}_') for f in model._num_feats_)
+        assert_valid_proba(model, X_valid)
 
-    def test_train_classification_model(self, classification_data):
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_proba, val_proba, infer_proba, best_params = train_classification_model(
-            name='ridge', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={'name': 'ridge'},
-        )
-        assert isinstance(raw_model, tuple)
-        assert np.all((infer_proba >= 0) & (infer_proba <= 1))

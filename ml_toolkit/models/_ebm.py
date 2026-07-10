@@ -12,21 +12,19 @@ EBM строит Generalized Additive Model через cyclic gradient boosting:
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import logging
-from typing import Any
 
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.utils.class_weight import compute_sample_weight
 
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
     CLS_METRICS,
     REG_METRICS,
-    encode_cat_features,
+    apply_cat_encoder,
+    build_cat_encoder,
     fit_calibrator,
     resolve_metric_fn,
     resolve_timeout,
@@ -80,9 +78,12 @@ class EBMRegressor(BaseModel):
         ms = self.model_settings
         _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
-        X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
-            X_train, X_valid if X_valid is not None else X_train,
-            X_train, self.selected_features_, self.cat_features_, ms,
+        self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
+            build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
+        X_train = apply_cat_encoder(X_train, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        X_valid_enc = (
+            apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+            if X_valid is not None else None
         )
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
 
@@ -121,7 +122,8 @@ class EBMRegressor(BaseModel):
         return self
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
-        return np.asarray(self._model.predict(X[self._num_feats_]))
+        X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        return np.asarray(self._model.predict(X_enc[self._num_feats_]))
 
 
 class EBMClassifier(BaseModel):
@@ -151,9 +153,12 @@ class EBMClassifier(BaseModel):
         ms = self.model_settings
         _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
-        X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
-            X_train, X_valid if X_valid is not None else X_train,
-            X_train, self.selected_features_, self.cat_features_, ms,
+        self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
+            build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
+        X_train = apply_cat_encoder(X_train, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        X_valid_enc = (
+            apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+            if X_valid is not None else None
         )
         self._num_feats_ = _num_features(self.selected_features_, self.cat_features_)
 
@@ -194,56 +199,7 @@ class EBMClassifier(BaseModel):
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
-        raw = np.asarray(self._model.predict_proba(X[self._num_feats_])[:, 1])
+        X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        raw = np.asarray(self._model.predict_proba(X_enc[self._num_feats_])[:, 1])
         return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
 
-
-# ── Backward-compat functional wrappers ──────────────────────────────────────
-
-def train_regression(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = EBMRegressor(n_optuna_trials=n_optuna_trials, model_settings=model_settings)
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    _pp = postprocess_fn or (lambda _X, p: p)
-    train_pred = _pp(X_train, model.train_pred_)
-    valid_pred = _pp(X_valid, model.valid_pred_)
-    infer_pred = _pp(X_inference, model.predict(X_inference))
-    logger.info('[EBM Reg] Final MAE: %.3f', mean_absolute_error(y_valid, valid_pred))
-    return model._model, train_pred, valid_pred, infer_pred, model.best_params_
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = EBMClassifier(n_optuna_trials=n_optuna_trials, model_settings=model_settings or {})
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_proba = model.predict_proba(X_inference)
-    logger.info('[EBM Cls] Final PR-AUC: %.3f', average_precision_score(y_valid, model.valid_pred_))
-    return model._model, model.train_pred_, model.valid_pred_, infer_proba, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> Any:
-    """Возвращает callable (X → np.ndarray) для permutation importance через EBM predict."""
-    _m = model
-    _feats = list(getattr(model, 'feature_names_in_', None) or selected_features)
-    if task == 'regression':
-        return lambda X: np.asarray(_m.predict(X[_feats]))
-    return lambda X: np.asarray(_m.predict_proba(X[_feats])[:, 1])

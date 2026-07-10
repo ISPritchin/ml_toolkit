@@ -5,9 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ml_toolkit.models import train_classification_model, train_regression_model
 from ml_toolkit.models._decision_tree import DecisionTreeClassifier, DecisionTreeRegressor
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'max_depth': 3, 'random_state': 42}
 
@@ -97,24 +96,20 @@ class TestDecisionTreeCatEncoder:
         assert 'cat_col' in model.selected_features_
         assert_valid_predictions(model, X_valid)
 
+    def test_multiple_categorical_features_ordinal(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = DecisionTreeClassifier(params=FAST_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert_valid_proba(model, X_valid)
+        for col in MULTI_CAT_FEATURES:
+            assert col in model.selected_features_
 
-class TestDecisionTreeFunctionalAPI:
-    def test_train_regression_model(self, regression_data):
-        X_train, y_train, X_valid, y_valid = regression_data
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='decision_tree', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            model_settings={}, n_optuna_trials=2,
-        )
-        assert raw_model is not None
-        assert valid_pred.shape == (len(X_valid),)
+    def test_multiple_categorical_features_onehot(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = DecisionTreeClassifier(params=FAST_PARAMS, model_settings={'cat_encoder': 'onehot'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert_valid_proba(model, X_valid)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model.selected_features_
+            assert any(f.startswith(f'{col}_') for f in model.selected_features_)
 
-    def test_train_classification_model(self, classification_data):
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_proba, val_proba, infer_proba, best_params = train_classification_model(
-            name='decision_tree', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={},
-        )
-        assert raw_model is not None
-        assert np.all((infer_proba >= 0) & (infer_proba <= 1))

@@ -788,7 +788,7 @@ def plot_interpretable_extra(
 
     Args:
         model: Обученная модель (структура зависит от адаптера).
-        model_name: Имя адаптера из `ml_toolkit.models._KNOWN`.
+        model_name: Имя адаптера (`'catboost'`, `'lightgbm'`, `'ebm'`, ...).
         feature_names: Список признаков, использованных при обучении.
         X_valid: Валидационная выборка (Pandas DataFrame).
         save_path: Путь сохранения PNG.

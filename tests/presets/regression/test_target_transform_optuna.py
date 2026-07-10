@@ -82,6 +82,7 @@ def test_all_incompatible_transforms_raises(regression_data):
 
 # ── 3. Optuna: выбирает transform + архитектуру совместно ──────────────────
 
+@pytest.mark.slow
 def test_optuna_picks_transform_and_tunes_architecture(positive_regression_data):
     X_train, y_train, X_valid, y_valid = positive_regression_data
     model = TargetTransformOptunaRegressor(

@@ -11,7 +11,7 @@ import pytest
 pytest.importorskip('pygam')
 
 from ml_toolkit.models._gam import PyGAMClassifier, PyGAMRegressor  # noqa: E402
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 FAST_PARAMS = {'lam': 0.6}
 
@@ -41,6 +41,14 @@ class TestPyGAMRegressor:
         assert 'cat_col' not in model._num_feats_
         assert_valid_predictions(model, X_valid)
 
+    def test_multiple_categorical_features_excluded(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = PyGAMRegressor(params=FAST_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_predictions(model, X_valid)
+
 
 class TestPyGAMClassifier:
     def test_fit_predict_proba_explicit_params(self, classification_data):
@@ -53,6 +61,14 @@ class TestPyGAMClassifier:
         X_train, y_train, X_valid, y_valid = classification_data
         model = PyGAMClassifier(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = PyGAMClassifier(params=FAST_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_proba(model, X_valid)
 
     def test_predict_proba_is_1d_and_valid(self, classification_data):

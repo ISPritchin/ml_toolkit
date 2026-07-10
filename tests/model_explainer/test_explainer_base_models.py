@@ -89,6 +89,7 @@ def _run_full_battery(explainer: ModelExplainer, X_valid: pd.DataFrame, feats: l
 
 
 class TestCatBoostClassifier:
+    @pytest.mark.slow
     def test_full_battery(self, classification_data, tmp_path):
         X_train, y_train, X_valid, y_valid = classification_data
         model = CatBoostClassifier(params=FAST_CB)
@@ -105,6 +106,7 @@ class TestCatBoostClassifier:
 
 
 class TestLightGBMClassifier:
+    @pytest.mark.slow
     def test_full_battery(self, classification_data, tmp_path):
         X_train, y_train, X_valid, y_valid = classification_data
         model = LightGBMClassifier(params={'n_estimators': 40, 'max_depth': 3, 'verbose': -1})
@@ -117,6 +119,7 @@ class TestLightGBMClassifier:
 
 
 class TestRandomForestClassifier:
+    @pytest.mark.slow
     def test_full_battery(self, classification_data, tmp_path):
         X_train, y_train, X_valid, y_valid = classification_data
         model = RandomForestClassifier(params={'n_estimators': 30, 'max_depth': 4, 'random_state': 42})
@@ -129,6 +132,7 @@ class TestRandomForestClassifier:
 
 
 class TestDecisionTreeClassifier:
+    @pytest.mark.slow
     def test_full_battery(self, classification_data, tmp_path):
         X_train, y_train, X_valid, y_valid = classification_data
         model = DecisionTreeClassifier(params={'max_depth': 3, 'random_state': 42})
@@ -161,6 +165,7 @@ class TestLinearClassifier:
 
 
 class TestInterpretableTreeRegressorLocallyLinearForest:
+    @pytest.mark.slow
     def test_full_battery(self, regression_data, tmp_path):
         X_train, y_train, X_valid, y_valid = regression_data
         model = InterpretableTreeRegressor(
@@ -180,6 +185,7 @@ class TestInterpretableTreeRegressorLocallyLinearForest:
 
 
 class TestCatBoostRegressor:
+    @pytest.mark.slow
     def test_full_battery(self, regression_data, tmp_path):
         X_train, y_train, X_valid, y_valid = regression_data
         model = CatBoostRegressor(params=FAST_CB)

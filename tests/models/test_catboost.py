@@ -6,9 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml_toolkit.models import train_classification_model, train_regression_model
 from ml_toolkit.models._catboost import CatBoostClassifier, CatBoostRegressor
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_CB = {'iterations': 40, 'max_depth': 3, 'learning_rate': 0.2, 'verbose': 0, 'random_seed': 42}
 
@@ -73,42 +72,6 @@ class TestCatBoostRegressorBaseline:
 
         assert err_with_baseline < 0.5
         assert err_without_baseline > err_with_baseline * 5
-
-    def test_baseline_combines_with_postprocess_fn_and_optuna(self, regression_data):
-        """Три механизма разом: baseline_col (Pool baseline на train/predict),
-        postprocess_fn (пост-обработка train/valid/infer через функциональный API,
-        включая саму Optuna-objective) и params=None (Optuna, 2 триала).
-
-        Если postprocess_fn не применился бы — сдвиг на shift отсутствовал бы в
-        infer_pred/train_pred/valid_pred. Если baseline не использовался бы внутри
-        Optuna-objective (а значит и в финальной модели) — за 2 триала модель не
-        успела бы выучить сигнал с нуля, и MAE после вычитания сдвига был бы большим.
-        """
-        rng = np.random.default_rng(5)
-        X_train, y_train, X_valid, y_valid = regression_data
-        X_train = X_train.copy()
-        X_valid = X_valid.copy()
-        X_train['baseline'] = y_train.to_numpy() + rng.normal(scale=0.05, size=len(y_train))
-        X_valid['baseline'] = y_valid.to_numpy() + rng.normal(scale=0.05, size=len(y_valid))
-        feats = ['f0', 'f1', 'f2', 'f3', 'f4']
-        shift = 1000.0
-
-        def add_shift(_X, pred):
-            return pred + shift
-
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='catboost', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=feats, cat_features=[],
-            model_settings={'baseline_col': 'baseline'}, n_optuna_trials=2,
-            postprocess_fn=add_shift,
-        )
-
-        assert np.all(infer_pred > shift / 2)
-        assert np.all(train_pred > shift / 2)
-        assert np.all(valid_pred > shift / 2)
-
-        mae_after_removing_shift = np.abs((valid_pred - shift) - y_valid.to_numpy()).mean()
-        assert mae_after_removing_shift < 0.5
 
 
 class TestCatBoostClassifierExplicitParams:
@@ -179,6 +142,20 @@ class TestCatBoostCatFeatures:
         model = CatBoostRegressor(params=FAST_CB)
         model.fit(X_train, y_train, X_valid, y_valid, cat_features=['cat_col'])
         assert model.cat_features_ == ['cat_col']
+        assert_valid_predictions(model, X_valid)
+
+    def test_multiple_categorical_features_classifier(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = CatBoostClassifier(params=FAST_CB)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert model.cat_features_ == MULTI_CAT_FEATURES
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_regressor(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = CatBoostRegressor(params=FAST_CB)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert model.cat_features_ == MULTI_CAT_FEATURES
         assert_valid_predictions(model, X_valid)
 
 
@@ -314,6 +291,7 @@ class TestCatBoostOptunaPruner:
 
 
 class TestCatBoostOptunaTimeout:
+    @pytest.mark.slow
     def test_timeout_stops_study_early(self, regression_data):
         import time
 
@@ -377,54 +355,3 @@ class TestCatBoostOptunaVerbose:
         # fit() приглушает Optuna на время тюнинга, но обязан вернуть исходный уровень
         assert optuna.logging.get_verbosity() == optuna.logging.DEBUG
 
-
-class TestCatBoostPostprocessFn:
-    def test_functional_api_applies_postprocess_to_infer_pred(self, regression_data):
-        """Регрессия найденного бага: train_regression(name='catboost', postprocess_fn=...)
-        должен применять postprocess_fn и к infer_pred, а не только к train_pred_/valid_pred_ —
-        CatBoostRegressor._predict_impl() сам по себе postprocess_fn не знает, поэтому
-        оборачивать обязан вызывающий (train_regression), как это уже делает _forest.py.
-        """
-        X_train, y_train, X_valid, y_valid = regression_data
-        shift = 1_000_000.0
-
-        def add_shift(_X, pred):
-            return pred + shift
-
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='catboost', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            model_settings={}, n_optuna_trials=2,
-            postprocess_fn=add_shift,
-        )
-        # Таргет (regression_data) в диапазоне единиц — сдвиг на 1e6 гарантированно доминирует
-        # над любым шумом предсказаний, если postprocess_fn реально применён.
-        assert np.all(infer_pred > shift / 2)
-        assert np.all(train_pred > shift / 2)
-        assert np.all(valid_pred > shift / 2)
-
-
-class TestCatBoostFunctionalAPI:
-    def test_train_regression_model(self, regression_data):
-        X_train, y_train, X_valid, y_valid = regression_data
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='catboost', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            model_settings={}, n_optuna_trials=2,
-        )
-        assert raw_model is not None
-        assert train_pred.shape == (len(X_train),)
-        assert valid_pred.shape == (len(X_valid),)
-        assert infer_pred.shape == (len(X_valid),)
-        assert isinstance(best_params, dict)
-
-    def test_train_classification_model(self, classification_data):
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_proba, val_proba, infer_proba, best_params = train_classification_model(
-            name='catboost', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={},
-        )
-        assert raw_model is not None
-        assert np.all((infer_proba >= 0) & (infer_proba <= 1))
-        assert isinstance(best_params, dict)

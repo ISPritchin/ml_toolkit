@@ -9,15 +9,12 @@ Optuna тюнит max_depth ∈ [2, 15] — охватывает как инте
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import logging
-from typing import Any
 
 import numpy as np
 import optuna
 import pandas as pd
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import average_precision_score, mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 
 from ml_toolkit.models._base import BaseModel
@@ -203,53 +200,3 @@ class LinearTreeClassifier(BaseModel):
         raw = self._model.predict_proba(X_t)[:, 1]
         return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
 
-
-# ── Backward-compat functional wrappers ──────────────────────────────────────
-
-def train_regression(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    model_settings: dict[str, Any],
-    n_optuna_trials: int,
-    postprocess_fn: Callable[[pd.DataFrame, np.ndarray], np.ndarray] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = LinearTreeRegressor(n_optuna_trials=n_optuna_trials, model_settings=model_settings)
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    _pp = postprocess_fn or (lambda _X, p: p)
-    train_pred = _pp(X_train, model.train_pred_)
-    valid_pred = _pp(X_valid, model.valid_pred_)
-    infer_pred = _pp(X_inference, model.predict(X_inference))
-    logger.info('[LINEAR_TREE Reg] Final MAE: %.3f', mean_absolute_error(y_valid, valid_pred))
-    return (model._model, model._imputer, model._scaler, model._num_feats_), train_pred, valid_pred, infer_pred, model.best_params_
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = LinearTreeClassifier(n_optuna_trials=n_optuna_trials, model_settings=model_settings or {})
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_proba = model.predict_proba(X_inference)
-    logger.info('[LINEAR_TREE Cls] Final PR-AUC: %.3f', average_precision_score(y_valid, model.valid_pred_))
-    return (model._model, model._imputer, model._scaler, model._num_feats_), model.train_pred_, model.valid_pred_, infer_proba, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> Any:
-    """Возвращает callable (X → np.ndarray) с препроцессингом (imputer + scaler) для SHAP."""
-    import numpy as _np  # noqa: PLC0415
-    _m, _imp, _sc, _nf = model
-    if task == 'regression':
-        return lambda X: _np.asarray(_m.predict(_sc.transform(_imp.transform(X[_nf].to_numpy(dtype=float)))))
-    return lambda X: _m.predict_proba(_sc.transform(_imp.transform(X[_nf].to_numpy(dtype=float))))[:, 1]

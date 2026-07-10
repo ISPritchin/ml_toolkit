@@ -139,7 +139,16 @@ _MISSING = set(hpa.__all__) - set(PRESET_FACTORIES)
 assert not _MISSING, f'Нет фабрики ModelExplainer-теста для пресетов: {sorted(_MISSING)}'
 
 
-@pytest.mark.parametrize('preset_name', sorted(PRESET_FACTORIES))
+# HeterogeneousStacking тренирует несколько под-моделей внутри одного пресета — заметно
+# медленнее остальных (~2.5s против <0.3s), помечаем отдельно.
+_SLOW_PRESETS = frozenset({'HeterogeneousStacking'})
+
+
+@pytest.mark.parametrize(
+    'preset_name',
+    [pytest.param(name, marks=pytest.mark.slow) if name in _SLOW_PRESETS else name
+     for name in sorted(PRESET_FACTORIES)],
+)
 def test_permutation_importance_and_explain_row(preset_name, classification_data):
     X_train, y_train, X_valid, y_valid = classification_data
     factory = PRESET_FACTORIES[preset_name]

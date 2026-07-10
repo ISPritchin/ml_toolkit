@@ -11,7 +11,7 @@ import pytest
 pytest.importorskip('imodels')
 
 from ml_toolkit.models._imodels import IModelsClassifier, IModelsRegressor  # noqa: E402
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 FIGS_PARAMS = {'max_rules': 10, 'max_trees': 5}
 SKOPE_PARAMS = {'n_estimators': 10, 'max_depth': 3, 'random_state': 42}
@@ -32,6 +32,14 @@ class TestIModelsRegressor:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_predictions(model, X_valid)
 
+    def test_multiple_categorical_features_excluded(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = IModelsRegressor(params=FIGS_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
+        assert_valid_predictions(model, X_valid)
+
 
 class TestIModelsClassifierFigs:
     def test_fit_predict_proba_explicit_params(self, classification_data):
@@ -44,6 +52,14 @@ class TestIModelsClassifierFigs:
         X_train, y_train, X_valid, y_valid = classification_data
         model = IModelsClassifier(n_optuna_trials=2, model_settings={'name': 'figs'})
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = IModelsClassifier(params=FIGS_PARAMS, model_settings={'name': 'figs'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_proba(model, X_valid)
 
 

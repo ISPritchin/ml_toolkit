@@ -95,6 +95,7 @@ def test_single_round_matches_plain_catboost(regression_data):
 
 # ── 5. Optuna в раунде 0 тюнит архитектуру ──────────────────────────────────
 
+@pytest.mark.slow
 def test_optuna_round0_tunes_architecture(regression_data):
     X_train, y_train, X_valid, y_valid = regression_data
     model = TrimmedLossRegressor(trim_frac=0.05, n_rounds=2, n_optuna_trials=3, random_seed=42)

@@ -101,6 +101,7 @@ def test_higher_quantile_predicts_higher_values(regression_data):
 
 # ── 4. Optuna: тюнит только kappa (quantile фиксирован), score = pinball ───
 
+@pytest.mark.slow
 def test_optuna_tunes_kappa_and_architecture(regression_data):
     X_train, y_train, X_valid, y_valid = regression_data
     model = QuantileHuberRegressor(quantile=0.7, n_optuna_trials=4, random_seed=42)
@@ -116,6 +117,7 @@ def test_optuna_tunes_kappa_and_architecture(regression_data):
         assert bounds[0] <= model.best_params_[key] <= bounds[1], (key, model.best_params_[key])
 
 
+@pytest.mark.slow
 def test_optuna_selection_uses_pinball_not_mae(regression_data):
     X_train, y_train, X_valid, y_valid = regression_data
     model = QuantileHuberRegressor(quantile=0.2, n_optuna_trials=3, random_seed=42)

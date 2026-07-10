@@ -87,6 +87,7 @@ def test_non_crossing_false_can_still_cross(regression_data):
 
 # ── 4. Optuna: тюнит архитектуру независимо на каждый квантиль ─────────────
 
+@pytest.mark.slow
 def test_optuna_tunes_each_quantile_independently(regression_data):
     X_train, y_train, X_valid, y_valid = regression_data
     quantiles = [0.3, 0.7]

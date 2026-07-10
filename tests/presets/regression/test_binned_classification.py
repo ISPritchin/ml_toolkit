@@ -119,6 +119,7 @@ def test_predictions_avoid_the_empty_gap_between_modes(bimodal_data):
 
 # ── 4. Optuna тюнит архитектуру, score — MAE декодированного прогноза ──────
 
+@pytest.mark.slow
 def test_optuna_tunes_architecture(regression_data):
     X_train, y_train, X_valid, y_valid = regression_data
     model = RegressionByBinnedClassification(n_bins=8, n_optuna_trials=3, random_seed=42)

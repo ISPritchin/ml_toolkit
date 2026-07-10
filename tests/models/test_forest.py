@@ -5,14 +5,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ml_toolkit.models import train_classification_model, train_regression_model
 from ml_toolkit.models._forest import (
     ExtraTreesClassifier,
     ExtraTreesRegressor,
     RandomForestClassifier,
     RandomForestRegressor,
 )
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'n_estimators': 30, 'max_depth': 4, 'random_state': 42, 'n_jobs': -1}
 
@@ -32,6 +31,7 @@ class TestForestRegressors:
         with pytest.raises(ValueError, match='X_valid'):
             model.fit(X_train, y_train)
 
+    @pytest.mark.slow
     def test_fit_with_optuna(self, RegClass, regression_data):
         X_train, y_train, X_valid, y_valid = regression_data
         model = RegClass(n_optuna_trials=2)
@@ -62,6 +62,7 @@ class TestForestClassifiers:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert model.calibrator_ is not None
 
+    @pytest.mark.slow
     def test_fit_with_optuna(self, ClsClass, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data
         model = ClsClass(n_optuna_trials=2)
@@ -115,24 +116,20 @@ class TestForestCatEncoder:
         assert 'cat_col' not in model.selected_features_
         assert any(f.startswith('cat_col_') for f in model.selected_features_)
 
+    def test_multiple_categorical_features_ordinal(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = RandomForestClassifier(params=FAST_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert_valid_proba(model, X_valid)
+        for col in MULTI_CAT_FEATURES:
+            assert col in model.selected_features_
 
-class TestForestFunctionalAPI:
-    def test_train_regression_model_random_forest(self, regression_data):
-        X_train, y_train, X_valid, y_valid = regression_data
-        raw_model, train_pred, valid_pred, infer_pred, best_params = train_regression_model(
-            name='random_forest', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            model_settings={'name': 'random_forest'}, n_optuna_trials=2,
-        )
-        assert raw_model is not None
-        assert valid_pred.shape == (len(X_valid),)
+    def test_multiple_categorical_features_onehot(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = RandomForestClassifier(params=FAST_PARAMS, model_settings={'cat_encoder': 'onehot'})
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        assert_valid_proba(model, X_valid)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model.selected_features_
+            assert any(f.startswith(f'{col}_') for f in model.selected_features_)
 
-    def test_train_classification_model_extra_trees(self, classification_data):
-        X_train, y_train, X_valid, y_valid = classification_data
-        raw_model, train_proba, val_proba, infer_proba, best_params = train_classification_model(
-            name='extra_trees', X_train=X_train, y_train=y_train, X_valid=X_valid, y_valid=y_valid,
-            X_inference=X_valid, selected_features=list(X_train.columns), cat_features=[],
-            n_optuna_trials=2, model_settings={'name': 'extra_trees'},
-        )
-        assert raw_model is not None
-        assert np.all((infer_proba >= 0) & (infer_proba <= 1))

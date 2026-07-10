@@ -207,34 +207,3 @@ class CatBoostRanker(BaseModel):
         lo, hi = raw.min(), raw.max()
         return (raw - lo) / (hi - lo + 1e-12)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Backward-совместимые функции
-# ─────────────────────────────────────────────────────────────────────────────
-
-def train_regression(*args, **kwargs):
-    raise NotImplementedError(
-        "CatBoostRanker не поддерживает регрессию. "
-        "Для регрессии используйте 'catboost'."
-    )
-
-
-def train_classification(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    X_valid: pd.DataFrame,
-    y_valid: pd.Series,
-    X_inference: pd.DataFrame,
-    selected_features: list[str],
-    cat_features: list[str],
-    n_optuna_trials: int,
-    model_settings: dict[str, Any] | None = None,
-) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict]:
-    model = CatBoostRanker(n_optuna_trials=n_optuna_trials, model_settings=model_settings or {})
-    model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_scores = model.predict_proba(X_inference)
-    return model._model, model.train_pred_, model.valid_pred_, infer_scores, model.best_params_
-
-
-def make_predict_fn(model: Any, task: str, selected_features: list[str]) -> None:
-    return None

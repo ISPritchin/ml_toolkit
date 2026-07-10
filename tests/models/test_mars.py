@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip('pyearth')
 
 from ml_toolkit.models._mars import MARSClassifier, MARSRegressor  # noqa: E402
-from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
 
 FAST_REG_PARAMS = {'max_degree': 1, 'max_terms': 20}
 
@@ -30,6 +30,14 @@ class TestMARSRegressor:
         X_train, y_train, X_valid, y_valid = regression_data
         model = MARSRegressor(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, regression_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = regression_data_multi_cat
+        model = MARSRegressor(params=FAST_REG_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_predictions(model, X_valid)
 
 
@@ -57,4 +65,12 @@ class TestMARSClassifier:
         X_train, y_train, X_valid, y_valid = classification_data
         model = MARSClassifier(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+
+    def test_multiple_categorical_features_excluded(self, classification_data_multi_cat):
+        X_train, y_train, X_valid, y_valid = classification_data_multi_cat
+        model = MARSClassifier(params=FAST_REG_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
+        for col in MULTI_CAT_FEATURES:
+            assert col not in model._num_feats_
         assert_valid_proba(model, X_valid)

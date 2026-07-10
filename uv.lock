@@ -1941,7 +1941,7 @@ wheels = [
 
 [[package]]
 name = "ml-toolkit"
-version = "0.1.23"
+version = "0.1.25"
 source = { editable = "." }
 dependencies = [
     { name = "catboost" },
