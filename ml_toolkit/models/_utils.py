@@ -175,7 +175,7 @@ def build_cat_encoder(
     spec = model_settings.get('cat_encoder')
     if spec is None or spec == 'ordinal':
         encoder: Any = OrdinalEncoder(
-            handle_unknown='use_encoded_value', unknown_value=-1.0, encoded_missing_value=-1.0,
+            handle_unknown='use_encoded_value', unknown_value=-1, encoded_missing_value=-1.0,
         )
     elif spec == 'onehot':
         encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore', dtype=np.float32)

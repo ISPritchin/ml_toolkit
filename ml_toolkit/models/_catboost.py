@@ -109,25 +109,72 @@ def _default_cls_param_space(trial: Any, task_type: str) -> dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CatBoostRegressor(BaseModel):
-    """CatBoost регрессор с опциональным Optuna-тюнингом.
+    """CatBoost-регрессор с нативным Pool-бейзлайном и Optuna-тюнингом архитектуры.
 
-    Если model_settings содержит 'baseline_col', Pool передаётся с baseline=
-    — CatBoost включает его в предсказание нативно. predict(X) тоже использует
-    Pool с baseline, поэтому предсказание уже включает baseline (не нужно
-    прибавлять вручную, в отличие от LightGBM).
+    ``params=None`` (по умолчанию конструктора `BaseModel`) запускает Optuna —
+    `X_valid`/`y_valid` обязательны, иначе `fit()` поднимает `ValueError`.
+    ``params={...}`` — прямое обучение без тюнинга; `best_params_` в этом случае
+    равен переданным `params` как есть.
+
+    Категориальные признаки (`cat_features` в `fit()`) CatBoost обрабатывает
+    нативно через `Pool` — отдельный `cat_encoder` этому классу не нужен и не
+    читается из `model_settings`.
+
+    model_settings, которые читает этот класс:
+
+    - ``baseline_col`` (`str | None`, дефолт `None`) — имя столбца-бейзлайна.
+      Если задан, `Pool(baseline=...)` передаётся и на train, и на predict —
+      деревья учат только *остаток* относительно baseline, а
+      ``predict()``/``predict_proba()`` уже включают его в результат (в отличие
+      от `LightGBMRegressor`, прибавлять вручную не нужно). Столбца нет в `X` —
+      baseline тихо не применяется.
+    - ``reg_metric`` (`str | callable | (callable, direction)`, дефолт `'mae'`) —
+      метрика Optuna-objective; `reg_metric_direction` — направление для
+      «голого» callable.
+    - ``param_space`` (`Callable[[trial], dict] | None`) — полностью заменяет
+      дефолтное пространство поиска (`iterations`/`max_depth`/`learning_rate`/
+      `l2_leaf_reg`/`min_data_in_leaf`/`random_strength`/`border_count`/
+      `subsample`/`rsm`).
+    - ``task_type`` (`'CPU' | 'GPU'`, дефолт `'CPU'`) — на GPU CatBoost не
+      поддерживает пользовательские callbacks, поэтому Optuna-прунинг для
+      GPU-триалов отключается автоматически (триалы всегда доучиваются).
+    - ``optuna_timeout`` / ``optuna_pruner`` / ``optuna_verbose`` — общие для
+      всех Optuna-адаптеров, см. `ml_toolkit/models/model_settings.md`.
+
+    Атрибуты после `fit()`:
+
+    - ``best_params_`` — параметры финальной модели, включая `loss_function`/
+      `eval_metric`/`random_seed` (не только тюнимые ключи).
+    - ``selected_features_``, ``cat_features_`` — реально использованные признаки.
+    - ``train_pred_`` / ``valid_pred_`` — предсказания с уже прибавленным
+      baseline (если задан) и уже применённым `model_settings['postprocess_fn']`.
+
+    .. note::
+        `postprocess_fn` применяется только внутри `fit()` к `train_pred_`/
+        `valid_pred_` — сам `predict()` класса его не знает. Функциональная
+        обёртка `train_regression_model(name='catboost', postprocess_fn=...)`
+        оборачивает им и `infer_pred` отдельно.
 
     Примеры::
 
-        # С Optuna
-        model = CatBoostRegressor(n_optuna_trials=50,
-                                   model_settings={'baseline_col': 'fee_nds_amount'})
+        # Optuna + нативный baseline + кастомная метрика
+        model = CatBoostRegressor(
+            n_optuna_trials=50,
+            model_settings={'baseline_col': 'my_baseline', 'reg_metric': 'rmse'},
+        )
         model.fit(X_train, y_train, X_valid, y_valid, selected_features=['a', 'b'])
-        pred = model.predict(X_new)
+        pred = model.predict(X_new)          # уже включает baseline
 
-        # Без Optuna
+        # Без Optuna, явные гиперпараметры
         model = CatBoostRegressor(params={'iterations': 700, 'max_depth': 5})
         model.fit(X_train, y_train)
         pred = model.predict(X_new)
+
+        # Свой search space вместо дефолтного
+        def my_space(trial):
+            return {'iterations': trial.suggest_int('iterations', 200, 600, step=50)}
+        model = CatBoostRegressor(n_optuna_trials=30, model_settings={'param_space': my_space})
+        model.fit(X_train, y_train, X_valid, y_valid)
     """
 
     def fit(
@@ -258,24 +305,71 @@ class CatBoostRegressor(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CatBoostClassifier(BaseModel):
-    """CatBoost классификатор с опциональным Optuna-тюнингом.
+    """CatBoost-классификатор: бинарный и мультикласс в одном классе, с
+    изотонической калибровкой и урезанием мажоритарного класса внутри Optuna.
 
-    Если передана валидационная выборка, автоматически обучает изотонический
-    калибратор на val-вероятностях. predict_proba() всегда возвращает
-    откалиброванные вероятности (при наличии калибратора).
+    ``params=None`` запускает Optuna (`X_valid`/`y_valid` обязательны, иначе
+    `ValueError`); ``params={...}`` — прямое обучение без тюнинга.
+
+    Бинарный или мультикласс определяется автоматически по числу уникальных
+    значений `y_train` (`self.n_classes_`), явно указывать не нужно:
+
+    - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает 1D-массив
+      `P(y=1)`. Калибратор — `self.calibrator_` (`IsotonicRegression`).
+    - **Мультикласс**: `predict_proba()` возвращает `(n, K)`-матрицу, строки
+      нормированы к 1. Калибраторы — `self.calibrators_`, список из `K`
+      `IsotonicRegression` (по одной на класс, схема One-vs-Rest); бинарный
+      `self.calibrator_` в этом случае остаётся `None`.
+
+    Калибратор(ы) обучаются только если передана валидационная выборка; без
+    неё `predict_proba()` возвращает сырые (некалиброванные) вероятности.
+
+    Категориальные признаки (`cat_features` в `fit()`) — нативно через `Pool`,
+    `cat_encoder` этому классу не нужен.
+
+    model_settings, которые читает этот класс:
+
+    - ``cls_metric`` (`str | callable | (callable, direction)`, дефолт
+      `'pr_auc'`) — метрика Optuna-objective; `cls_metric_direction` — для
+      «голого» callable.
+    - ``loss_function`` / ``eval_metric`` — переопределяют дефолт внутри Optuna
+      (`'Logloss'`/`'PRAUC'` бинарный, `'MultiClass'`/`'AUC'` мультикласс).
+    - ``undersample_majority`` (`bool`, дефолт `False`) — `True` включает урезание
+      мажоритарного класса на каждом Optuna-триале (бинарный — `majority_fraction`,
+      мультикласс — `balance_fraction`, тоже тюнится Optuna); финальная модель
+      обучается на том же сэмпле, что и лучший триал, а не на всех данных — иначе
+      гиперпараметры оценивались бы на одном объёме, а обучение шло на другом.
+      По умолчанию (`False`) — без сэмплирования, полные данные на каждом триале.
+    - ``param_space`` (`Callable[[trial], dict] | None`) — переопределяет
+      архитектурный search space (тот же набор ключей, что у регрессора).
+    - ``task_type`` (`'CPU' | 'GPU'`) — на GPU Optuna-прунинг отключён
+      (см. `CatBoostRegressor`).
+    - ``optuna_timeout`` / ``optuna_pruner`` / ``optuna_verbose`` — общие для
+      всех Optuna-адаптеров, см. `ml_toolkit/models/model_settings.md`.
+
+    Атрибуты после `fit()`:
+
+    - ``n_classes_`` — число классов, определено по `y_train`.
+    - ``calibrator_`` / ``calibrators_`` — см. выше.
+    - ``best_params_``, ``selected_features_``, ``cat_features_``,
+      ``train_pred_``, ``valid_pred_``.
 
     Примеры::
 
-        # С Optuna
-        model = CatBoostClassifier(n_optuna_trials=50)
+        # Бинарная классификация, Optuna, метрика ROC-AUC вместо PR-AUC
+        model = CatBoostClassifier(n_optuna_trials=50, model_settings={'cls_metric': 'roc_auc'})
         model.fit(X_train, y_train, X_valid, y_valid)
-        proba = model.predict_proba(X_new)
+        proba = model.predict_proba(X_new)          # 1D, откалибровано
         print(model.best_params_)
 
-        # Без Optuna
-        model = CatBoostClassifier(params={'iterations': 700, 'max_depth': 5})
-        model.fit(X_train, y_train)
-        proba = model.predict_proba(X_new)
+        # Мультикласс — определяется по y_train автоматически
+        model = CatBoostClassifier(params={'iterations': 500, 'loss_function': 'MultiClass'})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        proba = model.predict_proba(X_new)          # (n, K), строки суммируются в 1
+
+        # С урезанием мажоритарного класса на каждом Optuna-триале (по умолчанию — без него)
+        model = CatBoostClassifier(n_optuna_trials=50, model_settings={'undersample_majority': True})
+        model.fit(X_train, y_train, X_valid, y_valid)
     """
 
     def fit(
@@ -345,7 +439,7 @@ class CatBoostClassifier(BaseModel):
             ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS,
         )
         param_space: Callable[[Any], dict] | None = ms.get('param_space')
-        undersample_majority: bool = ms.get('undersample_majority', True)
+        undersample_majority: bool = ms.get('undersample_majority', False)
 
         y_arr = np.asarray(y_train)
         is_binary = self.n_classes_ == 2
@@ -354,11 +448,11 @@ class CatBoostClassifier(BaseModel):
         cb_loss = ms.get('loss_function', 'Logloss' if is_binary else 'MultiClass')
         cb_eval = ms.get('eval_metric', 'PRAUC' if is_binary else 'AUC')
 
-        # undersample_majority=True (по умолчанию): урезаем мажоритарный класс, финальная
-        # модель обучается на том же сэмпле, что и лучший trial (тот же fraction и тот же
+        # undersample_majority=True: урезаем мажоритарный класс, финальная модель
+        # обучается на том же сэмпле, что и лучший trial (тот же fraction и тот же
         # seed) — не на всех данных, чтобы гиперпараметры не оценивались на одном объёме
-        # данных, а обучались на другом. undersample_majority=False: без сэмплирования,
-        # всегда полные данные (как обычный Optuna-тюнинг).
+        # данных, а обучались на другом. undersample_majority=False (по умолчанию):
+        # без сэмплирования, всегда полные данные (как обычный Optuna-тюнинг).
         sampler = UndersampleSampler(y_arr, is_binary, log_prefix='[CatBoost Cls]') if undersample_majority else None
         if not undersample_majority:
             logger.info('[CatBoost Cls] undersample_majority=False — обучение на полных данных (n=%d)', len(y_arr))
@@ -476,7 +570,8 @@ def train_regression(
         ms['postprocess_fn'] = postprocess_fn
     model = CatBoostRegressor(n_optuna_trials=n_optuna_trials, model_settings=ms)
     model.fit(X_train, y_train, X_valid, y_valid, selected_features, cat_features)
-    infer_pred = model.predict(X_inference)
+    _pp = postprocess_fn or (lambda _X, p: p)
+    infer_pred = _pp(X_inference, model.predict(X_inference))
     return model._model, model.train_pred_, model.valid_pred_, infer_pred, model.best_params_
 
 

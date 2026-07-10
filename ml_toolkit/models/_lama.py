@@ -64,9 +64,12 @@ class LAMARegressor(BaseModel):
         self.cat_features_ = list(cat_features or [])
         ms = self.model_settings
 
-        baseline_col: str = ms.get('baseline_col', 'fee_nds_amount')
+        baseline_col: str | None = ms.get('baseline_col')
         timeout = int(ms.get('timeout', self.n_optuna_trials * 60))
-        self._feats = list(dict.fromkeys([*self.selected_features_, baseline_col]))
+        if baseline_col and baseline_col in X_train.columns:
+            self._feats = list(dict.fromkeys([*self.selected_features_, baseline_col]))
+        else:
+            self._feats = list(self.selected_features_)
         logger.info('[LAMA Reg] timeout=%ds, baseline=%s', timeout, baseline_col)
 
         automl = TabularAutoML(

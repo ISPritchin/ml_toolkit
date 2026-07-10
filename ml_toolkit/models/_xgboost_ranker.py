@@ -155,11 +155,11 @@ class XGBoostRanker(BaseModel):
                 'verbosity': 0,
                 'early_stopping_rounds': 100,
             }
-            m = xgb.XGBRanker(**params)
+            m = xgb.XGBRanker(**params, callbacks=[make_xgb_pruning_callback(trial)])
             m.fit(
                 Xtr, ytr, qid=qid_tr,
                 eval_set=[(Xva, yva)], eval_qid=[qid_va],
-                verbose=False, callbacks=[make_xgb_pruning_callback(trial)],
+                verbose=False,
             )
             cal = fit_calibrator(m.predict(Xva), yva)
             return metric_fn(yva, cal.predict(m.predict(Xva)))

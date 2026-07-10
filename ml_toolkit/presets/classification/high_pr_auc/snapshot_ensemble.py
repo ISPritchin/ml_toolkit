@@ -118,7 +118,7 @@ class SnapshotEnsembleClassifier(BasePreset):
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
     ) -> None:
-        fracs = snapshot_fracs or [0.4, 0.6, 0.8, 1.0]
+        fracs = [0.4, 0.6, 0.8, 1.0] if snapshot_fracs is None else snapshot_fracs
         if not fracs:
             raise ValueError('snapshot_fracs не может быть пустым.')
         if any(not 0.0 < f <= 1.0 for f in fracs):

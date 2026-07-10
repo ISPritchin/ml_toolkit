@@ -83,7 +83,10 @@ class RandomForestRegressor(BaseModel):
 class RandomForestClassifier(BaseModel):
     """RandomForestClassifier с подбором через Optuna. Вероятности калибруются изотонической регрессией.
 
-    params=None → Optuna; params=dict → прямое обучение без тюнинга.
+    params=None → Optuna; params=dict → прямое обучение без тюнинга. ``class_weight``
+    по умолчанию `'balanced'` в обеих ветках, но явный `class_weight` в `params`
+    побеждает (не молча отбрасывается — `{'class_weight': 'balanced', **params}`).
+    `cat_encoder`/`cat_features` — как у `RandomForestRegressor`.
     """
 
     def fit(
@@ -125,7 +128,9 @@ class ExtraTreesRegressor(BaseModel):
 class ExtraTreesClassifier(BaseModel):
     """ExtraTreesClassifier с подбором через Optuna. Вероятности калибруются изотонической регрессией.
 
-    params=None → Optuna; params=dict → прямое обучение без тюнинга.
+    params=None → Optuna; params=dict → прямое обучение без тюнинга. ``class_weight``
+    по умолчанию `'balanced'` в обеих ветках, но явный `class_weight` в `params`
+    побеждает (см. `RandomForestClassifier`).
     """
 
     def fit(
@@ -216,9 +221,13 @@ def _fit_forest_cls(
     metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
     if self.params is not None:
-        self._model = _make_pipeline(EstClass, {**self.params, 'class_weight': 'balanced'})
+        # class_weight по умолчанию 'balanced', но явный class_weight в params должен
+        # побеждать — раньше {**self.params, 'class_weight': 'balanced'} молча отбрасывал
+        # выбор пользователя (последний ключ в dict-literal побеждает).
+        direct_params = {'class_weight': 'balanced', **self.params}
+        self._model = _make_pipeline(EstClass, direct_params)
         self._model.fit(Xtr, y_tr)
-        self.best_params_ = self.params
+        self.best_params_ = direct_params
     else:
         if X_valid is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')

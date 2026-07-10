@@ -63,18 +63,27 @@ def _make_preprocessor() -> Pipeline:
 
 
 def _make_regressor(name: str, params: dict) -> Any:
+    """Строит sklearn-регрессор: дефолты этого тулкита + любые явные params поверх них.
+
+    Раньше явные params читались точечно через ``params.get('alpha', ...)`` — любой
+    ключ вне жёстко заданного списка (например ``fit_intercept``, ``max_iter``, а для
+    ``quantile`` — даже сам ``quantile``, всегда захардкоженный в 0.5) молча
+    игнорировался. Дефолты-литералы ниже воспроизводят прежнее поведение при
+    отсутствии ключа в ``params``, но ``**params`` теперь может переопределить любой
+    параметр конструктора, а не только заранее перечисленные.
+    """
     if name == 'ridge':
-        return Ridge(alpha=params.get('alpha', 1.0), fit_intercept=True)
+        return Ridge(**{'alpha': 1.0, 'fit_intercept': True, **params})
     if name == 'elasticnet':
-        return ElasticNet(alpha=params.get('alpha', 0.1), l1_ratio=params.get('l1_ratio', 0.5), max_iter=5000, fit_intercept=True)
+        return ElasticNet(**{'alpha': 0.1, 'l1_ratio': 0.5, 'max_iter': 5000, 'fit_intercept': True, **params})
     if name == 'huber':
-        return HuberRegressor(epsilon=params.get('epsilon', 1.35), alpha=params.get('alpha', 0.0001), max_iter=500, fit_intercept=True)
+        return HuberRegressor(**{'epsilon': 1.35, 'alpha': 0.0001, 'max_iter': 500, 'fit_intercept': True, **params})
     if name == 'tweedie':
-        return TweedieRegressor(power=params.get('power', 1.5), alpha=params.get('alpha', 0.1), max_iter=500, fit_intercept=True)
+        return TweedieRegressor(**{'power': 1.5, 'alpha': 0.1, 'max_iter': 500, 'fit_intercept': True, **params})
     if name == 'quantile':
-        return QuantileRegressor(quantile=0.5, alpha=params.get('alpha', 0.001), solver='highs', fit_intercept=True)
+        return QuantileRegressor(**{'quantile': 0.5, 'alpha': 0.001, 'solver': 'highs', 'fit_intercept': True, **params})
     if name == 'bayesian_ridge':
-        return BayesianRidge(max_iter=500, fit_intercept=True)
+        return BayesianRidge(**{'max_iter': 500, 'fit_intercept': True, **params})
     raise ValueError(f'Unknown linear regressor: {name!r}')
 
 
@@ -112,7 +121,10 @@ class LinearRegressor(BaseModel):
 
     Тип модели задаётся через model_settings['name'] ∈ {ridge, elasticnet, huber,
     tweedie, quantile, bayesian_ridge}. Категориальные признаки исключаются.
-    params=None → Optuna; params=dict → прямое обучение без тюнинга.
+    params=None → Optuna; params=dict → прямое обучение без тюнинга — `params` может
+    содержать любой валидный kwarg конструктора выбранного sklearn-регрессора (не
+    только `alpha`/`l1_ratio`/`epsilon`/`power`), включая `quantile` для
+    `name='quantile'` (по умолчанию 0.5 — медиана, если явно не переопределён).
     """
 
     def fit(
@@ -134,7 +146,7 @@ class LinearRegressor(BaseModel):
         if name not in _LINEAR_TYPE_NAMES:
             raise ValueError(f'Unknown linear regression type: {name!r}. Valid: {sorted(_LINEAR_TYPE_NAMES)}')
 
-        baseline_col: str = ms.get('baseline_col', 'fee_nds_amount')
+        baseline_col: str | None = ms.get('baseline_col')
         X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
             X_train, X_valid if X_valid is not None else X_train,
             X_train, self.selected_features_, self.cat_features_, ms,
@@ -202,7 +214,9 @@ class LinearClassifier(BaseModel):
 
     Используется для всех линейных адаптеров независимо от регрессионного типа.
     Категориальные признаки исключаются. Вероятности калибруются изотонической регрессией.
-    params=None → Optuna; params=dict → прямое обучение без тюнинга.
+    params=None → Optuna; params=dict → прямое обучение без тюнинга. ``class_weight``
+    по умолчанию `'balanced'`, но явный `class_weight` в `params` побеждает (не
+    приводит к `TypeError` — `{'class_weight': 'balanced', **params}`).
     """
 
     def fit(
@@ -235,9 +249,13 @@ class LinearClassifier(BaseModel):
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
         if self.params is not None:
-            self._model = LogisticRegression(**self.params, class_weight='balanced')
+            # class_weight по умолчанию 'balanced' (типичное дефолтное поведение для этого
+            # тулкита, ориентированного на дисбаланс), но явный class_weight в params должен
+            # побеждать, а не приводить к TypeError('multiple values for keyword argument').
+            direct_params = {'class_weight': 'balanced', **self.params}
+            self._model = LogisticRegression(**direct_params)
             self._model.fit(X_tr_sc, y_tr)
-            self.best_params_ = self.params
+            self.best_params_ = direct_params
         else:
             if X_valid is None:
                 raise ValueError('X_valid обязателен при params=None (режим Optuna)')

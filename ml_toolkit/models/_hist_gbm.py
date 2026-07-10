@@ -27,7 +27,8 @@ from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._utils import (
     CLS_METRICS,
     REG_METRICS,
-    encode_cat_features,
+    apply_cat_encoder,
+    build_cat_encoder,
     fit_calibrator,
     resolve_metric_fn,
     resolve_timeout,
@@ -76,8 +77,11 @@ def _make_extra(selected: list[str], cat: list[str]) -> dict:
 class HistGBMRegressor(BaseModel):
     """HistGradientBoostingRegressor с автоматическим подбором гиперпараметров через Optuna.
 
-    Нативная обработка NaN и категориальных признаков через индексы столбцов.
-    params=None → Optuna; params=dict → прямое обучение без тюнинга.
+    Нативная обработка NaN и категориальных признаков через индексы столбцов
+    (`categorical_features=`, sklearn >= 1.2) — индексы вычисляются по `cat_features`
+    и применяются в обеих ветках, `params=None` и `params={...}` (явный `categorical_features`
+    в `params` побеждает над вычисленным). params=None → Optuna; params=dict → прямое
+    обучение без тюнинга.
     """
 
     def fit(
@@ -95,24 +99,29 @@ class HistGBMRegressor(BaseModel):
         ms = self.model_settings
         _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
-        X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
-            X_train, X_valid if X_valid is not None else X_train,
-            X_train, self.selected_features_, self.cat_features_, ms,
-        )
-        extra = _make_extra(self.selected_features_, [])
+        self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
+            build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
+        X_train_enc = apply_cat_encoder(X_train, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        extra = _make_extra(self.selected_features_, self._cat_in_sel_)
 
-        X_tr = X_train[self.selected_features_].to_numpy(dtype=float)
+        X_tr = X_train_enc[self.selected_features_].to_numpy(dtype=float)
         y_tr = y_train.to_numpy(dtype=float)
 
         metric_fn, direction = resolve_metric_fn(ms, 'reg_metric', REG_METRICS['mae'][0], 'minimize', REG_METRICS)
 
         if self.params is not None:
-            self._model = HistGradientBoostingRegressor(**self.params)
+            # extra (categorical_features) должен применяться и здесь, а не только в
+            # Optuna-ветке ниже — иначе cat_features молча теряют нативную categorical-
+            # обработку HistGBM при явных params. self.params (если содержит свой
+            # categorical_features) побеждает над вычисленным extra.
+            direct_params = {**extra, **self.params}
+            self._model = HistGradientBoostingRegressor(**direct_params)
             self._model.fit(X_tr, y_tr)
-            self.best_params_ = self.params
+            self.best_params_ = direct_params
         else:
             if X_valid is None:
                 raise ValueError('X_valid обязателен при params=None (режим Optuna)')
+            X_valid_enc = apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
             X_va = X_valid_enc[self.selected_features_].to_numpy(dtype=float)
             y_va = y_valid.to_numpy(dtype=float)
 
@@ -131,18 +140,21 @@ class HistGBMRegressor(BaseModel):
 
         self.train_pred_ = self._model.predict(X_tr)
         if X_valid is not None:
+            X_valid_enc = apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
             X_va = X_valid_enc[self.selected_features_].to_numpy(dtype=float)
             self.valid_pred_ = self._model.predict(X_va)
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
-        return self._model.predict(X[self.selected_features_].to_numpy(dtype=float))
+        X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        return self._model.predict(X_enc[self.selected_features_].to_numpy(dtype=float))
 
 
 class HistGBMClassifier(BaseModel):
     """HistGradientBoostingClassifier с автоматическим подбором гиперпараметров через Optuna.
 
+    Категориальные признаки — как у `HistGBMRegressor` (индексы применяются в обеих ветках).
     Вероятности инференса калибруются изотонической регрессией по валидационной выборке.
     params=None → Optuna; params=dict → прямое обучение без тюнинга.
     """
@@ -162,24 +174,25 @@ class HistGBMClassifier(BaseModel):
         ms = self.model_settings
         _optuna_prev_verbosity = set_optuna_verbosity(ms)
 
-        X_train, X_valid_enc, _, self.selected_features_ = encode_cat_features(
-            X_train, X_valid if X_valid is not None else X_train,
-            X_train, self.selected_features_, self.cat_features_, ms,
-        )
-        extra = _make_extra(self.selected_features_, [])
+        self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_, self.selected_features_ = \
+            build_cat_encoder(X_train, self.selected_features_, self.cat_features_, ms)
+        X_train_enc = apply_cat_encoder(X_train, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        extra = _make_extra(self.selected_features_, self._cat_in_sel_)
 
-        X_tr = X_train[self.selected_features_].to_numpy(dtype=float)
+        X_tr = X_train_enc[self.selected_features_].to_numpy(dtype=float)
         y_tr = y_train.to_numpy(dtype=int)
 
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
         if self.params is not None:
-            self._model = HistGradientBoostingClassifier(**self.params)
+            direct_params = {**extra, **self.params}
+            self._model = HistGradientBoostingClassifier(**direct_params)
             self._model.fit(X_tr, y_tr)
-            self.best_params_ = self.params
+            self.best_params_ = direct_params
         else:
             if X_valid is None:
                 raise ValueError('X_valid обязателен при params=None (режим Optuna)')
+            X_valid_enc = apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
             X_va = X_valid_enc[self.selected_features_].to_numpy(dtype=float)
             y_va = y_valid.to_numpy(dtype=int)
 
@@ -198,6 +211,7 @@ class HistGBMClassifier(BaseModel):
 
         self.train_pred_ = self._model.predict_proba(X_tr)[:, 1]
         if X_valid is not None:
+            X_valid_enc = apply_cat_encoder(X_valid, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
             X_va = X_valid_enc[self.selected_features_].to_numpy(dtype=float)
             self.valid_pred_ = self._model.predict_proba(X_va)[:, 1]
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
@@ -205,7 +219,8 @@ class HistGBMClassifier(BaseModel):
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
-        raw = self._model.predict_proba(X[self.selected_features_].to_numpy(dtype=float))[:, 1]
+        X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
+        raw = self._model.predict_proba(X_enc[self.selected_features_].to_numpy(dtype=float))[:, 1]
         return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
 
 

@@ -134,26 +134,30 @@ model_settings = {
 
 ## Baseline (`baseline_col`)
 
-Имя столбца-бейзлайна для адаптеров, поддерживающих residual learning. Передаётся через `model_settings`, а не как отдельный аргумент.
+Имя столбца-бейзлайна для адаптеров, поддерживающих residual learning. Передаётся через `model_settings`, а не как отдельный аргумент. `ml_toolkit` не хардкодит имя колонки — **дефолт всегда `None` (бейзлайн не используется)**, пока не передано явно.
 
 ```python
 model_settings = {
     'name': 'catboost',
-    'baseline_col': 'fee_nds_amount',   # по умолчанию
+    'baseline_col': 'my_baseline_column',
 }
 ```
 
-| Адаптер | Использование |
-|---------|---------------|
-| `catboost` | CatBoost Pool `baseline=` |
-| `lightgbm` | Residual learning: `y - baseline`, затем `pred + baseline` |
-| `lama` | Добавляется к признакам если отсутствует |
-| `linear` | Добавляется к числовым признакам если отсутствует |
-| Остальные | Игнорируется |
+| Адаптер | Использование | Если столбца нет в `X` |
+|---------|---------------|------------------------|
+| `catboost` | CatBoost Pool `baseline=` | бейзлайн не применяется (`baseline=None`) |
+| `lightgbm` | Residual learning: `y - baseline`, затем `pred + baseline` | обучение идёт на `y` напрямую |
+| `xgboost` | Residual learning: `y - baseline`, затем `pred + baseline` (тот же контракт, что у `lightgbm`) | обучение идёт на `y` напрямую |
+| `lama` | Добавляется к признакам (только регрессия) | бейзлайн не добавляется |
+| `linear` (регрессия) | Добавляется к числовым признакам | бейзлайн не добавляется |
+| Остальные | Игнорируется | — |
 
-В `run_inference.py` и `ml_toolkit/main.py` `baseline_col` вычисляется автоматически:
-- `'fee_nds_amount_current_month'` для продуктов типа *current month*
-- `'fee_nds_amount'` для остальных
+Для `catboost`/`lightgbm`/`xgboost` `baseline_col` работает и внутри самого Optuna-тюнинга
+(`params=None`): каждый trial оценивается на предсказаниях с уже прибавленным baseline
+(и уже применённым `postprocess_fn`, если задан) — гиперпараметры подбираются под финальную,
+а не промежуточную метрику.
+
+Конкретное имя столбца (например, `'fee_nds_amount'`) и логика его автоматического выбора — забота вызывающего бизнес-пайплайна (например `auto_kkp_classification`), а не `ml_toolkit`.
 
 ---
 
@@ -185,22 +189,23 @@ model_settings = {'name': 'catboost', 'param_space': my_space}
 
 ---
 
-## Отключение undersampling мажоритарного класса (`undersample_majority`)
+## Урезание мажоритарного класса внутри Optuna (`undersample_majority`)
 
-Классификаторы `catboost`/`lightgbm`/`xgboost` умеют урезать мажоритарный класс внутри Optuna-тюнинга
-(бинарный случай — `majority_fraction`, мультикласс, только `catboost`, — `balance_fraction`).
+Классификаторы `catboost`/`lightgbm`/`xgboost` умеют урезать классы внутри Optuna-тюнинга
+(бинарный случай — `majority_fraction`, мультикласс, все три адаптера, — `balance_fraction`).
 Финальная модель всегда обучается на том же сэмпле, что и лучший trial (не на полных данных) —
 иначе гиперпараметры оценивались бы на одном объёме данных, а обучение шло бы на другом.
+По умолчанию отключено — Optuna тюнит гиперпараметры на полных данных.
 
 ```python
-model_settings = {'name': 'catboost', 'undersample_majority': False}   # без сэмплирования, всегда полные данные
+model_settings = {'name': 'catboost', 'undersample_majority': True}   # включить сэмплирование в Optuna-триалах
 ```
 
 | Адаптер | По умолчанию | Примечание |
 |---------|--------------|------------|
-| `catboost` | `True` | |
-| `lightgbm` | `True` | при `True` `is_unbalance` автоматически выключается (не комбинируется с сэмплированием) |
-| `xgboost` | `True` | поддерживает только бинарную классификацию |
+| `catboost` | `False` | поддерживает и бинарную, и мультикласс классификацию |
+| `lightgbm` | `False` | при `True` `is_unbalance` автоматически выключается (не комбинируется с сэмплированием) |
+| `xgboost` | `False` | поддерживает и бинарную, и мультикласс классификацию |
 
 ---
 
@@ -261,9 +266,9 @@ model_settings = {
 | `reg_metric_direction` | `'minimize' \| 'maximize'` | регрессоры (при callable) | `'minimize'` |
 | `cls_metric_direction` | `'minimize' \| 'maximize'` | классификаторы (при callable) | `'maximize'` |
 | `cat_encoder` | `None \| str \| TransformerMixin` | все кроме нативных | `None` → ordinal |
-| `baseline_col` | `str` | catboost, lightgbm, lama, linear | `'fee_nds_amount'` |
+| `baseline_col` | `str \| None` | catboost, lightgbm, xgboost, lama (regressor), linear (regressor) | `None` → бейзлайн не используется |
 | `param_space` | `Callable[[optuna.Trial], dict] \| None` | catboost, lightgbm, xgboost | `None` → дефолтное пространство |
-| `undersample_majority` | `bool` | catboost, lightgbm, xgboost (классификаторы) | `True` (catboost) / `False` (lightgbm, xgboost) |
+| `undersample_majority` | `bool` | catboost, lightgbm, xgboost (классификаторы) | `False` для всех трёх |
 | `optuna_timeout` | `float \| None` (секунды) | все Optuna-адаптеры | `None` → без лимита времени |
 | `optuna_pruner` | `None \| str \| optuna.pruners.BasePruner` | все Optuna-адаптеры (реально отсекает trials только в catboost/lightgbm/xgboost/*_ranker/tabm) | `None` → `MedianPruner()` |
 | `optuna_verbose` | `bool` | все Optuna-адаптеры | `False` → форсирует WARNING-уровень логов Optuna |
