@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 import optuna
 import pandas as pd
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, mean_absolute_error
@@ -46,11 +47,16 @@ logger = logging.getLogger(__name__)
 _MEDIAN_QUANTILE = 0.5
 
 
-class _QuantileMedianWrapper:
+class _QuantileMedianWrapper(BaseEstimator, RegressorMixin):
     """Обёртка вокруг RandomForestQuantileRegressor для sklearn Pipeline-совместимости.
 
     Pipeline.predict() вызывает estimator.predict() без параметров. Эта обёртка
     подменяет predict() → predict(quantiles=0.5).
+
+    Наследование от BaseEstimator обязательно, не только стилистически: начиная
+    со sklearn 1.6+ Pipeline.__sklearn_is_fitted__()/check_is_fitted() читают
+    __sklearn_tags__(), которого нет у обычного объекта — без BaseEstimator
+    Pipeline.predict() падает с AttributeError на этой обёртке.
     """
 
     def __init__(self, **params):
@@ -201,9 +207,14 @@ class QuantileForestClassifier(BaseModel):
         F_tr = _qrf_feats(X_tr)
 
         if self.params is not None:
-            self._clf = LogisticRegression(**self.params, max_iter=500, class_weight='balanced')
+            # Дефолты этого адаптера побеждаются явным max_iter/class_weight в self.params,
+            # а не наоборот — LogisticRegression(**self.params, max_iter=..., class_weight=...)
+            # падал с TypeError('multiple values for keyword argument'), если self.params уже
+            # содержал любой из этих ключей.
+            direct_params = {'max_iter': 500, 'class_weight': 'balanced', **self.params}
+            self._clf = LogisticRegression(**direct_params)
             self._clf.fit(F_tr, y_tr)
-            self.best_params_ = self.params
+            self.best_params_ = direct_params
         else:
             if X_valid is None:
                 raise ValueError('X_valid обязателен при params=None (режим Optuna)')

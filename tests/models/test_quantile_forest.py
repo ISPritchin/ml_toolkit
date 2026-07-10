@@ -1,0 +1,68 @@
+"""Тесты для QuantileForestRegressor/QuantileForestClassifier (ml_toolkit/models/_quantile_forest.py).
+
+Пакет quantile-forest не входит в обязательные зависимости проекта — весь модуль пропускается
+через importorskip, если он не установлен.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+pytest.importorskip('quantile_forest')
+
+from ml_toolkit.models._quantile_forest import QuantileForestClassifier, QuantileForestRegressor  # noqa: E402
+from tests.models.conftest import assert_valid_predictions, assert_valid_proba  # noqa: E402
+
+FAST_REG_PARAMS = {'n_estimators': 30, 'max_depth': 4, 'random_state': 42, 'n_jobs': -1}
+FAST_CLS_PARAMS = {'C': 1.0}
+
+
+class TestQuantileForestRegressor:
+    def test_fit_predict_explicit_params(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = QuantileForestRegressor(params=FAST_REG_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert model.best_params_ == FAST_REG_PARAMS
+
+    def test_fit_with_optuna(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = QuantileForestRegressor(n_optuna_trials=2)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+
+    def test_pipeline_predict_does_not_crash(self, regression_data):
+        """Regression test: _QuantileMedianWrapper без BaseEstimator падал в Pipeline.predict()
+        на sklearn>=1.6 (__sklearn_tags__ отсутствовал).
+        """
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = QuantileForestRegressor(params=FAST_REG_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        preds = model._model.predict(X_valid[model.selected_features_])
+        assert len(preds) == len(X_valid)
+
+
+class TestQuantileForestClassifier:
+    def test_fit_predict_proba_explicit_params(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = QuantileForestClassifier(params=FAST_CLS_PARAMS)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+
+    def test_explicit_params_do_not_crash_on_max_iter_class_weight(self, classification_data):
+        """Regression test: LogisticRegression(**self.params, max_iter=500, class_weight='balanced')
+        падал с TypeError, если self.params уже содержал max_iter/class_weight.
+        """
+        X_train, y_train, X_valid, y_valid = classification_data
+        params = {'C': 2.0, 'max_iter': 200, 'class_weight': None}
+        model = QuantileForestClassifier(params=params)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+        assert model.best_params_['max_iter'] == 200
+        assert model.best_params_['class_weight'] is None
+
+    def test_fit_with_optuna_uses_balanced_class_weight(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = QuantileForestClassifier(n_optuna_trials=2)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)

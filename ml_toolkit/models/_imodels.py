@@ -193,6 +193,7 @@ class IModelsClassifier(BaseModel):
 
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
+        self._brl_discretizer_ = None  # см. _fit_brl/_to_model_space — только для name='brl'
         if name == 'figs':
             fitted_model, bp = self._fit_figs(X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr)
         elif name == 'skope_rules':
@@ -207,12 +208,20 @@ class IModelsClassifier(BaseModel):
         self._model = fitted_model
         self.best_params_ = bp
 
-        self.train_pred_ = _safe_proba(self._model, X_tr)
+        self.train_pred_ = _safe_proba(self._model, self._to_model_space(X_tr))
         if X_valid is not None:
-            self.valid_pred_ = _safe_proba(self._model, X_va)
+            self.valid_pred_ = _safe_proba(self._model, self._to_model_space(X_va))
             self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
+
+    def _to_model_space(self, X: np.ndarray) -> np.ndarray:
+        """BRL требует one-hot дискретизированные бины, а не непрерывные self._prep-признаки,
+        на которых работают figs/skope_rules/ripper как есть.
+        """
+        if self._brl_discretizer_ is not None:
+            return self._brl_discretizer_.transform(X)
+        return X
 
     def _fit_figs(self, X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr):
         if self.params is not None:
@@ -260,29 +269,54 @@ class IModelsClassifier(BaseModel):
 
     def _fit_brl(self, X_tr, y_tr, X_va, y_va, metric_fn, direction):
         from imodels import BayesianRuleListClassifier
+        from sklearn.preprocessing import KBinsDiscretizer
+
+        # BRL требует строго бинарные (one-hot дискретизированные) признаки — fit() падает
+        # с ValueError('All numeric features must be discretized prior to fitting!') на сыром
+        # self._prep-выходе. imodels.BasicDiscretizer(encode='onehot') несовместим с текущим
+        # sklearn (ломается внутри самого imodels на несовпадении shape), поэтому
+        # дискретизируем через sklearn.KBinsDiscretizer напрямую.
+        self._brl_discretizer_ = KBinsDiscretizer(n_bins=4, encode='onehot-dense', strategy='quantile')
+        X_tr_d = self._brl_discretizer_.fit_transform(X_tr)
+        feat_names = list(self._brl_discretizer_.get_feature_names_out(self._num_feats_))
+        X_va_d = self._brl_discretizer_.transform(X_va) if X_va is not None else None
+
         if self.params is not None:
             m = BayesianRuleListClassifier(**self.params)
-            m.fit(X_tr, y_tr, feature_names=self._num_feats_)
+            m.fit(X_tr_d, y_tr, feature_names=feat_names)
             return m, self.params
-        if X_va is None:
+        if X_va_d is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')
 
         def objective(trial):
             p = {'listlengthprior': trial.suggest_int('listlengthprior', 3, 10),
                  'listwidthprior': trial.suggest_int('listwidthprior', 1, 4)}
             m = BayesianRuleListClassifier(**p)
-            m.fit(X_tr, y_tr, feature_names=self._num_feats_)
-            return metric_fn(y_va, _safe_proba(m, X_va))
+            m.fit(X_tr_d, y_tr, feature_names=feat_names)
+            return metric_fn(y_va, _safe_proba(m, X_va_d))
 
         study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=42))
         study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(self.model_settings), show_progress_bar=False)
         bp = study.best_params
         m = BayesianRuleListClassifier(**bp)
-        m.fit(X_tr, y_tr, feature_names=self._num_feats_)
+        m.fit(X_tr_d, y_tr, feature_names=feat_names)
         return m, bp
 
     def _fit_ripper(self, X_tr, y_tr, X_va, y_va, metric_fn, direction):
-        from imodels import RIPPERClassifier
+        try:
+            from imodels import RIPPERClassifier
+        except ImportError as exc:
+            # imodels>=1.4 (текущий PyPI-релиз, 2.0.4 на момент написания) больше не
+            # экспортирует RIPPERClassifier вовсе — 'ripper' был написан против более
+            # старой/иной версии пакета. pip install imodels (как советует докстринг
+            # модуля) НЕ даёт рабочий RIPPER — это не транзиентная ошибка окружения.
+            raise ImportError(
+                "RIPPERClassifier отсутствует в установленной версии imodels "
+                "(проверено на imodels==2.0.4 — класс удалён/переименован в пакете). "
+                "model_settings['name']='ripper' в этом состоянии пакета нерабочий. "
+                "Используйте 'figs'/'skope_rules'/'brl', либо пакет wittgenstein "
+                "(pip install wittgenstein) с отдельной реализацией RIPPER."
+            ) from exc
         if self.params is not None:
             m = RIPPERClassifier(**self.params)
             m.fit(X_tr, y_tr, feature_names=self._num_feats_)
@@ -304,7 +338,8 @@ class IModelsClassifier(BaseModel):
         return m, bp
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
-        raw = _safe_proba(self._model, self._prep.transform(X[self._num_feats_].to_numpy(dtype=float)))
+        X_prep = self._prep.transform(X[self._num_feats_].to_numpy(dtype=float))
+        raw = _safe_proba(self._model, self._to_model_space(X_prep))
         return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
 
 

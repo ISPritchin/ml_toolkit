@@ -159,9 +159,13 @@ class ObliqueForestClassifier(BaseModel):
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
         if self.params is not None:
-            self._model = _make_pipeline(_OFClassifier, {**self.params, 'class_weight': 'balanced'})
+            # class_weight по умолчанию 'balanced', но явный class_weight в params должен
+            # побеждать — {**self.params, 'class_weight': 'balanced'} молча отбрасывал
+            # выбор пользователя (последний ключ dict-literal побеждает).
+            direct_params = {'class_weight': 'balanced', **self.params}
+            self._model = _make_pipeline(_OFClassifier, direct_params)
             self._model.fit(Xtr, y_tr)
-            self.best_params_ = self.params
+            self.best_params_ = direct_params
         else:
             if X_valid is None:
                 raise ValueError('X_valid обязателен при params=None (режим Optuna)')

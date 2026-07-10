@@ -162,12 +162,19 @@ class MARSClassifier(BaseModel):
         metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
 
         if self.params is not None:
+            # Earth раскрывает только max_degree/max_terms как тюнимые (тот же выбор, что и в
+            # search space ниже) — всё остальное в params относится к LogisticRegression.
+            # Раньше clf_p брал только 'C' — любой другой валидный kwarg LogisticRegression
+            # (fit_intercept, penalty, свой class_weight) молча отбрасывался.
             earth_p = {k: v for k, v in self.params.items() if k in ('max_degree', 'max_terms')}
-            clf_p = {k: v for k, v in self.params.items() if k == 'C'}
+            clf_p = {k: v for k, v in self.params.items() if k not in ('max_degree', 'max_terms')}
             self._model = Earth(**earth_p)
             self._model.fit(X_tr, y_tr)
             X_tr_t = self._model.transform(X_tr)
-            self._clf = LogisticRegression(**clf_p, solver='lbfgs', max_iter=500, class_weight='balanced', random_state=42)
+            direct_clf_params = {
+                'solver': 'lbfgs', 'max_iter': 500, 'class_weight': 'balanced', 'random_state': 42, **clf_p,
+            }
+            self._clf = LogisticRegression(**direct_clf_params)
             self._clf.fit(X_tr_t, y_tr)
             self.best_params_ = self.params
         else:

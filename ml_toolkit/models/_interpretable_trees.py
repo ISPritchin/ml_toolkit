@@ -2,7 +2,8 @@
 
 Soft Decision Tree (Irsoy et al. 2012): дифференцируемое дерево с мягкими разбиениями.
 Вместо жёстких порогов — сигмоиды; предсказание = взвешенная сумма значений листьев.
-Обучается через backpropagation (PyTorch, уже установлен).
+Обучается через backpropagation (требует PyTorch — опциональная зависимость, не входит в
+pyproject.toml; `pip install torch`).
 
 Locally Linear Forest: RandomForest proximity weights + локальная Ridge регрессия.
 Для каждой точки инференса: ближайшие соседи по RF-proximity → взвешенная Ridge.
@@ -372,9 +373,13 @@ class InterpretableTreeClassifier(BaseModel):
 
         else:  # locally_linear_forest → RF classifier
             if self.params is not None:
-                fitted = RandomForestClassifier(**self.params)
+                # Optuna-ветка ниже форсирует class_weight='balanced' по умолчанию — explicit-
+                # params ветка должна делать то же самое для консистентности (раньше молча
+                # использовала sklearn-дефолт class_weight=None при отсутствии ключа в params).
+                direct_params = {'class_weight': 'balanced', **self.params}
+                fitted = RandomForestClassifier(**direct_params)
                 fitted.fit(X_tr, y_tr)
-                self.best_params_ = self.params
+                self.best_params_ = direct_params
             else:
                 if X_va is None:
                     raise ValueError('X_valid обязателен при params=None (режим Optuna)')
