@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import pandas as pd
 import pytest
 
 from ml_toolkit.model_explainer import ModelExplainer
@@ -32,6 +33,25 @@ FAST = FAST_CATBOOST_PARAMS
 
 def _fit(preset, X_train, y_train, X_valid, y_valid):
     preset.fit(X_train, y_train, X_valid, y_valid)
+    return preset
+
+
+def _weighted_bagging_by_recency(X_train, y_train, X_valid, y_valid):
+    preset = hpa.WeightedBaggingByRecency(n_estimators=3, halflife_periods=3, base_params=FAST)
+    ts_key = pd.Series(pd.date_range('2025-01-01', periods=len(X_train), freq='D'))
+    preset.fit(X_train, y_train, X_valid, y_valid, ts_key=ts_key)
+    return preset
+
+
+def _time_aware_validation(X_train, y_train, X_valid, y_valid):
+    # classification_data — два независимых фрейма (train/valid), а не единый
+    # исторический ряд; для фабрики просто конкатенируем их и строим монотонный
+    # ts_key, чтобы получить содержательные (не вырожденные по классу) окна.
+    X = pd.concat([X_train, X_valid], ignore_index=True)
+    y = pd.concat([y_train, y_valid], ignore_index=True)
+    ts_key = pd.Series(pd.date_range('2025-01-01', periods=len(X), freq='D'))
+    preset = hpa.TimeAwareValidationClassifier(n_windows=3, embargo_periods=1, period_unit='D', base_params=FAST)
+    preset.fit(X, y, ts_key=ts_key)
     return preset
 
 
@@ -102,6 +122,15 @@ PRESET_FACTORIES: dict[str, Callable[..., Any]] = {
     'GreedyForwardEnsembleSelection': _greedy_ensemble_selection,
     'DriftRobustClassifier': lambda *d: _fit(hpa.DriftRobustClassifier(base_params=FAST), *d),
     'AdversarialValidationWeighting': lambda *d: _fit(hpa.AdversarialValidationWeighting(base_params=FAST), *d),
+    'WeightedBaggingByRecency': _weighted_bagging_by_recency,
+    'MonotonicConstrainedClassifier': lambda *d: _fit(hpa.MonotonicConstrainedClassifier(
+        monotone_constraints={'f0': 1}, base='catboost',
+    ), *d),
+    'TimeAwareValidationClassifier': _time_aware_validation,
+    'KnowledgeDistillationPreset': lambda *d: _fit(hpa.KnowledgeDistillationPreset(
+        teacher_preset=hpa.EasyEnsembleClassifier(n_estimators=2, neg_ratio=3, base_params=FAST),
+        student_params=FAST,
+    ), *d),
 }
 
 # Каждый класс, экспортируемый из high_pr_auc, обязан иметь фабрику — иначе новый

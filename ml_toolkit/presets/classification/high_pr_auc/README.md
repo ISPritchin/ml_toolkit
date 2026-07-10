@@ -75,9 +75,17 @@ labels = model.predict(X_test, threshold=0.3)  # np.ndarray, 0/1
 │   ├─ Сотни коррелированных признаков → FeatureBaggingEnsemble
 │   ├─ Бюджет — одна модель → SnapshotEnsembleClassifier
 │   ├─ Дешёвое снижение дисперсии перед сравнением пресетов → MultiSeedBlend
-│   └─ Уже есть 10+ обученных моделей, нужно выбрать комбинацию → GreedyForwardEnsembleSelection
+│   ├─ Уже есть 10+ обученных моделей, нужно выбрать комбинацию → GreedyForwardEnsembleSelection
+│   ├─ Панельные данные, свежее важнее старого, но выбрасывать жалко → WeightedBaggingByRecency
+│   └─ Качество — от ансамбля, но в проде нужен один быстрый скорер → KnowledgeDistillationPreset
 │
-└─ Важность признаков скачет между запусками → StabilitySelectionClassifier
+├─ Важность признаков скачет между запусками → StabilitySelectionClassifier
+│
+├─ Модель должна быть защитима перед бизнесом/регулятором
+│   (доменное «больше X → не ниже скор») → MonotonicConstrainedClassifier
+│
+└─ Панельные данные клиент × период, один train/valid/test cutoff шумный
+    или метка присваивается с лагом → TimeAwareValidationClassifier
 ```
 
 ---
@@ -310,6 +318,43 @@ from ml_toolkit.presets.classification.high_pr_auc import GreedyForwardEnsembleS
 model = GreedyForwardEnsembleSelection(model_library=[m1, m2, m3, ...], max_members=5)
 model.fit(X_train, y_train, X_valid, y_valid)
 print(dict(zip(range(len(model.weights_)), model.weights_)))
+```
+
+---
+
+## KnowledgeDistillationPreset
+
+**Файл:** `knowledge_distillation.py`
+
+Обучает тяжёлого «учителя» (любой `BasePreset` — ансамбль, стекинг и т.д.), затем маленький одиночный CatBoost-«студент» учится на смягчённых по температуре вероятностях учителя (soft labels) через `loss_function='CrossEntropy'` — единственный нативный CatBoost-лосс, принимающий непрерывную метку в [0, 1]. Финальный `predict_proba()` — только студент, учитель в инференсе не участвует.
+
+**Когда использовать:** качество нужно от тяжёлого ансамбля, но в проде должен скорить один быстрый CatBoost (задержка/память/операционная простота важнее, чем 10-15 моделей учителя).
+
+**Параметры:**
+
+| Параметр | По умолчанию | Описание |
+|----------|-------------|----------|
+| `teacher_preset` | обязателен | Необученный `BasePreset` — fit() вызывается внутри |
+| `student_params` | None | Параметры CatBoost-студента (без loss_function/eval_metric) |
+| `temperature` | 2.0 | Смягчение вероятностей учителя (1.0 — без смягчения) |
+| `n_optuna_trials` | 0 | Тюнинг архитектуры студента по честному PR-AUC на val |
+
+**Атрибуты после fit:**
+- `teacher_` — обученный `teacher_preset`
+- `teacher_score_` / `student_score_` — val PR-AUC учителя и студента (на настоящих метках)
+
+**Пример:**
+```python
+from ml_toolkit.presets.classification.high_pr_auc import (
+    EasyEnsembleClassifier, KnowledgeDistillationPreset,
+)
+
+model = KnowledgeDistillationPreset(
+    teacher_preset=EasyEnsembleClassifier(n_estimators=15, neg_ratio=10),
+    temperature=2.0,
+)
+model.fit(X_train, y_train, X_valid, y_valid, selected_features=feats)
+print(f'teacher={model.teacher_score_:.4f}  student={model.student_score_:.4f}')
 ```
 
 ---
@@ -934,6 +979,41 @@ print(model.feature_subsets_[0])   # подпространство призна
 
 ---
 
+## WeightedBaggingByRecency
+
+**Файл:** `weighted_bagging_recency.py`
+
+N моделей (LightGBM или CatBoost), каждая обучается на независимом бутстрэп-сэмпле **всего** train (не только негативов), где вероятность строки попасть в сэмпл убывает экспоненциально с её давностью относительно самого свежего периода в train: `0.5 ** (age_periods / halflife_periods)`. Ничего не выбрасывается — в отличие от жёсткого скользящего окна, старые строки просто реже выбираются. Итог — среднее нормированных рангов (как в `EasyEnsembleClassifier`).
+
+**Когда использовать:** панельные данные клиент × период, где свежие наблюдения важнее старых, но полный рефит на скользящем окне рискует выбросить сезонные/периодически повторяющиеся паттерны совсем.
+
+**Параметры:**
+
+| Параметр | По умолчанию | Описание |
+|----------|-------------|----------|
+| `n_estimators` | 10 | Число базовых моделей |
+| `halflife_periods` | 6.0 | Период полураспада веса свежести (в единицах `period_unit`) |
+| `period_unit` | `'M'` | Pandas frequency alias для бинования datetime `ts_key`; игнорируется для числового `ts_key` |
+| `sample_frac` | 1.0 | Доля от n_train строк в каждом бутстрэпе (с возвращением) |
+| `base` | `'catboost'` | `'lightgbm'` или `'catboost'` |
+| `base_params` | None | Параметры базовой модели |
+| `random_seed` | 42 | Зерно (независимые генераторы через `SeedSequence.spawn`) |
+
+**Атрибуты после fit:**
+- `estimator_scores_` — val PR-AUC каждой базовой модели
+- `ensemble_score_` — val PR-AUC ансамбля
+
+**Пример:**
+```python
+from ml_toolkit.presets.classification.high_pr_auc import WeightedBaggingByRecency
+
+model = WeightedBaggingByRecency(n_estimators=10, halflife_periods=6)
+model.fit(X_train, y_train, X_valid, y_valid, ts_key=X_train_report_dates, selected_features=feats)
+print(f'Ансамбль: {model.ensemble_score_:.4f}')
+```
+
+---
+
 ## SnapshotEnsembleClassifier
 
 **Файл:** `snapshot_ensemble.py`
@@ -958,6 +1038,72 @@ from ml_toolkit.presets.classification.high_pr_auc import SnapshotEnsembleClassi
 model = SnapshotEnsembleClassifier(snapshot_fracs=[0.5, 0.75, 1.0])
 model.fit(X_train, y_train, X_valid, y_valid, selected_features=feats)
 print(model.tree_counts_, model.snapshot_scores_)
+```
+
+---
+
+## MonotonicConstrainedClassifier
+
+**Файл:** `monotonic_constrained.py`
+
+Одна модель (LightGBM или CatBoost) с `monotone_constraints` по имени признака: `{'trans_sum__level': 1, 'inactive_streak': -1}` — скор обязан не убывать/не возрастать со значением признака, независимо от того, что выучил бы бустинг на шумных данных. Ограничения не тюнятся Optuna — это доменное знание, а не гиперпараметр качества.
+
+**Когда использовать:** модель должна быть защитима перед бизнесом/регулятором («почему у клиента с бо́льшим оборотом скор ниже?») и устойчива к контринтуитивным сплитам на шумных/малых данных.
+
+**Параметры:**
+
+| Параметр | По умолчанию | Описание |
+|----------|-------------|----------|
+| `monotone_constraints` | обязателен | `{имя_признака: ±1}` |
+| `base` | `'lightgbm'` | `'lightgbm'` или `'catboost'` |
+| `base_params` | None | Параметры базовой модели |
+| `random_seed` | 42 | Зерно базовой модели |
+
+**Атрибуты после fit:**
+- `model_score_` — val PR-AUC
+
+**Пример:**
+```python
+from ml_toolkit.presets.classification.high_pr_auc import MonotonicConstrainedClassifier
+
+model = MonotonicConstrainedClassifier(monotone_constraints={'trans_sum__level': 1})
+model.fit(X_train, y_train, X_valid, y_valid, selected_features=feats)
+print(model.model_score_)
+```
+
+---
+
+## TimeAwareValidationClassifier
+
+**Файл:** `time_aware_validation.py`
+
+Расширяющееся окно (walk-forward) по `ts_key` вместо одного train/valid/test cutoff: сортированные уникальные периоды делятся на `n_windows + 1` блок, каждый следующий блок по очереди становится validation-окном, train для него — все периоды до этого блока за вычетом `embargo_periods` периодов непосредственно перед ним (purge/embargo). Архитектура тюнится Optuna один раз на последнем (самом полном) окне и переиспользуется во всех окнах. Итоговая модель — модель последнего окна.
+
+**Когда использовать:** метка зависит от будущего (сегментация/лейбл присваивается с лагом относительно события — как `last_full_month_before_it`-подобная логика) и/или один train/valid/test cutoff даёт шумную, невоспроизводимую оценку и подбор гиперпараметров (закрывает [M2] из `plan.txt`).
+
+**Параметры:**
+
+| Параметр | По умолчанию | Описание |
+|----------|-------------|----------|
+| `n_windows` | 5 | Число последовательных validation-окон |
+| `embargo_periods` | 1 | Периодов, исключаемых из train перед каждым окном |
+| `period_unit` | `'M'` | Pandas frequency alias для бинования datetime `ts_key` |
+| `base` | `'catboost'` | `'lightgbm'` или `'catboost'` |
+| `base_params` | None | Параметры базовой модели |
+
+**Атрибуты после fit:**
+- `window_scores_` — val PR-AUC каждого окна
+- `window_bounds_` — границы train/val каждого окна (для диагностики/графиков)
+- `oof_score_` — PR-AUC по объединённым out-of-window предсказаниям всех окон
+- `final_estimator_` — модель последнего окна (используется в `predict_proba`)
+
+**Пример:**
+```python
+from ml_toolkit.presets.classification.high_pr_auc import TimeAwareValidationClassifier
+
+model = TimeAwareValidationClassifier(n_windows=5, embargo_periods=1)
+model.fit(X, y, ts_key=X['REPORT_DATE'], selected_features=feats)
+print(model.window_scores_, model.oof_score_)
 ```
 
 ---

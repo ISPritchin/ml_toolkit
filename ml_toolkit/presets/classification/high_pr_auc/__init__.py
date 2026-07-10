@@ -49,10 +49,16 @@ from ml_toolkit.presets.classification.high_pr_auc.heterogeneous_stacking import
 from ml_toolkit.presets.classification.high_pr_auc.influence_balanced_loss import (
     InfluenceBalancedLossClassifier,
 )
+from ml_toolkit.presets.classification.high_pr_auc.knowledge_distillation import (
+    KnowledgeDistillationPreset,
+)
 from ml_toolkit.presets.classification.high_pr_auc.lambda_rank import (
     LambdaRankClassifier,
 )
 from ml_toolkit.presets.classification.high_pr_auc.ldam import LDAMClassifier
+from ml_toolkit.presets.classification.high_pr_auc.monotonic_constrained import (
+    MonotonicConstrainedClassifier,
+)
 from ml_toolkit.presets.classification.high_pr_auc.multi_seed_blend import (
     MultiSeedBlend,
 )
@@ -81,8 +87,14 @@ from ml_toolkit.presets.classification.high_pr_auc.synthetic_oversampling import
 from ml_toolkit.presets.classification.high_pr_auc.threshold_moving import (
     ThresholdMovingCV,
 )
+from ml_toolkit.presets.classification.high_pr_auc.time_aware_validation import (
+    TimeAwareValidationClassifier,
+)
 from ml_toolkit.presets.classification.high_pr_auc.tversky_loss import (
     TverskyLossClassifier,
+)
+from ml_toolkit.presets.classification.high_pr_auc.weighted_bagging_recency import (
+    WeightedBaggingByRecency,
 )
 
 __all__ = [
@@ -106,8 +118,10 @@ __all__ = [
     'HardNegativeMiner',
     'HeterogeneousStacking',
     'InfluenceBalancedLossClassifier',
+    'KnowledgeDistillationPreset',
     'LDAMClassifier',
     'LambdaRankClassifier',
+    'MonotonicConstrainedClassifier',
     'MultiSeedBlend',
     'NNPUClassifier',
     'PULearningClassifier',
@@ -120,6 +134,8 @@ __all__ = [
     'SubsampleStacking',
     'SyntheticOversamplingClassifier',
     'ThresholdMovingCV',
+    'TimeAwareValidationClassifier',
     'TverskyLossClassifier',
     'TwoStageCascade',
+    'WeightedBaggingByRecency',
 ]
