@@ -5,6 +5,15 @@
   'rank'     — среднее нормализованных рангов (устойчиво к разным масштабам).
   'weighted' — веса оптимизированы по PR-AUC на val через Optuna (100 триалов).
   'power'    — generalized mean с alpha, подобранным по val.
+
+Для 'weighted'/'power' сам подбор (веса/alpha) максимизирует PR-AUC прямо на val —
+репортить итоговый скор на тех же данных было бы тавтологией (валидацию против
+которой оптимизировались). valid_pred_/логируемый val PR-AUC для этих двух режимов
+поэтому строятся через out-of-fold: на каждом фолде веса/alpha подбираются по
+остальным фолдам, а не по тому же фолду, что оценивается (см. _oof_weighted_blend/
+_oof_power_blend). Финальные self._weights/self._power_alpha (используются в
+predict_proba на новых данных) при этом фитятся на всём val — там утечки нет
+по определению, потому что новые данные не участвовали в подборе.
 """
 
 from __future__ import annotations
@@ -66,6 +75,59 @@ def _fit_power_alpha(probas: list[np.ndarray], y_val: np.ndarray, random_seed: i
     study.optimize(objective, n_trials=50, show_progress_bar=False)
     optuna.logging.set_verbosity(_optuna_prev_verbosity)
     return float(study.best_params['alpha'])
+
+
+def _oof_weighted_blend(
+    probas: list[np.ndarray], y_val: np.ndarray, random_seed: int = 42, n_splits: int = 5,
+) -> np.ndarray:
+    """Out-of-fold weighted-blend на val.
+
+    `_optimize_weights` максимизирует PR-AUC прямо на (probas, y_val) — если
+    репортить итоговый скор на тех же данных, он тавтологично завышен (веса
+    подобраны так, чтобы этот скор был как можно выше). Здесь веса на каждом
+    фолде подбираются по остальным фолдам, а предсказание для фолда — по этим
+    весам, так что репортируемый скор — честная oof-оценка.
+    """
+    from sklearn.model_selection import StratifiedKFold
+
+    y_val = np.asarray(y_val)
+    n_splits = min(n_splits, int(min(np.bincount(y_val.astype(int)))))
+    if n_splits < 2:
+        logger.warning('[BoostedEnsemble] OOF для weighted-blend невозможен (мало примеров класса) '
+                        '— веса и оценка подобраны на одних и тех же данных, скор оптимистичен')
+        w = _optimize_weights(probas, y_val, random_seed=random_seed)
+        return sum(wi * p for wi, p in zip(w, probas))
+
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_seed)
+    oof = np.zeros(len(y_val))
+    for tr_idx, te_idx in skf.split(np.zeros(len(y_val)), y_val):
+        w = _optimize_weights([p[tr_idx] for p in probas], y_val[tr_idx], random_seed=random_seed)
+        oof[te_idx] = sum(wi * p[te_idx] for wi, p in zip(w, probas))
+    return oof
+
+
+def _oof_power_blend(
+    probas: list[np.ndarray], y_val: np.ndarray, random_seed: int = 42, n_splits: int = 5,
+) -> np.ndarray:
+    """Out-of-fold power-blend на val — та же мотивация, что и _oof_weighted_blend."""
+    from sklearn.model_selection import StratifiedKFold
+
+    y_val = np.asarray(y_val)
+    n_splits = min(n_splits, int(min(np.bincount(y_val.astype(int)))))
+    if n_splits < 2:
+        logger.warning('[BoostedEnsemble] OOF для power-blend невозможен (мало примеров класса) '
+                        '— alpha и оценка подобраны на одних и тех же данных, скор оптимистичен')
+        alpha = _fit_power_alpha(probas, y_val, random_seed=random_seed)
+        clipped = [np.clip(p, 1e-9, 1.0 - 1e-9) for p in probas]
+        return np.mean([p ** alpha for p in clipped], axis=0) ** (1.0 / alpha)
+
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_seed)
+    oof = np.zeros(len(y_val))
+    for tr_idx, te_idx in skf.split(np.zeros(len(y_val)), y_val):
+        alpha = _fit_power_alpha([p[tr_idx] for p in probas], y_val[tr_idx], random_seed=random_seed)
+        clipped_te = [np.clip(p[te_idx], 1e-9, 1.0 - 1e-9) for p in probas]
+        oof[te_idx] = np.mean([p ** alpha for p in clipped_te], axis=0) ** (1.0 / alpha)
+    return oof
 
 
 def _get_proba(model, pool) -> np.ndarray:
@@ -218,10 +280,15 @@ class BoostedEnsemble(BasePreset):
                 **tunable,
             }
             trial.set_user_attr('cb_params', params)
-            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
-            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
-            pruning_cb.check_pruned()
+            if params.get('task_type') == 'GPU':
+                # CatBoost GPU не поддерживает user-defined callbacks — прунинг
+                # для GPU-trial'ов недоступен, trial всегда доучивается до конца.
+                m.fit(tr_pool, eval_set=va_pool, verbose=False)
+            else:
+                pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
+                m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+                pruning_cb.check_pruned()
             p = m.predict_proba(va_pool)[:, 1]
             return float(average_precision_score(y_va, p))
 
@@ -254,7 +321,7 @@ class BoostedEnsemble(BasePreset):
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
         self.selected_features_ = feats
-        self.cat_features_ = cat_features or self.cat_features
+        self.cat_features_ = cat_features if cat_features is not None else self.cat_features
 
         y_tr = y_train.values
         y_va = y_valid.values
@@ -320,15 +387,22 @@ class BoostedEnsemble(BasePreset):
 
         if self.averaging == 'weighted':
             if fit_blend and y_val is not None:
+                # Отчётный скор — честный OOF (веса на фолд подбираются по остальным
+                # фолдам). self._weights отдельно фитится на всём val — они пойдут в
+                # реальный инференс на новых данных, где утечки нет по определению.
+                oof_pred = _oof_weighted_blend(probas, y_val, random_seed=self.random_seed)
                 self._weights = _optimize_weights(probas, y_val, random_seed=self.random_seed)
                 logger.info('[BoostedEnsemble] Оптимальные веса: %s', np.round(self._weights, 3))
+                return oof_pred
             w = self._weights if self._weights is not None else np.ones(len(probas)) / len(probas)
             return sum(wi * pi for wi, pi in zip(w, probas))
 
         if self.averaging == 'power':
             if fit_blend and y_val is not None:
+                oof_pred = _oof_power_blend(probas, y_val, random_seed=self.random_seed)
                 self._power_alpha = _fit_power_alpha(probas, y_val, random_seed=self.random_seed)
                 logger.info('[BoostedEnsemble] Power alpha=%.3f', self._power_alpha)
+                return oof_pred
             alpha = self._power_alpha
             clipped = [np.clip(p, 1e-9, 1.0 - 1e-9) for p in probas]
             return np.mean([p ** alpha for p in clipped], axis=0) ** (1.0 / alpha)

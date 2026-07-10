@@ -126,7 +126,7 @@ class LambdaRankClassifier(BasePreset):
         )
         feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
         self.selected_features_ = feats
-        self.cat_features_ = cat_features or self.cat_features
+        self.cat_features_ = cat_features if cat_features is not None else self.cat_features
 
         y_tr = y_train.values.astype(int)
         y_va = y_valid.values.astype(int)
@@ -147,8 +147,13 @@ class LambdaRankClassifier(BasePreset):
         params['label_gain'] = [0, 1]
         params['random_state'] = self.random_seed
 
-        if self.eval_at:
-            params['eval_at'] = self.eval_at
+        # LightGBM молча подставляет свой дефолт eval_at=[1,2,3,4,5], если ключ не
+        # задан — MAP@1..5 по ВСЕМУ датасету (одна query-группа), а не полный MAP,
+        # который обещан в докстроке (eval_at=None -> "MAP по всем"). Без явного
+        # eval_at early stopping и internal metric ориентируются на top-5 объектов
+        # изо всей train-выборки — почти бессмысленный сигнал при сотнях/тысячах
+        # позитивов, расходящийся с map_train_/map_valid_ (честный sklearn AP).
+        params['eval_at'] = self.eval_at if self.eval_at else [len(y_tr)]
         if self.truncation_level is not None:
             params['lambdarank_truncation_level'] = self.truncation_level
 

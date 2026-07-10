@@ -152,10 +152,15 @@ class FeatureBaggingEnsemble(BasePreset):
                 **tunable,
             }
             trial.set_user_attr('cb_params', params)
-            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
-            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
-            pruning_cb.check_pruned()
+            if params.get('task_type') == 'GPU':
+                # CatBoost GPU не поддерживает user-defined callbacks — прунинг
+                # для GPU-trial'ов недоступен, trial всегда доучивается до конца.
+                m.fit(tr_pool, eval_set=va_pool, verbose=False)
+            else:
+                pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
+                m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+                pruning_cb.check_pruned()
             p = m.predict_proba(va_pool)[:, 1]
             return float(average_precision_score(y_va, p))
 
@@ -183,15 +188,31 @@ class FeatureBaggingEnsemble(BasePreset):
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
         self.selected_features_ = feats
-        self.cat_features_ = cat_features or self.cat_features
+        self.cat_features_ = cat_features if cat_features is not None else self.cat_features
 
         y_tr = y_train.values
         y_va = y_valid.values
         n_sub = max(1, int(round(self.feature_frac * len(feats))))
+
+        # Общий SeedSequence.spawn — как в EasyEnsembleClassifier: даёт статистически
+        # независимые генераторы под тюнинг и под каждый estimator из одного random_seed.
+        tune_seed_seq, *estimator_seed_seqs = np.random.SeedSequence(self.random_seed).spawn(
+            self.n_estimators + 1
+        )
+
         if self.n_optuna_trials > 0:
-            full_tr_pool = Pool(X_train[feats], y_tr, cat_features=self.cat_features_)
-            full_va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
-            base_params = self._tune(full_tr_pool, full_va_pool, y_va)
+            # Тюним не на полном наборе признаков, а на одном представительном
+            # подпространстве того же размера (n_sub), что реально увидит каждая
+            # модель — иначе max_depth/l2_leaf_reg/min_data_in_leaf выбираются под
+            # задачу с полной размерностью признаков, а применяются к моделям,
+            # которые физически обучаются на меньшем числе колонок.
+            tune_rng = np.random.default_rng(tune_seed_seq)
+            tune_idx = tune_rng.choice(len(feats), size=n_sub, replace=False)
+            tune_subset = [feats[j] for j in sorted(tune_idx)]
+            tune_cat = [c for c in self.cat_features_ if c in tune_subset]
+            tune_tr_pool = Pool(X_train[tune_subset], y_tr, cat_features=tune_cat)
+            tune_va_pool = Pool(X_valid[tune_subset], y_va, cat_features=tune_cat)
+            base_params = self._tune(tune_tr_pool, tune_va_pool, y_va)
         else:
             base_params = self.base_params or _DEFAULT_BASE_PARAMS
 
@@ -207,7 +228,7 @@ class FeatureBaggingEnsemble(BasePreset):
         va_raw_scores: list[np.ndarray] = []
 
         for i in range(self.n_estimators):
-            rng = np.random.default_rng(self.random_seed + i)
+            rng = np.random.default_rng(estimator_seed_seqs[i])
             idx = rng.choice(len(feats), size=n_sub, replace=False)
             subset = [feats[j] for j in sorted(idx)]
             cat_sub = [c for c in self.cat_features_ if c in subset]

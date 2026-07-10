@@ -147,10 +147,15 @@ class MultiSeedBlend(BasePreset):
                 **tunable,
             }
             trial.set_user_attr('cb_params', params)
-            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
-            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
-            pruning_cb.check_pruned()
+            if params.get('task_type') == 'GPU':
+                # CatBoost GPU не поддерживает user-defined callbacks — прунинг
+                # для GPU-trial'ов недоступен, trial всегда доучивается до конца.
+                m.fit(tr_pool, eval_set=va_pool, verbose=False)
+            else:
+                pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
+                m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+                pruning_cb.check_pruned()
             p = m.predict_proba(va_pool)[:, 1]
             return float(average_precision_score(y_va, p))
 
@@ -180,7 +185,7 @@ class MultiSeedBlend(BasePreset):
         )
         feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
         self.selected_features_ = feats
-        self.cat_features_ = cat_features or self.cat_features
+        self.cat_features_ = cat_features if cat_features is not None else self.cat_features
 
         y_tr = y_train.values
         y_va = y_valid.values
@@ -199,7 +204,12 @@ class MultiSeedBlend(BasePreset):
         va_raw_scores: list[np.ndarray] = []
 
         for i in range(self.n_seeds):
-            seed = self.random_seed + i
+            # +1: _tune() фиксирует 'random_seed'=self.random_seed для каждого trial
+            # (см. objective выше) — без сдвига seed=self.random_seed+0 у первого
+            # прогона совпал бы с сидом, который уже использовал выигравший Optuna
+            # trial на тех же (несэмплированных) данных, и превратил бы один из
+            # n_seeds "независимых" прогонов в повтор уже виденного результата.
+            seed = self.random_seed + i + 1
             params = {**(tuned_params or self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
             tr_pool = Pool(X_tr_feats, y_tr, cat_features=self.cat_features_)
             va_pool = Pool(X_va_feats, y_va, cat_features=self.cat_features_)
@@ -214,9 +224,8 @@ class MultiSeedBlend(BasePreset):
             logger.info('[MultiSeedBlend] seed %d/%d (seed=%d)  val PR-AUC=%.4f',
                         i + 1, self.n_seeds, seed, ap)
 
-        tr_raw_scores = [
-            m.predict_proba(Pool(X_tr_feats, cat_features=self.cat_features_))[:, 1] for m in self.models_
-        ]
+        tr_predict_pool = Pool(X_tr_feats, cat_features=self.cat_features_)
+        tr_raw_scores = [m.predict_proba(tr_predict_pool)[:, 1] for m in self.models_]
         self._rank_refs_ = [fit_rank_reference(s) for s in tr_raw_scores]
 
         va_blend = np.stack(

@@ -189,10 +189,15 @@ class TwoStageCascade(BasePreset):
                 'verbose': custom.get('verbose', 0),
             }
             trial.set_user_attr('cb_params', params)
-            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
-            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
-            pruning_cb.check_pruned()
+            if params.get('task_type') == 'GPU':
+                # CatBoost GPU не поддерживает user-defined callbacks — прунинг
+                # для GPU-trial'ов недоступен, trial всегда доучивается до конца.
+                m.fit(tr_pool, eval_set=va_pool, verbose=False)
+            else:
+                pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
+                m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+                pruning_cb.check_pruned()
             p = m.predict_proba(va_pool)[:, 1]
             return float(metric_fn(va_pool.get_label(), p))
 
@@ -229,13 +234,20 @@ class TwoStageCascade(BasePreset):
         X_feats: pd.DataFrame,
         y: np.ndarray,
         params: dict,
-        va_pool: Any,
     ) -> np.ndarray:
         """Out-of-fold предсказания Stage 1 на train (для отбора кандидатов Stage 2).
 
         In-sample скоры полной model1_ переобучены и завышены на train —
         отбор «трудных негативов» по ним не соответствует тому, что Stage 2
         увидит на инференсе. OOF-скоры воспроизводят инференс-распределение.
+
+        Фолды обучаются БЕЗ eval_set: если бы early stopping каждого фолда
+        смотрел на va_pool (тот же holdout, что и у model1_), число итераций
+        каждого фолда неявно подстраивалось бы под внешнюю валидацию — а именно
+        от такой контаминации и должна защищать сама идея OOF. Вместо этого —
+        фиксированное число деревьев, равное тому, что реально получилось у уже
+        обученной model1_ (self.model1_.tree_count_): та же сложность модели,
+        без утечки X_valid в отбор кандидатов Stage 2.
         """
         from catboost import CatBoostClassifier, Pool
         from sklearn.model_selection import StratifiedKFold
@@ -250,14 +262,17 @@ class TwoStageCascade(BasePreset):
                 Pool(X_feats, cat_features=self.cat_features_)
             )[:, 1]
 
+        fold_params = {k: v for k, v in params.items() if k != 'early_stopping_rounds'}
+        fold_params['iterations'] = self.model1_.tree_count_
+
         n_splits = min(5, min_class)
         skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.random_seed)
         oof = np.zeros(len(y))
         for tr_idx, te_idx in skf.split(np.zeros(len(y)), y):
-            m = CatBoostClassifier(**params)
+            m = CatBoostClassifier(**fold_params)
             m.fit(
                 Pool(X_feats.iloc[tr_idx], y[tr_idx], cat_features=self.cat_features_),
-                eval_set=va_pool, verbose=False,
+                verbose=False,
             )
             oof[te_idx] = m.predict_proba(
                 Pool(X_feats.iloc[te_idx], cat_features=self.cat_features_)
@@ -280,7 +295,7 @@ class TwoStageCascade(BasePreset):
         X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
         feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
         self.selected_features_ = feats
-        self.cat_features_ = cat_features or self.cat_features
+        self.cat_features_ = cat_features if cat_features is not None else self.cat_features
 
         y_tr = y_train.values
         y_va = y_valid.values
@@ -313,7 +328,7 @@ class TwoStageCascade(BasePreset):
                     self.threshold1_, self.stage1_recall_, self.stage2_coverage_)
 
         # ── Stage 2: train только на прошедших Stage 1 (по OOF-скорам) ──────
-        s1_tr = self._stage1_oof_scores(X_train[feats], y_tr, s1_used_params, va1)
+        s1_tr = self._stage1_oof_scores(X_train[feats], y_tr, s1_used_params)
         candidate_mask_tr = s1_tr >= self.threshold1_
 
         n_pos = int(y_tr[candidate_mask_tr].sum())

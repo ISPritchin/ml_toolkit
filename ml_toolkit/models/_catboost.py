@@ -55,19 +55,27 @@ def _make_pool(
     return Pool(X, label=y, cat_features=cat_features, baseline=baseline)
 
 
-def _default_reg_param_space(trial: Any) -> dict[str, Any]:
+def _default_reg_param_space(trial: Any, task_type: str) -> dict[str, Any]:
     """Пространство поиска CatBoost по умолчанию для регрессии (переопределяется model_settings['param_space'])."""
-    return {
+    params: dict[str, Any] = {
         'iterations': trial.suggest_int('iterations', 500, 1000, step=100),
         'max_depth': trial.suggest_int('max_depth', 3, 7),
         'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
         'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-5, 10.0, log=True),
-        'subsample': trial.suggest_float('subsample', 0.3, 1.0),
         'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 50),
         'random_strength': trial.suggest_float('random_strength', 1e-9, 10.0, log=True),
         'border_count': trial.suggest_int('border_count', 32, 255),
-        'rsm': trial.suggest_float('rsm', 0.3, 1.0),
     }
+    if task_type == 'GPU':
+        # см. _default_cls_param_space: subsample несовместим с дефолтным
+        # bootstrap_type=Bayesian на GPU, rsm на GPU не поддерживается.
+        params['task_type'] = 'GPU'
+        params['bagging_temperature'] = trial.suggest_float('bagging_temperature', 0.0, 10.0)
+    else:
+        params['bootstrap_type'] = 'Bernoulli'
+        params['subsample'] = trial.suggest_float('subsample', 0.3, 1.0)
+        params['rsm'] = trial.suggest_float('rsm', 0.3, 1.0)
+    return params
 
 
 def _default_cls_param_space(trial: Any, task_type: str) -> dict[str, Any]:
@@ -181,9 +189,11 @@ class CatBoostRegressor(BaseModel):
             self.model_settings, 'reg_metric', REG_METRICS['mae'][0], 'minimize', REG_METRICS,
         )
         param_space: Callable[[Any], dict] | None = self.model_settings.get('param_space')
+        ms = self.model_settings
+        task_type: str = ms.get('task_type', 'CPU')
 
         def objective(trial: optuna.Trial) -> float:
-            tunable = param_space(trial) if param_space is not None else _default_reg_param_space(trial)
+            tunable = param_space(trial) if param_space is not None else _default_reg_param_space(trial, task_type)
             params = {
                 **tunable,
                 'loss_function': 'MAE',
@@ -194,18 +204,27 @@ class CatBoostRegressor(BaseModel):
             }
             trial.set_user_attr('cb_params', params)
             m = _CB_Regressor(**params)
-            pruning_callback = make_catboost_pruning_callback(trial)
-            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_callback])
-            if pruning_callback.pruned:
-                raise optuna.TrialPruned(f'Trial pruned (best iteration {m.get_best_iteration()}).')
+            if task_type == 'GPU':
+                # CatBoost GPU не поддерживает пользовательские callbacks — прунинг для
+                # GPU-trial'ов недоступен, trial всегда доучивается до конца.
+                m.fit(tr_pool, eval_set=va_pool, verbose=False)
+            else:
+                pruning_callback = make_catboost_pruning_callback(trial)
+                m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_callback])
+                if pruning_callback.pruned:
+                    raise optuna.TrialPruned(f'Trial pruned (best iteration {m.get_best_iteration()}).')
             pred = pp(X_valid, m.predict(va_pool))
             return metric_fn(y_valid.values, pred)
 
+        if task_type == 'GPU':
+            logger.warning(
+                '[CatBoost Reg] task_type=GPU: CatBoost не поддерживает user-defined callbacks '
+                'на GPU — Optuna-прунинг для этого тюнинга отключён, trial\'ы доучиваются до конца.'
+            )
         logger.info(
             '[CatBoost Reg] Optuna: %d trials, baseline=%s, custom_param_space=%s',
             self.n_optuna_trials, baseline_col, param_space is not None,
         )
-        ms = self.model_settings
         study = optuna.create_study(
             direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
         )
@@ -365,14 +384,25 @@ class CatBoostClassifier(BaseModel):
             trial.set_user_attr('cb_params', params)
 
             m = _CB_Classifier(**params)
-            pruning_callback = make_catboost_pruning_callback(trial)
-            m.fit(trial_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_callback])
-            if pruning_callback.pruned:
-                raise optuna.TrialPruned(f'Trial pruned (best iteration {m.get_best_iteration()}).')
+            if task_type == 'GPU':
+                # CatBoost GPU не поддерживает пользовательские callbacks (нативный цикл
+                # обучения не возвращает управление в Python на каждой итерации) — прунинг
+                # для GPU-trial'ов недоступен, trial всегда доучивается до конца.
+                m.fit(trial_pool, eval_set=va_pool, verbose=False)
+            else:
+                pruning_callback = make_catboost_pruning_callback(trial)
+                m.fit(trial_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_callback])
+                if pruning_callback.pruned:
+                    raise optuna.TrialPruned(f'Trial pruned (best iteration {m.get_best_iteration()}).')
             raw = m.predict_proba(va_pool)
             proba = raw[:, 1] if is_binary else raw
             return metric_fn(y_valid.values, proba)
 
+        if task_type == 'GPU':
+            logger.warning(
+                '[CatBoost Cls] task_type=GPU: CatBoost не поддерживает user-defined callbacks '
+                'на GPU — Optuna-прунинг для этого тюнинга отключён, trial\'ы доучиваются до конца.'
+            )
         logger.info(
             '[CatBoost Cls] Optuna: %d trials, task_type=%s, custom_param_space=%s, undersample_majority=%s',
             self.n_optuna_trials, task_type, param_space is not None, undersample_majority,

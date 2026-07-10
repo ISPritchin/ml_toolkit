@@ -209,10 +209,15 @@ class EasyEnsembleClassifier(BasePreset):
                 **tunable,
             }
             trial.set_user_attr('cb_params', params)
-            pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
             m = CatBoostClassifier(**params)
-            m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
-            pruning_cb.check_pruned()
+            if params.get('task_type') == 'GPU':
+                # CatBoost GPU не поддерживает user-defined callbacks — прунинг
+                # для GPU-trial'ов недоступен, trial всегда доучивается до конца.
+                m.fit(tr_pool, eval_set=va_pool, verbose=False)
+            else:
+                pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
+                m.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=[pruning_cb])
+                pruning_cb.check_pruned()
             p = m.predict_proba(va_pool)[:, 1]
             return float(average_precision_score(y_va, p))
 
@@ -283,7 +288,7 @@ class EasyEnsembleClassifier(BasePreset):
         )
         feats = self._resolve_features(X_train, selected_features or self.selected_features or None)
         self.selected_features_ = feats
-        self.cat_features_ = cat_features or self.cat_features
+        self.cat_features_ = cat_features if cat_features is not None else self.cat_features
 
         y_tr = y_train.values
         y_va = y_valid.values
@@ -300,9 +305,19 @@ class EasyEnsembleClassifier(BasePreset):
             self.n_estimators, self.neg_ratio, n_pos, n_neg_sample, self.base,
         )
 
+        # SeedSequence.spawn даёт статистически независимые генераторы из одного
+        # random_seed — в отличие от default_rng(random_seed + i), где подвыборка
+        # тюнинга (rng0) и подвыборка estimator'а i=0 иначе оказываются побитово
+        # идентичны (default_rng(seed) и default_rng(seed + 0) — один и тот же
+        # генератор), и первый member ансамбля перестаёт быть независимым «взглядом»
+        # на негативы, а дублирует уже виденный Optuna срез.
+        tune_seed_seq, *estimator_seed_seqs = np.random.SeedSequence(self.random_seed).spawn(
+            self.n_estimators + 1
+        )
+
         tuned_params = None
         if self.n_optuna_trials > 0:
-            rng0 = np.random.default_rng(self.random_seed)
+            rng0 = np.random.default_rng(tune_seed_seq)
             neg_sample0 = rng0.choice(neg_idx, size=n_neg_sample, replace=False)
             sample_idx0 = np.concatenate([pos_idx, neg_sample0])
             rng0.shuffle(sample_idx0)
@@ -318,7 +333,7 @@ class EasyEnsembleClassifier(BasePreset):
         va_raw_scores: list[np.ndarray] = []
 
         for i in range(self.n_estimators):
-            rng = np.random.default_rng(self.random_seed + i)
+            rng = np.random.default_rng(estimator_seed_seqs[i])
             neg_sample = rng.choice(neg_idx, size=n_neg_sample, replace=False)
             sample_idx = np.concatenate([pos_idx, neg_sample])
             rng.shuffle(sample_idx)
