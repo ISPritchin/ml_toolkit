@@ -10,8 +10,8 @@ Formula:
     slope_now  = OLS_slope(v[t-w+1..t])
     slope_ago  = OLS_slope(v[(t-lag)-w+1..(t-lag)])
 
-    flag = 1 if sign(slope_now) != sign(slope_ago) and (|slope_now| > eps or |slope_ago| > eps)
-         = 0 otherwise
+    flag = 1 if sign(slope_now) != sign(slope_ago) and (|slope_now| > eps and |slope_ago| > eps)
+         = 0 otherwise   (оба наклона должны быть явно ненулевыми, не хотя бы один)
     slope_change_lagL_wW = slope_now - slope_ago
 
     flag вычисляется только по первой паре в lag_window_pairs.
@@ -21,7 +21,7 @@ Outputs:
     {product}__trend_flip__slope_change_lag6_w6    — дельта наклона lag=6, w=6
     {product}__trend_flip__slope_change_lag12_w12  — дельта наклона lag=12, w=12
 
-Preset (monthly.yaml):
+Preset entry:
     trend_flip:
       lag_window_pairs:
         - [6, 6]

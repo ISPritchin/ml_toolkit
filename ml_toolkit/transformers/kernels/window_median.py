@@ -12,7 +12,7 @@ Outputs:
     {product}__window_median__w6   — медиана за 6 месяцев
     {product}__window_median__w12  — медиана за 12 месяцев
 
-Preset (monthly.yaml):
+Preset entry:
     window_median:
       windows: [3, 6, 12]
 

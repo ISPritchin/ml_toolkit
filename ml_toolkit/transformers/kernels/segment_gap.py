@@ -21,7 +21,7 @@ Outputs:
     Суффикс кодирует конфиг сегмента (см. `segment_suffix_fragment`), как и у любого
     другого трансформера, использующего `segment`.
 
-Preset:
+Preset entry:
     segment_gap:
       segment: short_gap   # ссылка на именованный конфиг в секции `segments:` пресета
 

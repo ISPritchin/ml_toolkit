@@ -13,7 +13,7 @@ Formula:
 Outputs:
     {product}__log_slope_ratio__w6_w12  — log_slope_6 / |log_slope_12|
 
-Preset (monthly.yaml):
+Preset entry:
     log_slope_ratio:
       pairs:
         - [6, 12]

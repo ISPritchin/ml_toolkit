@@ -21,7 +21,7 @@ Outputs:
     {product}__cross_window_momentum__all_decel      — флаг полного замедления
     {product}__cross_window_momentum__horizon_spread — лог-разрыв кратко-/долгосрочного
 
-Preset (monthly.yaml):
+Preset entry:
     cross_window_momentum: {}
 
 Interpretation:

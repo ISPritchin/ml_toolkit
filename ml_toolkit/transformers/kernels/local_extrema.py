@@ -17,7 +17,7 @@ Outputs:
     {product}__local_extrema__w6   — число локальных экстремумов за 6 мес
     {product}__local_extrema__w12  — число локальных экстремумов за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     local_extrema:
       windows: [6, 12]
 

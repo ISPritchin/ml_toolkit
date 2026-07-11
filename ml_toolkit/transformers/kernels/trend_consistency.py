@@ -11,7 +11,8 @@ Formula:
     slope_sign = sign(slope)
 
     dir_consistency_w  = count(sign(diff_i) == slope_sign) / (w-1)
-    noise_signal_w     = RMSE_residuals / (|slope| * w + eps)
+    noise_signal_w     = safe_ratio(RMSE_residuals, |slope| * w)  (0 при slope ~ 0 —
+        см. Interpretation: не путать с «нет шума», если наклон окна почти нулевой)
     r_squared_w        = 1 - SS_res / (SS_tot + eps)
     clean_streak_w     = max_run(sign(diff_i) == slope_sign)
     sub_sign_consist_w = share of 3-month sub-windows with slope matching slope_sign
@@ -28,14 +29,17 @@ Outputs:
     {product}__trend_consistency__sub_sign_consist_w12  — доля под-окон с верным знаком, 12 мес
     {product}__trend_consistency__r_squared_w12         — R² линейного тренда, 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     trend_consistency:
       windows: [6, 12]
 
 Interpretation:
     dir_consistency = 1.0 — каждый шаг совпадает с общим трендом (идеальная монотонность).
-    noise_signal = 0 — ряд лежит точно на линии тренда (нет шума).
-    R² = 0.95 — 95% дисперсии объяснено линейным трендом; клиент предсказуемо растёт/падает.
+    noise_signal = 0 — ряд лежит точно на линии тренда (нет шума), НО то же значение
+    даёт и почти нулевой наклон окна (safe_ratio: «отношение не определено» при
+    slope ~ 0) независимо от реального шума — проверяйте r_squared_w, если наклон
+    может быть близок к нулю (например, симметричный «горб»/«впадина»).
+    R² = 0.95 — 95% дисперсии объяснено линейным трендом; ряд предсказуемо растёт/падает.
     clean_streak_w12 = 10 при dir_consistency_w12 = 0.9 — один откат за весь год.
 
 Example:

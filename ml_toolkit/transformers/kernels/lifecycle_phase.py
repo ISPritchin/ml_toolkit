@@ -1,9 +1,9 @@
-"""Позиция в жизненном цикле клиента: возраст пика, completeness, фаза (разгон/зрелость/спад).
+"""Позиция в жизненном цикле ряда: возраст пика, completeness, фаза (разгон/зрелость/спад).
 
 Signal:
-    Определяет, в какой фазе жизненного цикла находится клиент: разгон (доходы ещё не
+    Определяет, в какой фазе жизненного цикла находится ряд: разгон (значения ещё не
     достигли пика), зрелость (≥80% исторического максимума), или снижение (ниже пика).
-    Помогает предсказывать будущую классификацию на основе траектории.
+    Помогает предсказывать будущую динамику на основе траектории.
 
 Formula:
     running_max[t] = max(v[0..t])    (первое значение сущности — стартовый пик)
@@ -13,7 +13,7 @@ Formula:
     ramp_norm       = pos_of_first_half_max / (current_pos + 1)
     is_new_peak     = 1 if v[t] > running_max[t-1] (и на pos=0 — тривиальный пик)
     phase_flag      = 0 (разгон) | 1 (зрелость, v >= 0.8*max) | 2 (снижение)
-    post_peak_slope_w = OLS_slope * (-sign(v[t] - running_max))
+    post_peak_slope_w = OLS_slope * sign(v[t] - running_max)   (sign(0) = +1)
 
 Outputs:
     {product}__lifecycle_phase__peak_age_share      — доля истории до пика
@@ -24,12 +24,12 @@ Outputs:
     {product}__lifecycle_phase__phase_flag          — фаза: 0/1/2
     {product}__lifecycle_phase__post_peak_slope_w12 — скорость снижения от пика
 
-Preset (monthly.yaml):
+Preset entry:
     lifecycle_phase:
       windows: [12]
 
 Interpretation:
-    phase_flag = 0, completeness = 0.6 — клиент ещё набирает обороты, не достиг пика.
+    phase_flag = 0, completeness = 0.6 — ряд ещё набирает обороты, не достиг пика.
     phase_flag = 1, completeness = 0.95 — стабильная зрелость, высокое плато.
     phase_flag = 2, post_peak_share = 0.6 — на спаде уже 60% всей истории.
     is_new_peak = 1 — положительный сигнал: продолжает устанавливать рекорды.

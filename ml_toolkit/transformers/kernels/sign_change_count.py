@@ -16,7 +16,7 @@ Outputs:
     {product}__sign_change_count__w6   — число смен знака за 6 мес
     {product}__sign_change_count__w12  — число смен знака за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     sign_change_count:
       windows: [6, 12]
 

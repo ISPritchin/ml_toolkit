@@ -16,7 +16,7 @@ Outputs:
     {product}__pct_of_max__w12  — текущее / max за 12 мес
     {product}__pct_of_max__w24  — текущее / max за 24 мес
 
-Preset (monthly.yaml):
+Preset entry:
     pct_of_max:
       windows: [6, 12, 24]
 

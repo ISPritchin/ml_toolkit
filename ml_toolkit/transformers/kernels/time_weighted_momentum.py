@@ -17,7 +17,7 @@ Outputs:
     {product}__time_weighted_momentum__w6   — взвеш. импульс за 6 мес
     {product}__time_weighted_momentum__w12  — взвеш. импульс за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     time_weighted_momentum:
       windows: [6, 12]
 
@@ -69,7 +69,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}."""
+    """params: {"windows": [6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

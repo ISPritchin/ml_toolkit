@@ -1,9 +1,9 @@
 """Предсказуемость отдельного месяца: SNR, surprise, conditional mean.
 
 Signal:
-    Оценивает, насколько «типичен» текущий месяц для клиента. Высокая предсказуемость
-    при активном месяце = стабильный клиент. Большой surprise = нетипичный месяц, требует
-    проверки (всплеск или провал). Conditional mean — ожидаемый доход при активном месяце.
+    Оценивает, насколько «типичен» текущий месяц для ряда. Высокая предсказуемость
+    при активном месяце = стабильный ряд. Большой surprise = нетипичный месяц, требует
+    проверки (всплеск или провал). Conditional mean — ожидаемое значение при активном месяце.
 
 Formula:
     snr_w        = std_short_w / (std_long_w + eps)   где short_w = max(w//4, 1)
@@ -18,17 +18,17 @@ Outputs:
     {product}__microstructure__snr_w12          — краткосрочный/долгосрочный std
     {product}__microstructure__surprise_w12     — |v-mean|/std текущего месяца
     {product}__microstructure__predictability_w12 — 1/(1+CV) ∈ (0,1]
-    {product}__microstructure__cond_mean_w12    — ожид. доход при активном мес.
+    {product}__microstructure__cond_mean_w12    — ожид. значение при активном мес.
     {product}__microstructure__vs_cond_mean_w12 — текущее / conditional mean
     {product}__microstructure__surprise_dir     — знак отклонения от среднего
 
-Preset (monthly.yaml):
+Preset entry:
     microstructure:
       windows: [12]
 
 Interpretation:
-    predictability ≈ 0.99 — почти идеально предсказуемый клиент (плоский ряд, CV≈0).
-    predictability ≈ 0.40 — высокая нестабильность (пульсирующий, B2B-проектный).
+    predictability ≈ 0.99 — почти идеально предсказуемый ряд (плоский, CV≈0).
+    predictability ≈ 0.40 — высокая нестабильность (пульсирующий паттерн).
     surprise > 2 при surprise_dir = -1 — текущий месяц значительно ниже нормы.
     vs_cond_mean ≈ 1 при активном месяце — типичный активный месяц, нет сюрпризов.
 

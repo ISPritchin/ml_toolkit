@@ -5,12 +5,19 @@ from .kernels import (
     active_months,
     active_run_count,
     activity_rate,
+    # new groups
+    acf_characteristic_scale,
+    agg_autocorrelation,
     # smoothness
     alternation_rate,
     # autocorr & seasonal
     autocorr,
+    auto_period,
+    automutual_info,
     # new groups
     burstiness,
+    c3,
+    change_quantiles,
     client_age,
     # structural signals
     corr_with_time,
@@ -18,9 +25,12 @@ from .kernels import (
     # relative position
     cumulative_share,
     cusum,
+    # new groups
+    dfa,
     # trend
     direction_flag,
     distance_to_global_max,
+    energy_ratio_by_chunks,
     entropy,
     # dynamics ratios
     ewma,
@@ -35,6 +45,7 @@ from .kernels import (
     growth_since_start,
     half_ratio,
     inactive_streak,
+    index_mass_quantile,
     # distribution moments
     kurtosis_proxy,
     lag1_diff,
@@ -58,6 +69,7 @@ from .kernels import (
     nonlinearity,
     pct_of_max,
     peak_trough_timing,
+    permutation_entropy,
     plateau,
     quantile_persistence,
     rank_in_window,
@@ -81,6 +93,7 @@ from .kernels import (
     tenure,
     time_weighted_momentum,
     total_variation,
+    transition_matrix,
     trend_consistency,
     trend_flip,
     trough_to_current,
@@ -195,6 +208,19 @@ TRANSFORMERS: dict = {
         value_clustering,
         window_volatility_ratios,
         zero_clustering,
+        # nonlinearity / complexity / spectral-adjacent (tsfresh-inspired)
+        c3,
+        permutation_entropy,
+        change_quantiles,
+        energy_ratio_by_chunks,
+        index_mass_quantile,
+        agg_autocorrelation,
+        # fractal / regime / memory-scale / spectral-adjacent (catch22 & tsfel-inspired)
+        dfa,
+        transition_matrix,
+        acf_characteristic_scale,
+        automutual_info,
+        auto_period,
     ]
 }
 

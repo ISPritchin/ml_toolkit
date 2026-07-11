@@ -1,9 +1,9 @@
 """Доля нулевых (неактивных) месяцев в скользящем окне: интенсивность использования.
 
 Signal:
-    Базовый показатель регулярности: какая доля месяцев в окне была «тихой» (нулевой оборот).
+    Базовый показатель регулярности: какая доля месяцев в окне была «тихой» (нулевое значение).
     Дополняет activity_rate, который считает expanding-долю: zero_share считает только окно
-    фиксированного размера, что позволяет сравнивать клиентов на разных этапах жизненного цикла
+    фиксированного размера, что позволяет сравнивать ряды на разных этапах жизненного цикла
     с одинаковым горизонтом. Три окна (3, 6, 12) улавливают краткосрочные и долгосрочные режимы.
 
 Formula:
@@ -16,13 +16,13 @@ Outputs:
     {product}__zero_share__w6   — доля нулей за 6 мес
     {product}__zero_share__w12  — доля нулей за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     zero_share:
       windows: [3, 6, 12]
 
 Interpretation:
     = 0.0 — все месяцы в окне активны (нет ни одного нулевого).
-    = 1.0 — клиент полностью неактивен в окне (все месяцы нулевые).
+    = 1.0 — ряд полностью неактивен в окне (все месяцы нулевые).
     zero_share_w3 > zero_share_w12 — активность снижается именно в последнее время.
     zero_share_w3 = 0 при zero_share_w12 = 0.5 — восстановился после длинного перерыва.
 
@@ -61,7 +61,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}."""
+    """params: {"windows": [3, 6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

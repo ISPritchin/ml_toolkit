@@ -14,7 +14,7 @@ Outputs:
     {product}__slope_ratio__w6_w12   — slope_6 / |slope_12|
     {product}__slope_ratio__w12_w24  — slope_12 / |slope_24|
 
-Preset (monthly.yaml):
+Preset entry:
     slope_ratio:
       pairs:
         - [6, 12]

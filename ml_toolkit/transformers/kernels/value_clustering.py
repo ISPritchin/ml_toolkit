@@ -1,8 +1,8 @@
-"""Концентрация транзакционной ценности: top-N доли, Herfindahl и плотность.
+"""Концентрация значений ряда: top-N доли, Herfindahl и плотность.
 
 Signal:
-    Описывает, насколько оборот сосредоточен в нескольких «пиковых» месяцах. Высокая
-    top1_share — один месяц доминирует (сезонный выброс или единоразовая крупная сделка).
+    Описывает, насколько объём сосредоточен в нескольких «пиковых» месяцах. Высокая
+    top1_share — один месяц доминирует (сезонный выброс или единоразовый крупный всплеск).
     Herfindahl > 1/w — концентрация выше равномерного распределения. density — насколько
     активные месяцы «работают» на уровне максимума, а не тихо присутствуют.
 
@@ -17,19 +17,19 @@ Formula:
     herfindahl_w  = sum((v_i / total_w)^2, i in window)
 
 Outputs:
-    {product}__value_clustering__top1_share_w12    — доля топ-1 месяца в обороте
-    {product}__value_clustering__top3_share_w12    — доля топ-3 месяцев в обороте
-    {product}__value_clustering__bot3_share_w12    — доля нижних-3 месяцев в обороте
+    {product}__value_clustering__top1_share_w12    — доля топ-1 месяца в объёме
+    {product}__value_clustering__top3_share_w12    — доля топ-3 месяцев в объёме
+    {product}__value_clustering__bot3_share_w12    — доля нижних-3 месяцев в объёме
     {product}__value_clustering__concentration_w12 — top3 / bot3 (отношение полюсов)
     {product}__value_clustering__density_w12       — плотность: total / (n_active * max)
     {product}__value_clustering__herfindahl_w12    — индекс Херфиндаля по месяцам
 
-Preset (monthly.yaml):
+Preset entry:
     value_clustering:
       windows: [12]
 
 Interpretation:
-    top1_share = 0.5 — половина годового оборота пришлась в один месяц (сезонный пик).
+    top1_share = 0.5 — половина годового объёма пришлась в один месяц (сезонный пик).
     herfindahl = 1/12 ≈ 0.083 — идеально равномерное распределение по месяцам.
     herfindahl > 0.25 — сильная концентрация (условно: «доминирует 1 из 4»).
     density ≈ 1.0 — все активные месяцы работают на уровне максимума (нет «тихих» пиков).

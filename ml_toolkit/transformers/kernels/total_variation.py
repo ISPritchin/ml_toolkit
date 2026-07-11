@@ -3,7 +3,7 @@
 Signal:
     Суммарная вариация (TV) — суммарный абсолютный путь ряда за период. Высокое TV
     означает «рваный», нестабильный ряд. TV_norm нормирует на уровень, что позволяет
-    сравнивать клиентов разного масштаба. В отличие от std: TV накапливает все движения.
+    сравнивать ряды разного масштаба. В отличие от std: TV накапливает все движения.
 
 Formula:
     TV_w     = sum(|v[i] - v[i-1]|, i in [t-w+2..t])
@@ -18,7 +18,7 @@ Outputs:
     {product}__total_variation__w12       — TV за 12 мес
     {product}__total_variation__norm_w12  — TV_norm за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     total_variation:
       windows: [6, 12]
 

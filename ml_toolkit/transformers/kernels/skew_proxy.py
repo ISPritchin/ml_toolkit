@@ -17,7 +17,7 @@ Outputs:
     {product}__skew_proxy__w6   — прокси скошенности за 6 мес
     {product}__skew_proxy__w12  — прокси скошенности за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     skew_proxy:
       windows: [6, 12]
 

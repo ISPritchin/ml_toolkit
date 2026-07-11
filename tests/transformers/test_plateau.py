@@ -98,6 +98,10 @@ def test_full_output_vector():
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'flat_share_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'longest_flat_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
-    assert _get(arrs, sfxs, 'near_mean_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0], abs=1e-6)
+    # offset=0 (первая точка окна) теперь учитывается в near_mean — на pos=0 и pos=2
+    # окно частично/полностью совпадает со своим средним, отсюда 1.0 и 1/3
+    assert _get(arrs, sfxs, 'near_mean_w4') == pytest.approx(
+        [1.0, 0.0, 1 / 3, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0], abs=1e-6
+    )
     assert _get(arrs, sfxs, 'current_flat_streak') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'plateau_exit_recency') == pytest.approx([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], abs=1e-6)

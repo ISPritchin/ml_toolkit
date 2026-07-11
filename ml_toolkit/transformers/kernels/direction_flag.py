@@ -2,7 +2,7 @@
 
 Signal:
     Дискретная характеристика направления тренда. Используется как категориальный
-    признак или для фильтрации: клиенты с direction_flag_w12 = -1 находятся
+    признак или для фильтрации: строки с direction_flag_w12 = -1 находятся
     в снижающемся тренде независимо от абсолютного уровня.
 
 Formula:
@@ -15,7 +15,7 @@ Outputs:
     {product}__direction_flag__w6   — знак тренда за 6 мес
     {product}__direction_flag__w12  — знак тренда за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     direction_flag:
       windows: [6, 12]
 

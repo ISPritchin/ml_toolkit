@@ -11,12 +11,12 @@ Outputs:
     {product}__window_mean__w6   — среднее за 6 месяцев
     {product}__window_mean__w12  — среднее за 12 месяцев
 
-Preset (monthly.yaml):
+Preset entry:
     window_mean:
       windows: [3, 6, 12]
 
 Interpretation:
-    mean_w12 = 100 — средний ежемесячный оборот 100 за последний год.
+    mean_w12 = 100 — среднее ежемесячное значение 100 за последний год.
     (mean_w3 - mean_w12) > 0 — последний квартал выше среднегодового.
 
 Example:

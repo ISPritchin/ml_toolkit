@@ -1,8 +1,8 @@
 """Z-score текущего значения относительно скользящего окна (нормированное отклонение).
 
 Signal:
-    Показывает, насколько текущий оборот выбивается из «нормы» своего же окна. Значение > 2 —
-    экстремальный пик относительно последних w месяцев; < -2 — аномально низкий оборот.
+    Показывает, насколько текущее значение выбивается из «нормы» своего же окна. Значение > 2 —
+    экстремальный пик относительно последних w месяцев; < -2 — аномально низкое значение.
     В отличие от rank_in_window (порядковая статистика), zscore учитывает расстояние в единицах
     std, что делает его чувствительным к «выбросам» разного масштаба.
 
@@ -19,13 +19,13 @@ Outputs:
     {product}__zscore__w12  — z-score относительно 12 мес
     {product}__zscore__w24  — z-score относительно 24 мес
 
-Preset (monthly.yaml):
+Preset entry:
     zscore:
       windows: [6, 12, 24]
 
 Interpretation:
-    zscore_w12 = 0 — оборот точно на уровне годового среднего.
-    zscore_w12 > 2 — аномально высокий месяц: возможно, разовая крупная сделка или сезонный пик.
+    zscore_w12 = 0 — значение точно на уровне годового среднего.
+    zscore_w12 > 2 — аномально высокий месяц: возможно, разовый крупный выброс или сезонный пик.
     zscore_w12 < -1.5 при положительном slope — временный откат на растущем тренде.
     zscore_w6 > zscore_w24 — выброс свежее и резче, чем в двухлетней перспективе.
 
@@ -62,7 +62,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12, 24]}."""
+    """params: {"windows": [6, 12, 24]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

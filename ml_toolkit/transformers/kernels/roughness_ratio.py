@@ -13,7 +13,7 @@ Formula:
 Outputs:
     {product}__roughness_ratio__w6_w12  — TV_norm_6 / TV_norm_12
 
-Preset (monthly.yaml):
+Preset entry:
     roughness_ratio:
       pairs:
         - [6, 12]

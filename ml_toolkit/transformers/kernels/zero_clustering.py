@@ -23,14 +23,14 @@ Outputs:
     {product}__zero_clustering__front_back_w12      — нули в начале vs. конце окна
     {product}__zero_clustering__zero_after_active   — флаг немедленного выхода из активности
 
-Preset (monthly.yaml):
+Preset entry:
     zero_clustering:
       windows: [12]
 
 Interpretation:
-    max_zero_run = 6 — клиент полгода подряд не совершал транзакций (длительная «спячка»).
+    max_zero_run = 6 — ряд полгода подряд оставался нулевым (длительная «спячка»).
     zero_run_count = 4 при max_zero_run = 2 — рваная активность: частые короткие перерывы.
-    recent_vs_long > 2 — доля нулей в последние 3 месяца вдвое выше среднегодовой (уходит).
+    recent_vs_long > 2 — доля нулей в последние 3 месяца вдвое выше среднегодовой.
     zero_after_active = 1 — прошлый месяц был активным, а этот — нулевой (немедленный уход).
 
 Example:

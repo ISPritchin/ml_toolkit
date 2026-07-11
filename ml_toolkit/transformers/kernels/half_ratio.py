@@ -15,7 +15,7 @@ Outputs:
     {product}__half_ratio__w6   — соотношение вторая/первая половина 6 мес окна
     {product}__half_ratio__w12  — соотношение вторая/первая половина 12 мес окна
 
-Preset (monthly.yaml):
+Preset entry:
     half_ratio:
       windows: [6, 12]
 

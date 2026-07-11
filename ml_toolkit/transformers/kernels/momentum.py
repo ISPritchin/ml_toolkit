@@ -16,7 +16,7 @@ Outputs:
     {product}__momentum__h3  — моментум 3/3 мес (квартальный)
     {product}__momentum__h6  — моментум 6/6 мес (полугодовой)
 
-Preset (monthly.yaml):
+Preset entry:
     momentum:
       half_windows: [3, 6]
 

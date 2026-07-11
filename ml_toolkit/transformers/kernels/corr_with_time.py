@@ -16,7 +16,7 @@ Outputs:
     {product}__corr_with_time__w6   — корреляция со временем за 6 мес
     {product}__corr_with_time__w12  — корреляция со временем за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     corr_with_time:
       windows: [6, 12]
 

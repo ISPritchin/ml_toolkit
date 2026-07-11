@@ -16,7 +16,7 @@ Outputs:
     {product}__streak__up   — длина текущей непрерывной серии роста
     {product}__streak__down — длина текущей непрерывной серии падения
 
-Preset (monthly.yaml):
+Preset entry:
     streak: {}
 
 Interpretation:

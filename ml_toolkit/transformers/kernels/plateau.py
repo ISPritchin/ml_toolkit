@@ -1,7 +1,7 @@
 """Стагнация: доля плоских месяцев, текущая и наибольшая плоская серия.
 
 Signal:
-    Выявляет клиентов в «плато»: где изменения слишком малы, чтобы считаться ростом
+    Выявляет ряды в «плато»: где изменения слишком малы, чтобы считаться ростом
     или падением. «Плоский» шаг: |v[t]-v[t-1]| < 5% от локального среднего.
     Отличается от low-CV: плато возможно при монотонном тренде (там CV → 0, но нет плато).
 
@@ -25,7 +25,7 @@ Outputs:
     {product}__plateau__current_flat_streak     — текущая серия плато (running)
     {product}__plateau__plateau_exit_recency    — месяцев с выхода из плато (running)
 
-Preset (monthly.yaml):
+Preset entry:
     plateau:
       windows: [6, 12]
 
@@ -33,7 +33,7 @@ Interpretation:
     flat_share_w12 = 1.0 — полное плато весь год (ряд F: все шаги < 5% среднего).
     flat_share_w12 = 0 — ни одного плоского шага: динамичный ряд.
     plateau_exit_recency = 2 — 2 месяца назад вышел из плато (возможен импульс роста).
-    near_mean_w12 = 1 + flat_share_w12 = 1 — абсолютно стабильный равномерный клиент.
+    near_mean_w12 = 1 + flat_share_w12 = 1 — абсолютно стабильный равномерный ряд.
 
 Example:
     Ряд (6 мес): [100, 101, 100, 101, 100, 101],  w=6
@@ -125,6 +125,12 @@ def _kernel(
                     longest = max(longest, run)
                 else:
                     run = 0
+            # near_mean не нуждается в предыдущей точке (в отличие от flat/longest выше) —
+            # отдельный проход по ПОЛНОМУ окну range(0, ws), иначе offset=0 никогда не
+            # засчитывается и near_mean_w физически не может достичь 1.0 (см. supported_transformers.md).
+            for offset in range(ws):
+                abs_idx = row_idx - ws + 1 + offset
+                vv = product_values[abs_idx]
                 if abs(vv - mean) < near_mean_threshold * (abs(mean) + EPS):
                     near_count += 1
             out_flat_share[j, row_idx] = flat_count / max(ws - 1, 1)

@@ -10,13 +10,14 @@ Formula:
     S_long  = sum(v[t-ws_long+1..t])
     recent_share = S_short / (|S_long| + eps)
 
-    При равенстве длин ratio равно долям пропорционально: равномерный ряд даёт short/long.
+    При равномерном (постоянном) ряде ratio равно доле длин окон: short/long
+    (см. Interpretation: r3_w12 = 3/12 = 0.25 для равномерного ряда).
 
 Outputs:
     {product}__recent_share__r3_w12  — сумма 3 мес / сумма 12 мес
     {product}__recent_share__r6_w24  — сумма 6 мес / сумма 24 мес
 
-Preset (monthly.yaml):
+Preset entry:
     recent_share:
       pairs:
         - [3, 12]

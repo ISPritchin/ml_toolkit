@@ -2,7 +2,7 @@
 
 Signal:
     Показывает, насколько текущий месяц «выше дна» за последние w месяцев. Значение > 1
-    означает, что клиент работает выше исторического минимума окна. Резкий рост trough_to_current
+    означает, что ряд находится выше исторического минимума окна. Резкий рост trough_to_current
     при одновременно положительном slope — подтверждение восстановления, а не случайный выброс.
 
 Formula:
@@ -17,13 +17,13 @@ Outputs:
     {product}__trough_to_current__w6   — v[t] / min_6 (кратность к дну за 6 мес)
     {product}__trough_to_current__w12  — v[t] / min_12 (кратность к дну за 12 мес)
 
-Preset (monthly.yaml):
+Preset entry:
     trough_to_current:
       windows: [6, 12]
 
 Interpretation:
     = 1.0 — текущий месяц сам является минимумом окна (новое дно).
-    > 2.0 — клиент удвоил оборот по сравнению с минимумом окна (сильное восстановление).
+    > 2.0 — значение удвоилось по сравнению с минимумом окна (сильное восстановление).
     >> 1 при distance_to_global_max близком к 0 — и к дну высоко, и к максимуму близко.
     trough_to_current_w6 >> w12 — быстрое восстановление именно в последние полгода.
 
@@ -60,7 +60,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}."""
+    """params: {"windows": [6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

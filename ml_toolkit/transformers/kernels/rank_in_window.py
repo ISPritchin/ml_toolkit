@@ -15,7 +15,7 @@ Outputs:
     {product}__rank_in_window__w12  — перцентильный ранг в окне 12
     {product}__rank_in_window__w24  — перцентильный ранг в окне 24
 
-Preset (monthly.yaml):
+Preset entry:
     rank_in_window:
       windows: [6, 12, 24]
 

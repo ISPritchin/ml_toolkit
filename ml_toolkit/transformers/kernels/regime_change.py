@@ -1,9 +1,9 @@
 """Структурный сдвиг уровня: оптимальный разрыв внутри окна, флаг смены режима.
 
 Signal:
-    Обнаруживает «смену режима»: резкий переход с одного уровня дохода на другой.
+    Обнаруживает «смену режима»: резкий переход с одного уровня значений на другой.
     Алгоритм перебирает все точки разбиения окна и ищет оптимальный разрыв.
-    Высокий magnitude при flag = 1 — явная структурная смена (контракт/расторжение).
+    Высокий magnitude при flag = 1 — явная структурная смена уровня ряда.
 
 Formula:
     Для каждого k in [1..ws-1]:
@@ -15,7 +15,9 @@ Formula:
     flag_w                  = 1 if magnitude > 2.0
     late_vs_early_w         = (mean_late_half - mean_early_half) / (std_w + eps)
     asymmetry_w             = mean_last3 / (|mean_first3| + eps)
-    current_regime_len      — running: мес. без сдвига флага (сбрасывается при flag = 1)
+    current_regime_len      — running: мес. без сдвига флага (сбрасывается при flag = 1);
+        считается только по ПЕРВОМУ окну из windows, а не по каждому window отдельно —
+        при windows: [6, 12] это flag_w6, а не какая-то комбинация с flag_w12
 
 Outputs:
     {product}__regime_change__magnitude_w12      — сила оптимального разрыва в σ
@@ -25,7 +27,7 @@ Outputs:
     {product}__regime_change__asymmetry_w12      — среднее последних 3 / первых 3
     {product}__regime_change__current_regime_len — длина текущего стабильного периода
 
-Preset (monthly.yaml):
+Preset entry:
     regime_change:
       windows: [12]
 

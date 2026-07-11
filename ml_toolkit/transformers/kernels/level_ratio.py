@@ -14,7 +14,7 @@ Outputs:
     {product}__level_ratio__w3_w12  — среднее 3 мес / среднее 12 мес
     {product}__level_ratio__w6_w24  — среднее 6 мес / среднее 24 мес
 
-Preset (monthly.yaml):
+Preset entry:
     level_ratio:
       pairs:
         - [3, 12]

@@ -1,9 +1,9 @@
-"""Стандартное отклонение помесячных приращений: «дёрганость» изменений оборота.
+"""Стандартное отклонение помесячных приращений: «дёрганость» изменений ряда.
 
 Signal:
-    Измеряет, насколько непостоянны сами изменения оборота (не уровень, а дифф уровня).
+    Измеряет, насколько непостоянны сами изменения значений ряда (не уровень, а дифф уровня).
     В отличие от rolling_std (волатильность уровня), этот признак чувствителен к частым
-    чередованиям роста и падения: два клиента с одинаковым std уровня могут иметь разное
+    чередованиям роста и падения: два ряда с одинаковым std уровня могут иметь разное
     std_diff, если у одного смены плавные, а у другого — резкие.
 
 Formula:
@@ -17,14 +17,14 @@ Outputs:
     {product}__volatility_of_diff__w6   — std приращений за 6 мес
     {product}__volatility_of_diff__w12  — std приращений за 12 мес
 
-Preset (monthly.yaml):
+Preset entry:
     volatility_of_diff:
       windows: [6, 12]
 
 Interpretation:
     = 0 — приращения абсолютно постоянны (рост/спад одним темпом).
     Высокое при низком rolling_std — чередование больших плюсов и минусов, компенсирующих друг друга.
-    Высокое при высоком rolling_std — и уровни, и скорость их изменения нестабильны (хаотичный клиент).
+    Высокое при высоком rolling_std — и уровни, и скорость их изменения нестабильны (хаотичный ряд).
     Снижение volatility_of_diff_w6 < w12 — поведение стабилизируется в последние полгода.
 
 Example:
@@ -71,7 +71,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6]}."""
+    """params: {"windows": [6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out = _kernel(values, position, windows)
     return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]

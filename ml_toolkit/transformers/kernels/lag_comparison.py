@@ -23,11 +23,11 @@ Outputs:
     {product}__lag_comparison__lag12_consistency  — σ YoY-роста (стабильность YoY)
     {product}__lag_comparison__yoy_accel          — ускорение YoY за полгода
 
-Preset (monthly.yaml):
+Preset entry:
     lag_comparison: {}
 
 Interpretation:
-    lag12_ratio = +1.0 — доход удвоился год к году.
+    lag12_ratio = +1.0 — значение удвоилось год к году.
     lag12_consistency = 0 — стабильный YoY-рост без колебаний.
     yoy_accel > 0 — YoY-рост ускоряется (всё лучше год к году).
     lag3_ratio > 0, lag12_ratio < 0 — краткосрочный отскок при годовом спаде.

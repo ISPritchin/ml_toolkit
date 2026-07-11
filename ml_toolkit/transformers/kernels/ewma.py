@@ -17,7 +17,7 @@ Outputs:
     {product}__ewma__a30      — EWMA с alpha=0.30
     {product}__ewma__diff_a30 — текущее минус EWMA (отклонение от нормы)
 
-Preset (monthly.yaml):
+Preset entry:
     ewma:
       alphas: [0.3]
 

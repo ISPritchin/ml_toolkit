@@ -27,7 +27,7 @@ Outputs:
     {product}__nonlinearity__frac_concave_w6   — доля шагов с торможением
     (аналогично для w12)
 
-Preset (monthly.yaml):
+Preset entry:
     nonlinearity:
       windows: [6, 12]
 

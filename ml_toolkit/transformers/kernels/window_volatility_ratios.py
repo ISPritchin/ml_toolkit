@@ -25,7 +25,7 @@ Outputs:
     {product}__window_volatility_ratios__short_excess     — избыточная краткосрочная волатильность
     {product}__window_volatility_ratios__regime_flag      — флаг краткосрочного хаоса
 
-Preset (monthly.yaml):
+Preset entry:
     window_volatility_ratios: {}
 
 Interpretation:
