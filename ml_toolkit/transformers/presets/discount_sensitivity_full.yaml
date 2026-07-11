@@ -1,0 +1,187 @@
+# "Полный" пресет для модели чувствительности к скидке / предсказания размера скидки.
+# Надстройка над discount_sensitivity_extended.yaml: добавляет практически все
+# оставшиеся тематические группы трансформеров (форма распределения, всплески,
+# концентрация, сезонность, нелинейность/память из tsfresh-catch22-набора) -
+# ~135 колонок на product-колонку (~1620 на 12 колонок).
+#
+# ВАЖНО про стоимость на десятках миллионов строк: это НЕ пресет для рутинного
+# прогона на полном объёме. Многие добавленные трансформеры используют сортировку
+# окна (kurtosis_proxy, quantile_persistence, value_clustering, gini,
+# transition_matrix, change_quantiles, burstiness) и стоят ~5x дороже на строку,
+# чем "плоские" трансформеры базового пресета - число колонок (135 vs 20, в 6.75
+# раза) ЗАНИЖАЕТ реальную разницу в compute-времени. Используйте этот пресет для
+# разового офлайн feature discovery (на сэмпле или на подмножестве колонок), а не
+# как основной пайплайн - по его результатам сузите набор до extended/base для
+# продакшна.
+#
+# Тот же принцип сегментации: НЕ сегментируем то, что само описывает паттерн
+# активности/разрывов (recency/tenure/inactive_streak/activity_rate/zero_share/
+# active_run_count/burstiness/zero_clustering) - там разрыв и есть сигнал.
+# Сегментируем всё, что описывает динамику ЗНАЧЕНИЯ.
+
+segments:
+  short_gap:
+    strategy: zero_gap
+    gap_threshold: 3
+
+# -----------------------------------------------------------------------------
+# Текущее состояние / активность
+# -----------------------------------------------------------------------------
+
+segment_gap:
+  segment: short_gap
+
+recency: {}
+
+tenure: {}
+
+inactive_streak: {}
+
+activity_rate: {}
+
+zero_share:
+  windows: [3, 12]
+
+active_run_count:
+  windows: [12]
+
+burstiness:
+  windows: [12]                 # архитектура вспышек активности (peak/gap/calm_share) - без сегментации,
+                                 # burst/gap паттерн и есть сигнал
+
+zero_clustering:
+  windows: [12]                 # структура нулевых серий (слиплись/рассеяны, давность) - без сегментации
+
+# -----------------------------------------------------------------------------
+# Уровень / тренд / волатильность значения
+# -----------------------------------------------------------------------------
+
+log_level:
+  windows: [3, 12]
+  segment: short_gap
+
+slope:
+  windows: [3, 12]
+  segment: short_gap
+
+accel:
+  segment: short_gap
+
+growth_since_start:
+  segment: short_gap
+
+distance_to_global_max:
+  segment: short_gap
+
+cumulative_share:
+  segment: short_gap
+
+rolling_cv:
+  windows: [3, 12]
+  segment: short_gap
+
+rolling_std:
+  windows: [3, 12]
+  segment: short_gap
+
+zscore:
+  windows: [12]
+  segment: short_gap            # аномальность текущей точки относительно своего же окна
+
+max_drawdown:
+  windows: [12]
+  segment: short_gap            # насколько глубоко просел уровень от локального пика
+
+# -----------------------------------------------------------------------------
+# Память / качество тренда / структурные сдвиги / фаза жизненного цикла
+# -----------------------------------------------------------------------------
+
+autocorr:
+  segment: short_gap
+
+trend_consistency:
+  windows: [12]
+  segment: short_gap
+
+regime_change:
+  windows: [12]
+  segment: short_gap
+
+lifecycle_phase:
+  windows: [12]
+  segment: short_gap
+
+extreme_events:
+  windows: [12]
+  segment: short_gap
+
+window_volatility_ratios:
+  segment: short_gap            # эволюция волатильности на нескольких масштабах сразу (3/6/12/24)
+
+cross_window_momentum:
+  segment: short_gap            # "зум-спектр" ускорения на нескольких горизонтах сразу
+
+# -----------------------------------------------------------------------------
+# Форма распределения / концентрация / асимметрия - новое относительно extended
+# -----------------------------------------------------------------------------
+
+gini:
+  windows: [12]
+  segment: short_gap            # неравномерность объёма внутри окна
+
+kurtosis_proxy:
+  windows: [12]
+  segment: short_gap            # тяжёлые хвосты vs равномерное распределение
+
+value_clustering:
+  windows: [12]
+  segment: short_gap            # доля объёма в топ-1/топ-3 месяцах, индекс Херфиндаля
+
+mean_deviation_shape:
+  windows: [12]
+  segment: short_gap            # чаще бывают крупные подъёмы или крупные провалы
+
+microstructure:
+  windows: [12]
+  segment: short_gap            # насколько типична текущая точка для этого ряда (predictability/surprise)
+
+quantile_persistence:
+  windows: [12]
+  segment: short_gap            # устойчиво ли значение держится в своей квантильной зоне
+
+growth_quality:
+  windows: [12]
+  segment: short_gap            # рост органичный (много мелких приростов) или разовый скачок
+
+total_variation:
+  windows: [12]
+  segment: short_gap            # суммарный путь ряда - отличается от std тем, что копит ВСЕ движения
+
+# -----------------------------------------------------------------------------
+# Сезонность / нелинейная память (tsfresh & catch22-инспирированные)
+# -----------------------------------------------------------------------------
+
+seasonal_autocorr:
+  segment: short_gap            # полугодовая/годовая периодичность
+
+c3:
+  lag_window_pairs:
+    - [1, 12]
+  segment: short_gap            # нелинейная, time-irreversible структура (см. supported_transformers.md)
+
+change_quantiles:
+  windows: [12]
+  segment: short_gap            # волатильность приращений внутри "типичного" коридора значений
+
+transition_matrix:
+  windows: [12]
+  segment: short_gap            # марковская "липкость" режима (низкий/средний/высокий уровень)
+
+dfa:
+  windows: [12]
+  segment: short_gap            # устойчивость/персистентность динамики, робастная к тренду
+
+agg_autocorrelation:
+  windows: [12]
+  max_lag: 6
+  segment: short_gap            # сводка автокорреляции по диапазону лагов, а не по фиксированным точкам
