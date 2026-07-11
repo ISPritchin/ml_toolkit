@@ -20,18 +20,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.regression._base import BasePreset
 from ml_toolkit.presets.regression._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -141,9 +145,11 @@ class RegressionByBinnedClassification(BasePreset):
 
     # ── обучение ─────────────────────────────────────────────────────────────
 
-    def _tune(self, tr_pool, va_pool, y_va):
-        import optuna
+    def _tune(
+        self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray,
+    ) -> tuple[CatBoostClassifier, dict]:
         from catboost import CatBoostClassifier
+        import optuna
 
         _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
@@ -185,10 +191,10 @@ class RegressionByBinnedClassification(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> RegressionByBinnedClassification:

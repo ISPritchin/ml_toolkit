@@ -51,7 +51,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, fit_linear_trend_slope, resolve_window_size, safe_ratio
 
 FEATURE = 'trend_consistency'
 
@@ -92,7 +92,8 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             mean /= ws
             # intercept = mean - slope * (ws-1)/2
             intercept = mean - slope * (ws - 1) / 2.0
-            ss_res = 0.0; ss_tot = 0.0
+            ss_res = 0.0
+            ss_tot = 0.0
             for i in range(ws):
                 pred = intercept + slope * i
                 res = product_values[start + i] - pred
@@ -104,7 +105,8 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             out_noise_signal[j, row_idx] = safe_ratio((ss_res / ws) ** 0.5, abs(slope) * ws)
 
             # clean_trend_streak: longest run of diffs consistent with slope
-            best_run = 0; cur_run = 0
+            best_run = 0
+            cur_run = 0
             for i in range(1, ws):
                 d = product_values[start + i] - product_values[start + i - 1]
                 d_sign = 1 if d > 0.0 else (-1 if d < 0.0 else 0)
@@ -135,15 +137,20 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}"""
+    """params: {"windows": [6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     dc, ns, cs, ssc, r2 = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(dc[j]);  suffixes.append(f'dir_consistency_w{w}')
-        arrays.append(ns[j]);  suffixes.append(f'noise_signal_w{w}')
-        arrays.append(cs[j]);  suffixes.append(f'clean_streak_w{w}')
-        arrays.append(ssc[j]); suffixes.append(f'sub_sign_consist_w{w}')
-        arrays.append(r2[j]);  suffixes.append(f'r_squared_w{w}')
+        arrays.append(dc[j])
+        suffixes.append(f'dir_consistency_w{w}')
+        arrays.append(ns[j])
+        suffixes.append(f'noise_signal_w{w}')
+        arrays.append(cs[j])
+        suffixes.append(f'clean_streak_w{w}')
+        arrays.append(ssc[j])
+        suffixes.append(f'sub_sign_consist_w{w}')
+        arrays.append(r2[j])
+        suffixes.append(f'r_squared_w{w}')
     return arrays, suffixes

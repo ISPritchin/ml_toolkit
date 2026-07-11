@@ -28,7 +28,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ml_toolkit.models._base import _to_pandas
+from ml_toolkit.models._base import XInput, YInput, _to_pandas
 from ml_toolkit.presets.regression._base import BasePreset
 
 _DEFAULT_PARAMS: dict[str, Any] = {
@@ -93,10 +93,10 @@ class JackknifePlusRegressor(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> JackknifePlusRegressor:
@@ -145,7 +145,7 @@ class JackknifePlusRegressor(BasePreset):
 
     # ── predict ───────────────────────────────────────────────────────────────
 
-    def predict_interval(self, X: Any, alpha: float = 0.1) -> tuple[np.ndarray, np.ndarray]:
+    def predict_interval(self, X: XInput, alpha: float = 0.1) -> tuple[np.ndarray, np.ndarray]:
         """Jackknife+ интервал уровня (1 - alpha) (Barber et al., 2021 — см. докстринг модуля)."""
         self._check_fitted()
         if not 0.0 < alpha < 1.0:

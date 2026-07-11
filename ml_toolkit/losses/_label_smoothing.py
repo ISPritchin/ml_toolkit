@@ -6,6 +6,8 @@ y → y*(1-eps) + eps/2. Снижает overconfidence, улучшает кал�
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -26,7 +28,10 @@ class LabelSmoothingLoss:
         self.eps = eps
 
     def calc_ders_range(
-        self, predictions, targets, weights
+        self,
+        predictions: Sequence[float],
+        targets: Sequence[float],
+        weights: Sequence[float] | None,
     ) -> list[tuple[float, float]]:
         eps_clip = 1e-7
         f = np.asarray(predictions, dtype=np.float64)
@@ -44,4 +49,4 @@ class LabelSmoothingLoss:
             der1 = der1 * w
             der2 = der2 * w
 
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))

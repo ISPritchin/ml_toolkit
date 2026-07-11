@@ -46,8 +46,9 @@ class TestLightGBMRegressorOptuna:
 
 class TestLightGBMRegressorBaseline:
     def test_predict_adds_baseline_back(self, regression_data):
-        """LightGBM residual learning: обучается на (y - baseline), predict() прибавляет
-        baseline обратно вручную (в отличие от CatBoost, где это делает Pool нативно).
+        """LightGBM residual learning: обучается на (y - baseline), predict() прибавляет baseline обратно вручную.
+
+        В отличие от CatBoost, где это делает Pool нативно.
         """
         rng = np.random.default_rng(5)
         X_train, y_train, X_valid, y_valid = regression_data
@@ -207,8 +208,9 @@ class TestLightGBMMulticlass:
         assert np.all((proba >= 0) & (proba <= 1))
 
     def test_explicit_params_infers_multiclass_without_objective(self, multiclass_data):
-        """LightGBM сам определяет multiclass objective по количеству классов в y,
-        если objective не задан явно — адаптер это не форсирует в explicit-params ветке.
+        """LightGBM сам определяет multiclass objective по количеству классов в y, если он не задан явно.
+
+        Адаптер это не форсирует в explicit-params ветке.
         """
         X_train, y_train, X_valid, y_valid = multiclass_data
         model = LightGBMClassifier(params=FAST_LGB)
@@ -319,8 +321,9 @@ class TestLightGBMOptunaTimeout:
 
 
 class TestLightGBMOptunaVerbose:
-    """См. TestCatBoostOptunaVerbose в test_catboost.py — capfd не используется намеренно
-    из-за гонки между асинхронным flush optuna-логов и readouterr(); caplog синхронен.
+    """См. TestCatBoostOptunaVerbose в test_catboost.py — capfd не используется намеренно.
+
+    Из-за гонки между асинхронным flush optuna-логов и readouterr(); caplog синхронен.
     """
 
     @pytest.mark.slow

@@ -1,4 +1,4 @@
-"""Смоук-тест fit/predict для BalancedSoftmaxClassifier
+"""Смоук-тест fit/predict для BalancedSoftmaxClassifier.
 
 (ml_toolkit/presets/classification/multiclass_imbalance/balanced_softmax.py).
 """

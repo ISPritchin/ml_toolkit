@@ -9,16 +9,21 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 import io
 from pathlib import Path
 import sys
 import textwrap
+from typing import TYPE_CHECKING
 
 import matplotlib
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # Добавляем корень проекта в sys.path, чтобы работал `from ml_toolkit.model_evaluation import ...`
 _ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +69,7 @@ yt_test,  yp_test  = _make_reg_data(1000, noise=0.45)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _fig_to_b64(fig) -> str:
+def _fig_to_b64(fig: plt.Figure) -> str:
     buf = io.BytesIO()
     fig.savefig(buf, format='png', bbox_inches='tight', dpi=130)
     buf.seek(0)
@@ -96,7 +101,7 @@ def _p(text: str) -> str:
     return f'<p>{text}</p>'
 
 
-def _table_html(df) -> str:
+def _table_html(df: pd.DataFrame) -> str:
     return '<div class="table-wrap">' + df.to_html(float_format='%.4f', classes='t') + '</div>'
 
 
@@ -398,7 +403,13 @@ ev_custom = ClassificationEvaluator(task='binary')
 ev_custom.add('valid', y_valid, p_valid)
 ev_custom.add_default_metrics()
 
-def profit_metric(y_true, y_proba, tp_reward=500, fp_cost=100, threshold=0.35):
+def profit_metric(
+    y_true: np.ndarray,
+    y_proba: np.ndarray,
+    tp_reward: float = 500,
+    fp_cost: float = 100,
+    threshold: float = 0.35,
+) -> float:
     pred = (np.asarray(y_proba) >= threshold).astype(int)
     tp = int(((pred == 1) & (np.asarray(y_true) == 1)).sum())
     fp = int(((pred == 1) & (np.asarray(y_true) == 0)).sum())
@@ -530,7 +541,7 @@ sections.append(
 
 # ── 13. Сравнение нескольких моделей ──────────────────────────────────────────
 
-def _make_ev(skill):
+def _make_ev(skill: float) -> ClassificationEvaluator:
     ev = ClassificationEvaluator(task='binary')
     y_v, p_v = _make_cls_data(1000, skill=skill)
     y_t, p_t = _make_cls_data(1000, skill=skill - 0.04)
@@ -552,7 +563,7 @@ evaluators = {
 
 cmp_df = compare_models(evaluators, split='valid')
 
-def _plot_to_b64_file(fn, **kwargs) -> str:
+def _plot_to_b64_file(fn: Callable[..., None], **kwargs) -> str:
     """Сохраняет график во временный файл и возвращает base64 PNG.
 
     plot_model_comparison / plot_model_delta используют _save_facet, который
@@ -566,7 +577,7 @@ def _plot_to_b64_file(fn, **kwargs) -> str:
         tmp = f.name
     try:
         fn(path=tmp, **kwargs)
-        with open(tmp, 'rb') as f:
+        with Path(tmp).open('rb') as f:
             return base64.b64encode(f.read()).decode()
     finally:
         os.unlink(tmp)

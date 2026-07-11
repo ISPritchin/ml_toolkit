@@ -14,7 +14,7 @@ class TestInfluenceBalancedLoss:
         loss = InfluenceBalancedLoss(n_pos=20, n_neg=80)
         f = np.array([2.0, -2.0])
         y = np.array([1.0, 0.0])
-        der1, der2 = zip(*loss.calc_ders_range(f, y, None))
+        der1, der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
         # y=1, p>0.5 already right direction but der1 should still point toward increasing f (correcting residual)
         assert der1[0] > 0  # p<1, correct answer is to push f up further toward y=1
         assert der1[1] < 0  # p>0 for y=0, push f down
@@ -32,11 +32,11 @@ class TestInfluenceBalancedLoss:
         assert abs(der1_high) < abs(der1_low)
 
     def test_rejects_invalid_counts(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='должны быть положительными'):
             InfluenceBalancedLoss(n_pos=0, n_neg=10)
 
     def test_der1_matches_full_derivative_including_weight_term(self):
-        """Регресс: ранняя версия трактовала ib_w(p) как константу (der1 =
+        """Регресс: ранняя версия трактовала ib_w(p) как константу (der1 =.
 
         ib_w*(y-p)), пропуская d(ib_w)/df — расхождение с истинным градиентом
         было устойчивым (~1e-3) и не исчезало при уменьшении шага, то есть не

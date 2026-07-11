@@ -19,18 +19,23 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +67,10 @@ _DEFAULT_CBT_PARAMS: dict[str, Any] = {
 
 
 def _lgb_constraints_list(monotone_constraints: dict[str, int], feats: list[str]) -> list[int]:
-    """dict {feature: ±1} -> список, выровненный по порядку feats (LightGBM не
-    принимает dict — только позиционный список, где отсутствующий признак = 0).
+    """Dict {feature: ±1} -> список, выровненный по порядку feats.
+
+    LightGBM не принимает dict — только позиционный список, где отсутствующий
+    признак = 0.
     """
     return [int(monotone_constraints.get(f, 0)) for f in feats]
 
@@ -127,7 +134,7 @@ class MonotonicConstrainedClassifier(BasePreset):
         base: str = 'lightgbm',
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         optuna_pruner: str | object | None = 'none',
@@ -158,7 +165,7 @@ class MonotonicConstrainedClassifier(BasePreset):
 
     # ── Optuna ────────────────────────────────────────────────────────────────
 
-    def _tune_cbt(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune_cbt(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -249,10 +256,10 @@ class MonotonicConstrainedClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> MonotonicConstrainedClassifier:

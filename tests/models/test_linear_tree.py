@@ -12,8 +12,8 @@ import pytest
 
 pytest.importorskip('lineartree')
 
-from ml_toolkit.models._linear_tree import LinearTreeClassifier, LinearTreeRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._linear_tree import LinearTreeClassifier, LinearTreeRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'max_depth': 3, 'min_samples_leaf': 10}
 

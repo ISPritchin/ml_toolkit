@@ -12,8 +12,8 @@ import pytest
 
 pytest.importorskip('pyearth')
 
-from ml_toolkit.models._mars import MARSClassifier, MARSRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._mars import MARSClassifier, MARSRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_REG_PARAMS = {'max_degree': 1, 'max_terms': 20}
 
@@ -49,8 +49,10 @@ class TestMARSClassifier:
         assert_valid_proba(model, X_valid)
 
     def test_non_c_logistic_kwargs_are_not_dropped(self, classification_data):
-        """Regression test: clf_p раньше фильтровался как k == 'C' — любой другой валидный
-        kwarg LogisticRegression (fit_intercept, class_weight) молча отбрасывался.
+        """Regression test: clf_p раньше фильтровался как k == 'C'.
+
+        Любой другой валидный kwarg LogisticRegression (fit_intercept, class_weight)
+        молча отбрасывался.
         """
         X_train, y_train, X_valid, y_valid = classification_data
         params = {**FAST_REG_PARAMS, 'C': 0.5, 'fit_intercept': False, 'class_weight': None}

@@ -1,5 +1,7 @@
-"""Общие утилиты для time-aware пресетов classification (WeightedBaggingByRecency,
-TimeAwareValidationClassifier) — перевод ts_key в целочисленные периоды.
+"""Общие утилиты для time-aware пресетов classification.
+
+WeightedBaggingByRecency, TimeAwareValidationClassifier — перевод ts_key в
+целочисленные периоды.
 """
 
 from __future__ import annotations

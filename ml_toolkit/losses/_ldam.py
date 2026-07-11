@@ -28,6 +28,8 @@ DRW не успеет включиться за этот запуск — ожи
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -84,7 +86,10 @@ class LDAMLoss:
         self.w_neg = eff_neg / mean_w
 
     def calc_ders_range(
-        self, predictions, targets, weights
+        self,
+        predictions: Sequence[float],
+        targets: Sequence[float],
+        weights: Sequence[float] | None,
     ) -> list[tuple[float, float]]:
         eps = 1e-7
         f = np.asarray(predictions, dtype=np.float64)
@@ -108,4 +113,4 @@ class LDAMLoss:
             der1 = der1 * w
             der2 = der2 * w
 
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))

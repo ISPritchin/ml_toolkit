@@ -41,14 +41,14 @@ def _base() -> CatBoostRegressor:
 # ── 1. Валидация конструктора ───────────────────────────────────────────────
 
 def test_constructor_rejects_invalid_score():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='score должен быть'):
         ConformalRegressionWrapper(_base(), score='bogus')
 
 
 def test_constructor_rejects_invalid_alpha():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='alpha должен быть'):
         ConformalRegressionWrapper(_base(), alpha=0.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='alpha должен быть'):
         ConformalRegressionWrapper(_base(), alpha=1.0)
 
 
@@ -108,7 +108,7 @@ def test_predict_interval_rejects_invalid_alpha(hetero_data):
     X_train, y_train, X_valid, y_valid = hetero_data
     model = ConformalRegressionWrapper(_base(), alpha=0.1)
     model.fit(X_train, y_train, X_valid, y_valid)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='alpha должен быть'):
         model.predict_interval(X_valid, alpha=1.5)
 
 

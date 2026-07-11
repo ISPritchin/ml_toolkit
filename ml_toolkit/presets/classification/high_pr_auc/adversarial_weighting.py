@@ -1,4 +1,4 @@
-"""AdversarialValidationWeighting: importance weighting train-примеров вместо
+"""AdversarialValidationWeighting: importance weighting train-примеров вместо.
 
 удаления признаков (см. DriftRobustClassifier/044 — тот выбрасывает дрейфующие
 КОЛОНКИ целиком; здесь колонки остаются, а перевзвешиваются СТРОКИ train).
@@ -25,19 +25,23 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -142,13 +146,13 @@ class AdversarialValidationWeighting(BasePreset):
         self.weights_: np.ndarray = np.array([])
         self.weight_stats_: dict[str, float] = {}
 
-    def _fit_adversarial(self, X: pd.DataFrame, y: np.ndarray, cat_features: list[str]) -> Any:
+    def _fit_adversarial(self, X: pd.DataFrame, y: np.ndarray, cat_features: list[str]) -> CatBoostClassifier:
         from catboost import CatBoostClassifier, Pool
         m = CatBoostClassifier(**{**_ADV_PARAMS, 'random_seed': self.random_seed})
         m.fit(Pool(X, y, cat_features=cat_features), verbose=False)
         return m
 
-    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -185,10 +189,10 @@ class AdversarialValidationWeighting(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> AdversarialValidationWeighting:

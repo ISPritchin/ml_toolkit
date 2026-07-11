@@ -1,4 +1,4 @@
-"""Тесты AsymmetricCostRegressor (ml_toolkit/presets/regression/asymmetric_cost.py)
+"""Тесты AsymmetricCostRegressor (ml_toolkit/presets/regression/asymmetric_cost.py).
 
 и корректности градиента AsymmetricMSELoss (ml_toolkit/presets/regression/_losses.py).
 """
@@ -13,7 +13,6 @@ from ml_toolkit.presets.regression._losses import AsymmetricMSELoss
 from ml_toolkit.presets.regression.asymmetric_cost import _asymmetric_cost
 from tests.presets.regression.conftest import BASE_PARAMS
 
-
 # ── 1. Численная проверка градиента ─────────────────────────────────────────
 
 def test_gradient_matches_numeric_finite_difference():
@@ -24,7 +23,7 @@ def test_gradient_matches_numeric_finite_difference():
     over_cost, under_cost = 1.0, 3.0
 
     loss = AsymmetricMSELoss(over_cost=over_cost, under_cost=under_cost)
-    der1, der2 = zip(*loss.calc_ders_range(f, y, None))
+    der1, der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
     der1, der2 = np.array(der1), np.array(der2)
 
     def L(fv):
@@ -43,25 +42,25 @@ def test_asymmetry_scales_gradient_correctly():
     y = np.array([0.0, 0.0])
     f = np.array([1.0, -1.0])  # первая точка — over-forecast, вторая — under-forecast
     loss = AsymmetricMSELoss(over_cost=1.0, under_cost=4.0)
-    der1, _ = zip(*loss.calc_ders_range(f, y, None))
+    der1, _ = zip(*loss.calc_ders_range(f, y, None), strict=False)
     # der1 = -2*cost*r; |der1| над over-точкой должен быть меньше, чем над under
     assert abs(der1[1]) > abs(der1[0])
 
 
 def test_constructor_rejects_non_positive_costs():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='должны быть положительными'):
         AsymmetricMSELoss(over_cost=0.0, under_cost=1.0)
 
 
 # ── 2. Валидация конструктора пресета ───────────────────────────────────────
 
 def test_preset_rejects_invalid_loss_name():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='loss должен быть'):
         AsymmetricCostRegressor(loss='bogus')
 
 
 def test_preset_rejects_non_positive_costs():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='должны быть положительными'):
         AsymmetricCostRegressor(over_cost=-1.0)
 
 
@@ -83,7 +82,7 @@ def test_fit_predict_both_modes(regression_data, loss):
 
 @pytest.mark.parametrize('loss', ['pinball', 'asym_mse'])
 def test_high_under_cost_biases_predictions_upward(regression_data, loss):
-    """under_cost >> over_cost: недопрогноз намного дороже — модель должна
+    """under_cost >> over_cost: недопрогноз намного дороже — модель должна.
 
     систематически прогнозировать выше символичной "нейтральной" MAE-модели,
     чтобы реже промахиваться в дорогую сторону.
@@ -91,7 +90,8 @@ def test_high_under_cost_biases_predictions_upward(regression_data, loss):
     X_train, y_train, X_valid, y_valid = regression_data
     params = {'iterations': 300, 'verbose': 0, 'random_seed': 42}
 
-    from catboost import CatBoostRegressor as _RawCB, Pool
+    from catboost import CatBoostRegressor as _RawCB
+    from catboost import Pool
     neutral = _RawCB(loss_function='MAE', **params)
     neutral.fit(Pool(X_train, y_train), eval_set=Pool(X_valid, y_valid), verbose=False)
     neutral_pred = neutral.predict(X_valid)

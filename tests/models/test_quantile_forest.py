@@ -10,8 +10,8 @@ import pytest
 
 pytest.importorskip('quantile_forest')
 
-from ml_toolkit.models._quantile_forest import QuantileForestClassifier, QuantileForestRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._quantile_forest import QuantileForestClassifier, QuantileForestRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_REG_PARAMS = {'n_estimators': 30, 'max_depth': 4, 'random_state': 42, 'n_jobs': -1}
 FAST_CLS_PARAMS = {'C': 1.0}
@@ -32,8 +32,9 @@ class TestQuantileForestRegressor:
         assert_valid_predictions(model, X_valid)
 
     def test_pipeline_predict_does_not_crash(self, regression_data):
-        """Regression test: _QuantileMedianWrapper без BaseEstimator падал в Pipeline.predict()
-        на sklearn>=1.6 (__sklearn_tags__ отсутствовал).
+        """Regression test: _QuantileMedianWrapper без BaseEstimator падал в Pipeline.predict().
+
+        На sklearn>=1.6 (__sklearn_tags__ отсутствовал).
         """
         X_train, y_train, X_valid, y_valid = regression_data
         model = QuantileForestRegressor(params=FAST_REG_PARAMS)
@@ -67,8 +68,9 @@ class TestQuantileForestClassifier:
         assert_valid_proba(model, X_valid)
 
     def test_explicit_params_do_not_crash_on_max_iter_class_weight(self, classification_data):
-        """Regression test: LogisticRegression(**self.params, max_iter=500, class_weight='balanced')
-        падал с TypeError, если self.params уже содержал max_iter/class_weight.
+        """Regression test: падал с TypeError, если self.params уже содержал max_iter/class_weight.
+
+        LogisticRegression(**self.params, max_iter=500, class_weight='balanced').
         """
         X_train, y_train, X_valid, y_valid = classification_data
         params = {'C': 2.0, 'max_iter': 200, 'class_weight': None}

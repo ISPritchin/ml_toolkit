@@ -12,12 +12,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import optuna
 import pandas as pd
+from sklearn.base import BaseEstimator
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -33,6 +35,9 @@ from ml_toolkit.models._utils import (
     set_optuna_verbosity,
 )
 
+if TYPE_CHECKING:
+    from imodels import FIGSClassifier, FIGSRegressor
+
 logger = logging.getLogger(__name__)
 
 _CLS_FIRST_NAMES = frozenset({'skope_rules', 'brl', 'ripper'})
@@ -47,7 +52,7 @@ def _num_features(selected_features: list[str], cat_features: list[str]) -> list
     return [f for f in selected_features if f not in cat_set]
 
 
-def _safe_proba(model: Any, X: np.ndarray) -> np.ndarray:
+def _safe_proba(model: BaseEstimator, X: np.ndarray) -> np.ndarray:
     """Извлекает вероятности класса 1, обрабатывая разные API rule-based моделей."""
     if hasattr(model, 'predict_proba'):
         proba = model.predict_proba(X)
@@ -57,12 +62,12 @@ def _safe_proba(model: Any, X: np.ndarray) -> np.ndarray:
     return np.clip(model.predict(X).astype(float), 0.0, 1.0)
 
 
-def _make_figs_reg(params: dict) -> Any:
+def _make_figs_reg(params: dict) -> FIGSRegressor:
     from imodels import FIGSRegressor
     return FIGSRegressor(**params)
 
 
-def _make_figs_cls(params: dict) -> Any:
+def _make_figs_cls(params: dict) -> FIGSClassifier:
     from imodels import FIGSClassifier
     return FIGSClassifier(**params)
 
@@ -214,14 +219,24 @@ class IModelsClassifier(BaseModel):
         return self
 
     def _to_model_space(self, X: np.ndarray) -> np.ndarray:
-        """BRL требует one-hot дискретизированные бины, а не непрерывные self._prep-признаки,
-        на которых работают figs/skope_rules/ripper как есть.
+        """BRL требует one-hot дискретизированные бины, а не непрерывные self._prep-признаки.
+
+        На них работают figs/skope_rules/ripper как есть.
         """
         if self._brl_discretizer_ is not None:
             return self._brl_discretizer_.transform(X)
         return X
 
-    def _fit_figs(self, X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr):
+    def _fit_figs(
+        self,
+        X_tr: np.ndarray,
+        y_tr: np.ndarray,
+        X_va: np.ndarray | None,
+        y_va: np.ndarray | None,
+        metric_fn: Callable,
+        direction: str,
+        sw_tr: np.ndarray,
+    ):
         if self.params is not None:
             m = _make_figs_cls(self.params)
             m.fit(X_tr, y_tr, sample_weight=sw_tr)
@@ -229,7 +244,7 @@ class IModelsClassifier(BaseModel):
         if X_va is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')
 
-        def objective(trial):
+        def objective(trial: optuna.Trial) -> float:
             m = _make_figs_cls({'max_rules': trial.suggest_int('max_rules', 5, 30),
                                  'max_trees': trial.suggest_int('max_trees', 5, 30)})
             m.fit(X_tr, y_tr, sample_weight=sw_tr)
@@ -242,7 +257,16 @@ class IModelsClassifier(BaseModel):
         m.fit(X_tr, y_tr, sample_weight=sw_tr)
         return m, bp
 
-    def _fit_skope(self, X_tr, y_tr, X_va, y_va, metric_fn, direction, sw_tr):
+    def _fit_skope(
+        self,
+        X_tr: np.ndarray,
+        y_tr: np.ndarray,
+        X_va: np.ndarray | None,
+        y_va: np.ndarray | None,
+        metric_fn: Callable,
+        direction: str,
+        sw_tr: np.ndarray,
+    ):
         from imodels import SkopeRulesClassifier
         if self.params is not None:
             m = SkopeRulesClassifier(**self.params)
@@ -251,7 +275,7 @@ class IModelsClassifier(BaseModel):
         if X_va is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')
 
-        def objective(trial):
+        def objective(trial: optuna.Trial) -> float:
             p = {'n_estimators': trial.suggest_int('n_estimators', 5, 50),
                  'max_depth': trial.suggest_int('max_depth', 2, 5), 'random_state': 42}
             m = SkopeRulesClassifier(**p)
@@ -265,7 +289,15 @@ class IModelsClassifier(BaseModel):
         m.fit(X_tr, y_tr, feature_names=self._num_feats_, sample_weight=sw_tr)
         return m, bp
 
-    def _fit_brl(self, X_tr, y_tr, X_va, y_va, metric_fn, direction):
+    def _fit_brl(
+        self,
+        X_tr: np.ndarray,
+        y_tr: np.ndarray,
+        X_va: np.ndarray | None,
+        y_va: np.ndarray | None,
+        metric_fn: Callable,
+        direction: str,
+    ):
         from imodels import BayesianRuleListClassifier
         from sklearn.preprocessing import KBinsDiscretizer
 
@@ -286,7 +318,7 @@ class IModelsClassifier(BaseModel):
         if X_va_d is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')
 
-        def objective(trial):
+        def objective(trial: optuna.Trial) -> float:
             p = {'listlengthprior': trial.suggest_int('listlengthprior', 3, 10),
                  'listwidthprior': trial.suggest_int('listwidthprior', 1, 4)}
             m = BayesianRuleListClassifier(**p)
@@ -300,7 +332,15 @@ class IModelsClassifier(BaseModel):
         m.fit(X_tr_d, y_tr, feature_names=feat_names)
         return m, bp
 
-    def _fit_ripper(self, X_tr, y_tr, X_va, y_va, metric_fn, direction):
+    def _fit_ripper(
+        self,
+        X_tr: np.ndarray,
+        y_tr: np.ndarray,
+        X_va: np.ndarray | None,
+        y_va: np.ndarray | None,
+        metric_fn: Callable,
+        direction: str,
+    ):
         try:
             from imodels import RIPPERClassifier
         except ImportError as exc:
@@ -322,7 +362,7 @@ class IModelsClassifier(BaseModel):
         if X_va is None:
             raise ValueError('X_valid обязателен при params=None (режим Optuna)')
 
-        def objective(trial):
+        def objective(trial: optuna.Trial) -> float:
             p = {'k': trial.suggest_int('k', 1, 5)}
             m = RIPPERClassifier(**p)
             m.fit(X_tr, y_tr, feature_names=self._num_feats_)

@@ -48,7 +48,7 @@ Example:
 
 import numpy as np
 
-from .._segmentation import compute_segment_position
+from ml_toolkit.transformers._segmentation import compute_segment_position
 
 FEATURE = 'segment_gap'
 

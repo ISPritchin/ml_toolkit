@@ -17,8 +17,9 @@ class TestLinearRegressorTypes:
         assert_valid_predictions(model, X_valid)
 
     def test_explicit_params_beyond_tuned_keys_are_honored(self, regression_data):
-        """Регрессия бага: _make_regressor читал только alpha/l1_ratio/epsilon/power через
-        params.get(...) — любой другой валидный sklearn-параметр (fit_intercept, max_iter)
+        """Регрессия бага: _make_regressor читал только alpha/l1_ratio/epsilon/power через params.get(...).
+
+        Любой другой валидный sklearn-параметр (fit_intercept, max_iter)
         молча отбрасывался вместо применения.
         """
         X_train, y_train, X_valid, y_valid = regression_data
@@ -28,8 +29,9 @@ class TestLinearRegressorTypes:
         assert model.best_params_['fit_intercept'] is False
 
     def test_quantile_param_was_previously_hardcoded_to_median(self, regression_data):
-        """QuantileRegressor: quantile был всегда захардкожен в 0.5 в конструкторе адаптера,
-        независимо от того, что передано в params — единственный параметр, ради которого
+        """QuantileRegressor: quantile был всегда захардкожен в 0.5 в конструкторе адаптера.
+
+        Независимо от того, что передано в params — единственный параметр, ради которого
         вообще существует QuantileRegressor, был недоступен для настройки.
         """
         X_train, y_train, X_valid, y_valid = regression_data
@@ -106,8 +108,9 @@ class TestLinearRegressorTypes:
         assert_valid_predictions(model, X_valid)
 
     def test_no_hardcoded_baseline_col_default(self, regression_data):
-        """model_settings без 'baseline_col' не должен подмешивать никакой столбец
-        по умолчанию — ml_toolkit не хардкодит имена колонок бизнес-задач.
+        """model_settings без 'baseline_col' не должен подмешивать никакой столбец по умолчанию.
+
+        ml_toolkit не хардкодит имена колонок бизнес-задач.
         """
         X_train, y_train, X_valid, y_valid = regression_data
         model = LinearRegressor(params={}, model_settings={'name': 'ridge'})
@@ -130,8 +133,9 @@ class TestLinearClassifier:
         assert model.calibrator_ is not None
 
     def test_explicit_class_weight_does_not_raise(self, classification_data):
-        """Регрессия бага: LogisticRegression(**self.params, class_weight='balanced')
-        падал с TypeError('multiple values for keyword argument'), если params уже
+        """Регрессия бага: падал с TypeError('multiple values for keyword argument').
+
+        LogisticRegression(**self.params, class_weight='balanced') — падал, если params уже
         содержал 'class_weight' — естественный сценарий (например, params скопирован
         из best_params_ предыдущего запуска).
         """

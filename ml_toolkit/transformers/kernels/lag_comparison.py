@@ -45,7 +45,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, safe_ratio
 
 FEATURE = 'lag_comparison'
 
@@ -77,7 +77,9 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
         v = product_values[row_idx]
 
         # при нулевой базе (v[t-k] ~ 0) рост не определён -> 0, а не v/eps
-        r3 = 0.0; r9 = 0.0; r12 = 0.0
+        r3 = 0.0
+        r9 = 0.0
+        r12 = 0.0
         if pos >= 3:
             v3 = product_values[row_idx - 3]
             if abs(v3) > EPS:
@@ -144,7 +146,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {} (no params needed)"""
+    """params: {} (no params needed)."""
     r3, r9, r12, t3, c12, accel = _kernel(values, position)
     return (
         [r3, r9, r12, t3, c12, accel],

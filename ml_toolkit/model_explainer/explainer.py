@@ -28,7 +28,6 @@ from collections.abc import Callable
 import io
 import logging
 from pathlib import Path
-from typing import Any
 import warnings
 
 import matplotlib.pyplot as plt
@@ -177,7 +176,7 @@ def _compute_linear_importance(model: BaseModel, feature_names: list[str]) -> np
     ])
 
 
-def _model_for_intrinsic(model: BaseModel, model_name: str) -> Any:
+def _model_for_intrinsic(model: BaseModel, model_name: str) -> object:
     """Возвращает аргумент `model` для plot_interpretable_extra в нужном формате."""
     m = model
     if model_name == 'decision_tree':
@@ -286,7 +285,7 @@ class ModelExplainer:
         feats = self.feature_names_
         name = self.model_name_
 
-        from ml_toolkit.model_explainer.feature_importance import (  # noqa: PLC0415
+        from ml_toolkit.model_explainer.feature_importance import (
             _permutation_importance,
             _tree_importance,
         )
@@ -476,7 +475,7 @@ class ModelExplainer:
             matplotlib Figure.
 
         """
-        from ml_toolkit.model_explainer.feature_importance import (  # noqa: PLC0415
+        from ml_toolkit.model_explainer.feature_importance import (
             _draw_bar,
             _try_shap_plot,
         )
@@ -674,7 +673,7 @@ class ModelExplainer:
 
         X_ref = self.X_valid.copy()
 
-        for feat, ax in zip(features, axes_flat[:n]):
+        for feat, ax in zip(features, axes_flat[:n], strict=False):
             lo = float(X_ref[feat].quantile(0.02))
             hi = float(X_ref[feat].quantile(0.98))
             grid = np.linspace(lo, hi, grid_points)

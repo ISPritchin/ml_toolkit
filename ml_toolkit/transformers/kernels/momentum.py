@@ -39,7 +39,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, safe_ratio
 
 FEATURE = 'momentum'
 
@@ -72,8 +72,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """Args:
-    params: {"half_windows": [3, 6]}
+    """params: {"half_windows": [3, 6]}.
 
     """
     half_windows = np.array(params['half_windows'], dtype=np.int64)

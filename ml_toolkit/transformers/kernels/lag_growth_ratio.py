@@ -36,7 +36,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, safe_ratio
 
 FEATURE = 'lag_growth_ratio'
 
@@ -60,7 +60,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, lags
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"lags": [6, 12]}"""
+    """params: {"lags": [6, 12]}."""
     lags = np.array(params['lags'], dtype=np.int64)
     out = _kernel(values, position, lags)
     return [out[j] for j in range(len(lags))], [f'lag{l}' for l in params['lags']]

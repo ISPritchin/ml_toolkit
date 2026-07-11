@@ -49,7 +49,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import pearson_from_sums, safe_ratio, windowed_lag_pearson
+from ml_toolkit.transformers._windowing import pearson_from_sums, safe_ratio, windowed_lag_pearson
 
 FEATURE = 'autocorr'
 
@@ -78,13 +78,28 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
         v = product_values[row_idx]
         if pos >= 1:
             x1 = product_values[row_idx - 1]
-            n1 += 1.0; sx1 += x1; sy1 += v; sxy1 += x1*v; sx21 += x1*x1; sy21 += v*v
+            n1 += 1.0
+            sx1 += x1
+            sy1 += v
+            sxy1 += x1*v
+            sx21 += x1*x1
+            sy21 += v*v
         if pos >= 2:
             x2 = product_values[row_idx - 2]
-            n2 += 1.0; sx2 += x2; sy2 += v; sxy2 += x2*v; sx22 += x2*x2; sy22 += v*v
+            n2 += 1.0
+            sx2 += x2
+            sy2 += v
+            sxy2 += x2*v
+            sx22 += x2*x2
+            sy22 += v*v
         if pos >= 3:
             x3 = product_values[row_idx - 3]
-            n3 += 1.0; sx3 += x3; sy3 += v; sxy3 += x3*v; sx23 += x3*x3; sy23 += v*v
+            n3 += 1.0
+            sx3 += x3
+            sy3 += v
+            sxy3 += x3*v
+            sx23 += x3*x3
+            sy23 += v*v
 
         r1 = pearson_from_sums(n1, sx1, sy1, sxy1, sx21, sy21)
         r2 = pearson_from_sums(n2, sx2, sy2, sxy2, sx22, sy22)

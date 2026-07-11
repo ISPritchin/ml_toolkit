@@ -48,7 +48,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, compute_window_mean, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, compute_window_mean, resolve_window_size
 
 FEATURE = 'plateau'
 
@@ -135,7 +135,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12], "flat_threshold": 0.05, "near_mean_threshold": 0.10 (опционально)}"""
+    """params: {"windows": [6, 12], "flat_threshold": 0.05, "near_mean_threshold": 0.10 (опционально)}."""
     windows = np.array(params['windows'], dtype=np.int64)
     flat_threshold = float(params.get('flat_threshold', _FLAT_THRESHOLD))
     near_mean_threshold = float(params.get('near_mean_threshold', 0.10))
@@ -145,9 +145,14 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(flat_share[j]); suffixes.append(f'flat_share_w{w}')
-        arrays.append(longest_flat[j]); suffixes.append(f'longest_flat_w{w}')
-        arrays.append(near_mean[j]); suffixes.append(f'near_mean_w{w}')
-    arrays.append(cur_streak); suffixes.append('current_flat_streak')
-    arrays.append(exit_rec);   suffixes.append('plateau_exit_recency')
+        arrays.append(flat_share[j])
+        suffixes.append(f'flat_share_w{w}')
+        arrays.append(longest_flat[j])
+        suffixes.append(f'longest_flat_w{w}')
+        arrays.append(near_mean[j])
+        suffixes.append(f'near_mean_w{w}')
+    arrays.append(cur_streak)
+    suffixes.append('current_flat_streak')
+    arrays.append(exit_rec)
+    suffixes.append('plateau_exit_recency')
     return arrays, suffixes

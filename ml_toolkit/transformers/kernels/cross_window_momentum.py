@@ -46,7 +46,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'cross_window_momentum'
 
@@ -93,7 +93,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {} (no params)"""
+    """params: {} (no params)."""
     r13, r36, r624, aa, ad, hs = _kernel(values, position)
     return (
         [r13, r36, r624, aa, ad, hs],

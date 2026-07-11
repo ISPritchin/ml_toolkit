@@ -21,7 +21,7 @@ from sklearn.ensemble import RandomForestRegressor as _SKRFRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 
-from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._base import BaseModel, XInput, YInput
 from ml_toolkit.models._utils import (
     CLS_METRICS,
     REG_METRICS,
@@ -149,7 +149,8 @@ class ExtraTreesClassifier(BaseModel):
 
 def _fit_forest_reg(
     self: BaseModel, EstClass: type, name: str,
-    X_train, y_train, X_valid, y_valid, selected_features, cat_features,
+    X_train: XInput, y_train: YInput, X_valid: XInput | None, y_valid: YInput | None,
+    selected_features: list[str] | None, cat_features: list[str] | None,
 ) -> BaseModel:
     X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
     self.selected_features_ = self._resolve_features(X_train, selected_features)
@@ -200,7 +201,8 @@ def _fit_forest_reg(
 
 def _fit_forest_cls(
     self: BaseModel, EstClass: type, name: str,
-    X_train, y_train, X_valid, y_valid, selected_features, cat_features,
+    X_train: XInput, y_train: YInput, X_valid: XInput | None, y_valid: YInput | None,
+    selected_features: list[str] | None, cat_features: list[str] | None,
 ) -> BaseModel:
     X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
     self.selected_features_ = self._resolve_features(X_train, selected_features)

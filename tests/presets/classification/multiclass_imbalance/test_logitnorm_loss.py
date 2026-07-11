@@ -1,4 +1,4 @@
-"""Смоук-тест fit/predict для LogitNormLossClassifier
+"""Смоук-тест fit/predict для LogitNormLossClassifier.
 
 (ml_toolkit/presets/classification/multiclass_imbalance/logitnorm_loss.py).
 """

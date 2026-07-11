@@ -1,4 +1,4 @@
-"""Смоук-тест fit/predict для EqualizationLossClassifier
+"""Смоук-тест fit/predict для EqualizationLossClassifier.
 
 (ml_toolkit/presets/classification/multiclass_imbalance/equalization_loss.py).
 """

@@ -21,5 +21,5 @@ class TestBaggingPUClassifier:
         assert len(model.estimators_) == 10
 
     def test_rejects_too_few_estimators(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='n_estimators должен быть'):
             BaggingPUClassifier(n_estimators=1)

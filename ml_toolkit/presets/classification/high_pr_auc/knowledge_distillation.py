@@ -26,18 +26,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +133,7 @@ class KnowledgeDistillationPreset(BasePreset):
         student_params: dict[str, Any] | None = None,
         temperature: float = 2.0,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         optuna_pruner: str | object | None = 'none',
@@ -203,10 +207,10 @@ class KnowledgeDistillationPreset(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> KnowledgeDistillationPreset:

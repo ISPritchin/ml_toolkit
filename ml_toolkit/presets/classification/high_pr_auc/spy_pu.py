@@ -24,13 +24,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +133,7 @@ class SpyPUClassifier(BasePreset):
 
     def _fit_one(
         self, X: pd.DataFrame, y: np.ndarray, seed: int, params: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier, Pool
 
         p = {**(params or self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
@@ -137,7 +141,7 @@ class SpyPUClassifier(BasePreset):
         m.fit(Pool(X, y, cat_features=self.cat_features_), verbose=False)
         return m
 
-    def _predict(self, model: Any, X: pd.DataFrame) -> np.ndarray:
+    def _predict(self, model: CatBoostClassifier, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
         return model.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
 
@@ -198,10 +202,10 @@ class SpyPUClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> SpyPUClassifier:
@@ -218,7 +222,7 @@ class SpyPUClassifier(BasePreset):
         u_idx = np.where(y_tr == 0)[0]
 
         rng = np.random.default_rng(self.random_seed)
-        n_spies = max(1, int(round(self.spy_frac * len(pos_idx))))
+        n_spies = max(1, round(self.spy_frac * len(pos_idx)))
         spy_idx = rng.choice(pos_idx, size=n_spies, replace=False)
         self.n_spies_ = n_spies
 

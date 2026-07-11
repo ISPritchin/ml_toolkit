@@ -42,7 +42,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import fit_linear_trend_slope, resolve_window_size
+from ml_toolkit.transformers._windowing import fit_linear_trend_slope, resolve_window_size
 
 FEATURE = 'slope'
 
@@ -61,8 +61,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """Args:
-        params: {"windows": [6, 12, 24]}
+    """params: {"windows": [6, 12, 24]}.
 
     Returns:
         (arrays, suffixes) — по одному массиву и суффиксу на каждое окно.

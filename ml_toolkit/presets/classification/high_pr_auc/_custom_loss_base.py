@@ -18,19 +18,34 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     make_pruner,
 )
 
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
+    import optuna
+    from optuna.pruners import BasePruner
+
 logger = logging.getLogger(__name__)
+
+
+class _CalcDersRangeLoss(Protocol):
+    """Duck-типизированный интерфейс лоссов ml_toolkit.losses (без общего базового класса)."""
+
+    def calc_ders_range(
+        self, predictions: list[float], targets: list[float], weights: list[float] | None,
+    ) -> list[tuple[float, float]]: ...
+
 
 _DEFAULT_ARCH_PARAMS: dict[str, Any] = {
     'iterations': 800,
@@ -81,9 +96,9 @@ class _CustomLossClassifierBase(BasePreset):
         random_seed: int,
         cat_features: list[str] | None,
         selected_features: list[str] | None,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
     ) -> None:
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.loss_params = dict(loss_params)
@@ -96,8 +111,10 @@ class _CustomLossClassifierBase(BasePreset):
         self.cat_features = cat_features or []
         self.selected_features = selected_features or []
 
-    def _make_loss(self, loss_params: dict[str, float], *, tr_pool: Any, arch_params: dict) -> Any:
-        """Строит объект лосса. tr_pool/arch_params — для лоссов, которым нужна
+    def _make_loss(
+        self, loss_params: dict[str, float], *, tr_pool: Pool, arch_params: dict,
+    ) -> _CalcDersRangeLoss:
+        """Строит объект лосса. tr_pool/arch_params — для лоссов, которым нужна.
 
         статистика датасета (n_pos/n_neg) или число итераций модели (LDAMLoss);
         большинству лоссов (Focal/Tversky/Poly/Asymmetric) они не нужны, и
@@ -107,12 +124,12 @@ class _CustomLossClassifierBase(BasePreset):
 
     def _fit_model(
         self,
-        tr_pool: Any,
-        va_pool: Any,
+        tr_pool: Pool,
+        va_pool: Pool,
         arch_params: dict,
         loss_params: dict[str, float],
         callbacks: list | None = None,
-    ) -> Any:
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier
 
         model = CatBoostClassifier(
@@ -123,7 +140,7 @@ class _CustomLossClassifierBase(BasePreset):
         model.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=callbacks)
         return model
 
-    def _tune(self, tr_pool: Any, va_pool: Any) -> tuple[Any, dict]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool) -> tuple[CatBoostClassifier, dict]:
         import optuna
 
         _optuna_prev_verbosity = optuna.logging.get_verbosity()
@@ -145,7 +162,7 @@ class _CustomLossClassifierBase(BasePreset):
                 for k in loss_keys
             }
 
-            def arch_val(key: str, suggest: Callable[[], Any]) -> Any:
+            def arch_val(key: str, suggest: Callable[[], int | float]) -> int | float:
                 return custom[key] if key in custom else suggest()
 
             arch_p = {
@@ -216,10 +233,10 @@ class _CustomLossClassifierBase(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> _CustomLossClassifierBase:

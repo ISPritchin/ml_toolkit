@@ -20,6 +20,8 @@ GD оценивается гистограммой из `bins` равных ин
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -46,7 +48,10 @@ class GHMLoss:
         self._acc_counts: np.ndarray | None = None
 
     def calc_ders_range(
-        self, predictions, targets, weights
+        self,
+        predictions: Sequence[float],
+        targets: Sequence[float],
+        weights: Sequence[float] | None,
     ) -> list[tuple[float, float]]:
         eps = 1e-7
         f = np.asarray(predictions, dtype=np.float64)
@@ -81,4 +86,4 @@ class GHMLoss:
         der1 = w * beta * (y - p)
         der2 = -(w * beta * p * (1.0 - p))
 
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))

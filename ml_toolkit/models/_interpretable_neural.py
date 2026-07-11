@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import optuna
@@ -31,6 +31,10 @@ from ml_toolkit.models._utils import (
     resolve_timeout,
     set_optuna_verbosity,
 )
+
+if TYPE_CHECKING:
+    import torch
+    from torch import nn
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,7 @@ def _preprocess(
 
 # ── Кастомные PyTorch реализации ─────────────────────────────────────────────
 
-def _build_additive_model(n_features: int, hidden_dim: int, n_layers: int, n_interactions: int = 0) -> Any:
+def _build_additive_model(n_features: int, hidden_dim: int, n_layers: int, n_interactions: int = 0) -> nn.Module:
     """Строит аддитивную модель: feature networks + опциональные interaction networks.
 
     При n_interactions=0 эквивалентна NAM (только main effects).
@@ -85,9 +89,9 @@ def _build_additive_model(n_features: int, hidden_dim: int, n_layers: int, n_int
             self.pair_nets = nn.ModuleList([_make_net(2) for _ in pairs])
             self.bias = nn.Parameter(torch.zeros(1))
 
-        def forward(self, x: Any) -> Any:
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
             outs = [net(x[:, i:i + 1]) for i, net in enumerate(self.feature_nets)]
-            outs += [net(x[:, [i, j]]) for net, (i, j) in zip(self.pair_nets, pairs)]
+            outs += [net(x[:, [i, j]]) for net, (i, j) in zip(self.pair_nets, pairs, strict=False)]
             return torch.stack(outs, dim=1).sum(dim=1).squeeze(-1) + self.bias
 
     return _AdditiveModel()

@@ -1,4 +1,3 @@
-# ruff: noqa: N806
 """LightGBM адаптер: классы LightGBMRegressor и LightGBMClassifier.
 
 Residual learning (регрессия): обучается на (y - baseline_col), при predict
@@ -12,13 +11,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, mean_absolute_error, roc_auc_score
 
-from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._base import BaseModel, XInput, YInput
+
+if TYPE_CHECKING:
+    import optuna
 from ml_toolkit.models._undersampling import UndersampleSampler
 from ml_toolkit.models._utils import (
     CLS_METRICS,
@@ -48,7 +51,7 @@ def _lgb_callbacks(boosting_type: str = 'gbdt') -> list:
     return callbacks
 
 
-def _boosting_lgb_params(lgb: Any, boosting_type: str) -> dict:
+def _boosting_lgb_params(lgb: ModuleType, boosting_type: str) -> dict:
     if boosting_type == 'dart':
         return {'boosting_type': 'dart'}
     if boosting_type == 'goss':
@@ -66,7 +69,7 @@ def _detect_boosting_type(params: dict) -> str:
     return params.get('boosting_type', 'gbdt')
 
 
-def _default_lgb_param_space(trial: Any) -> dict[str, Any]:
+def _default_lgb_param_space(trial: optuna.Trial) -> dict[str, Any]:
     """Пространство поиска LightGBM по умолчанию (переопределяется model_settings['param_space']).
 
     Общее для регрессии и классификации — включает выбор boosting_type; ключ
@@ -165,10 +168,10 @@ class LightGBMRegressor(BaseModel):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> LightGBMRegressor:
@@ -219,15 +222,26 @@ class LightGBMRegressor(BaseModel):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
-    def _fit_with_optuna(self, lgb, Xtr, resid_tr, Xva, resid_va, cat_in_sel,
-                         X_valid, y_valid, baseline_va, pp):
+    def _fit_with_optuna(
+        self,
+        lgb: ModuleType,
+        Xtr: pd.DataFrame,
+        resid_tr: np.ndarray,
+        Xva: pd.DataFrame | None,
+        resid_va: np.ndarray | None,
+        cat_in_sel: list[str],
+        X_valid: pd.DataFrame,
+        y_valid: pd.Series,
+        baseline_va: np.ndarray | None,
+        pp: Callable,
+    ):
         import optuna
 
         baseline_col = self.model_settings.get('baseline_col')
         metric_fn, direction = resolve_metric_fn(
             self.model_settings, 'reg_metric', REG_METRICS['mae'][0], 'minimize', REG_METRICS,
         )
-        param_space: Callable[[Any], dict] | None = self.model_settings.get('param_space')
+        param_space: Callable[[optuna.Trial], dict] | None = self.model_settings.get('param_space')
 
         def objective(trial: optuna.Trial) -> float:
             tunable = dict(param_space(trial) if param_space is not None else _default_lgb_param_space(trial))
@@ -274,7 +288,15 @@ class LightGBMRegressor(BaseModel):
         )
         return model, best_params
 
-    def _fit_direct(self, lgb, Xtr, resid_tr, Xva, resid_va, cat_in_sel):
+    def _fit_direct(
+        self,
+        lgb: ModuleType,
+        Xtr: pd.DataFrame,
+        resid_tr: np.ndarray,
+        Xva: pd.DataFrame | None,
+        resid_va: np.ndarray | None,
+        cat_in_sel: list[str],
+    ):
         bt = _detect_boosting_type(self.params)
         model = lgb.LGBMRegressor(**self.params)
         if Xva is not None:
@@ -301,9 +323,10 @@ class LightGBMRegressor(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class LightGBMClassifier(BaseModel):
-    """LightGBM-классификатор: бинарный и мультикласс в одном классе (тот же контракт,
-    что у `CatBoostClassifier`) — определяется автоматически по числу уникальных
-    значений `y_train` (`self.n_classes_`), явно указывать не нужно.
+    """LightGBM-классификатор: бинарный и мультикласс в одном классе.
+
+    Тот же контракт, что у `CatBoostClassifier` — определяется автоматически по
+    числу уникальных значений `y_train` (`self.n_classes_`), явно указывать не нужно.
 
     ``params=None`` запускает Optuna (`X_valid`/`y_valid` обязательны); ``params={...}``
     — прямое обучение без тюнинга (в этой ветке `objective`/`num_class` для
@@ -368,10 +391,10 @@ class LightGBMClassifier(BaseModel):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> LightGBMClassifier:
@@ -427,13 +450,22 @@ class LightGBMClassifier(BaseModel):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
-    def _fit_with_optuna(self, lgb, Xtr, y_train, Xva, y_valid, cat_in_sel, is_binary):
+    def _fit_with_optuna(
+        self,
+        lgb: ModuleType,
+        Xtr: pd.DataFrame,
+        y_train: pd.Series,
+        Xva: pd.DataFrame,
+        y_valid: pd.Series,
+        cat_in_sel: list[str],
+        is_binary: bool,
+    ):
         import optuna
 
         metric_fn, direction = resolve_metric_fn(
             self.model_settings, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS,
         )
-        param_space: Callable[[Any], dict] | None = self.model_settings.get('param_space')
+        param_space: Callable[[optuna.Trial], dict] | None = self.model_settings.get('param_space')
         undersample_majority: bool = self.model_settings.get('undersample_majority', False)
 
         y_arr = np.asarray(y_train)
@@ -516,7 +548,15 @@ class LightGBMClassifier(BaseModel):
         )
         return model, best_params
 
-    def _fit_direct(self, lgb, Xtr, y_train, Xva, y_valid, cat_in_sel):
+    def _fit_direct(
+        self,
+        lgb: ModuleType,
+        Xtr: pd.DataFrame,
+        y_train: pd.Series,
+        Xva: pd.DataFrame | None,
+        y_valid: pd.Series | None,
+        cat_in_sel: list[str],
+    ):
         bt = _detect_boosting_type(self.params)
         model = lgb.LGBMClassifier(**self.params)
         if Xva is not None:

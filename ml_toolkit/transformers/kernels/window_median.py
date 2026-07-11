@@ -33,7 +33,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import fill_window_sorted, resolve_window_size, sorted_median
+from ml_toolkit.transformers._windowing import fill_window_sorted, resolve_window_size, sorted_median
 
 FEATURE = 'window_median'
 
@@ -59,7 +59,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [3, 6, 12]}"""
+    """params: {"windows": [3, 6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     (median,) = _kernel(values, position, windows)
     arrays = []

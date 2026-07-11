@@ -40,7 +40,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean_and_std, resolve_window_size
+from ml_toolkit.transformers._windowing import compute_window_mean_and_std, resolve_window_size
 
 FEATURE = 'extreme_share'
 
@@ -76,7 +76,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12], "sigma_threshold": 1.5 (опционально)}"""
+    """params: {"windows": [12], "sigma_threshold": 1.5 (опционально)}."""
     windows = np.array(params['windows'], dtype=np.int64)
     sigma_threshold = float(params.get('sigma_threshold', 1.5))
     out_extreme, out_balance = _kernel(values, position, windows, sigma_threshold)

@@ -17,13 +17,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.regression._base import BasePreset
+
+if TYPE_CHECKING:
+    from ngboost import NGBRegressor
+    from ngboost.distns import RegressionDistn
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +111,14 @@ class NGBoostPreset(BasePreset):
         self.selected_features = selected_features or []
         self.best_iteration_: int | None = None
 
-    def _build_model(self, Dist, n_estimators, learning_rate, base_max_depth, minibatch_frac):
+    def _build_model(
+        self,
+        Dist: type[RegressionDistn],
+        n_estimators: int,
+        learning_rate: float,
+        base_max_depth: int,
+        minibatch_frac: float,
+    ) -> NGBRegressor:
         NGBRegressor, _ = _import_ngboost()
         from sklearn.tree import DecisionTreeRegressor
 
@@ -116,7 +129,14 @@ class NGBoostPreset(BasePreset):
             random_state=self.random_seed, verbose=False,
         )
 
-    def _tune(self, X_tr, y_tr, X_va, y_va, Dist):
+    def _tune(
+        self,
+        X_tr: np.ndarray,
+        y_tr: np.ndarray,
+        X_va: np.ndarray,
+        y_va: np.ndarray,
+        Dist: type[RegressionDistn],
+    ) -> tuple[NGBRegressor, dict[str, int | float]]:
         import optuna
 
         _optuna_prev_verbosity = optuna.logging.get_verbosity()
@@ -126,7 +146,7 @@ class NGBoostPreset(BasePreset):
         def objective(trial: optuna.Trial) -> float:
             custom = self.param_space(trial) if self.param_space is not None else {}
 
-            def val(key: str, suggest: Callable[[], Any]) -> Any:
+            def val(key: str, suggest: Callable[[], int | float]) -> int | float:
                 return custom[key] if key in custom else suggest()
 
             n_estimators = val('n_estimators', lambda: trial.suggest_int('n_estimators', 100, 500, step=50))
@@ -161,10 +181,10 @@ class NGBoostPreset(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> NGBoostPreset:
@@ -217,14 +237,14 @@ class NGBoostPreset(BasePreset):
 
     # ── predict ───────────────────────────────────────────────────────────────
 
-    def predict_dist(self, X: Any) -> Any:
+    def predict_dist(self, X: XInput) -> RegressionDistn:
         """Полное предсказанное распределение (ngboost distribution object) на X."""
         self._check_fitted()
         from ml_toolkit.models._base import _to_pandas
         Xp = _to_pandas(X)
         return self._model.pred_dist(Xp[self.selected_features_].values)
 
-    def predict_interval(self, X: Any, alpha: float = 0.1) -> tuple[np.ndarray, np.ndarray]:
+    def predict_interval(self, X: XInput, alpha: float = 0.1) -> tuple[np.ndarray, np.ndarray]:
         """Предиктивный интервал уровня (1 - alpha) через квантили предсказанного распределения."""
         if not 0.0 < alpha < 1.0:
             raise ValueError(f'alpha должен быть в (0, 1), получено {alpha}')

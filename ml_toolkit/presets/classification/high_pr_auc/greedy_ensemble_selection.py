@@ -27,18 +27,25 @@ Bootstrap-регуляризация (n_bags, Caruana et al. §2.4): жадны�
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 
 logger = logging.getLogger(__name__)
 
 
-def _get_proba(model: Any, X: pd.DataFrame) -> np.ndarray:
+class _PredictProbaModel(Protocol):
+    """Duck-типизированный интерфейс элемента model_library — объект с predict_proba(X)."""
+
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray: ...
+
+
+def _get_proba(model: _PredictProbaModel, X: pd.DataFrame) -> np.ndarray:
     p = np.asarray(model.predict_proba(X))
     return p[:, 1] if p.ndim == 2 else p
 
@@ -82,7 +89,7 @@ class GreedyForwardEnsembleSelection(BasePreset):
 
     def __init__(
         self,
-        model_library: list[Any],
+        model_library: list[_PredictProbaModel],
         max_members: int = 10,
         n_bags: int = 20,
         random_seed: int = 42,
@@ -126,10 +133,10 @@ class GreedyForwardEnsembleSelection(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> GreedyForwardEnsembleSelection:

@@ -49,7 +49,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, fit_linear_trend_slope, resolve_window_size, safe_ratio
 
 FEATURE = 'lifecycle_phase'
 
@@ -127,7 +127,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12], "maturity_threshold": 0.8, "ramp_threshold": 0.5 (опционально)}"""
+    """params: {"windows": [12], "maturity_threshold": 0.8, "ramp_threshold": 0.5 (опционально)}."""
     windows = np.array(params['windows'], dtype=np.int64)
     maturity_threshold = float(params.get('maturity_threshold', 0.8))
     ramp_threshold = float(params.get('ramp_threshold', 0.5))
@@ -137,5 +137,6 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     arrays = [peak_age, post_peak, compl, ramp, is_new, phase]
     suffixes = ['peak_age_share', 'post_peak_share', 'completeness', 'ramp_norm', 'is_new_peak', 'phase_flag']
     for j, w in enumerate(params['windows']):
-        arrays.append(pps[j]); suffixes.append(f'post_peak_slope_w{w}')
+        arrays.append(pps[j])
+        suffixes.append(f'post_peak_slope_w{w}')
     return arrays, suffixes

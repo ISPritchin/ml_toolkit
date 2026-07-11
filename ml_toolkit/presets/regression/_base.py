@@ -17,7 +17,7 @@ from ml_toolkit.models._base import BaseModel
 class BasePreset(BaseModel):
     """BaseModel с общим save/load для пресетов регрессии."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
     def _check_fitted(self) -> None:
@@ -34,13 +34,13 @@ class BasePreset(BaseModel):
         `self` сохраняет их разом, без знания о внутренней структуре конкретного
         подкласса.
         """
-        with open(path, 'wb') as f:
+        with Path(path).open('wb') as f:
             pickle.dump(self, f)
 
     @classmethod
     def load(cls, path: str | Path) -> BasePreset:
         """Загружает пресет, сохранённый через .save()."""
-        with open(path, 'rb') as f:
+        with Path(path).open('rb') as f:
             obj = pickle.load(f)
         if not isinstance(obj, cls):
             raise TypeError(

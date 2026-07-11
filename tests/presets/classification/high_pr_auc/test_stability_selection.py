@@ -1,5 +1,4 @@
-"""Тесты для StabilitySelectionClassifier
-(ml_toolkit/presets/classification/high_pr_auc/stability_selection.py).
+"""Тесты для StabilitySelectionClassifier (ml_toolkit/presets/classification/high_pr_auc/stability_selection.py).
 """
 
 from __future__ import annotations
@@ -39,8 +38,9 @@ class TestStabilitySelectionClassifier:
             StabilitySelectionClassifier(freq_threshold=1.5)
 
     def test_too_high_freq_threshold_raises_no_stable_features(self, binary_data):
-        """top_k=1 + freq_threshold=1.0: только признак, лидирующий во ВСЕХ бутстрэпах,
-        прошёл бы порог. С независимым от X случайным таргетом (binary_data) и
+        """top_k=1 + freq_threshold=1.0: порог прошёл бы только признак, лидирующий во ВСЕХ бутстрэпах.
+
+        С независимым от X случайным таргетом (binary_data) и
         достаточным числом бутстрэпов вероятность такого совпадения по всем 5
         признакам пренебрежимо мала — раскладка гарантированно даёт пустое ядро.
         """

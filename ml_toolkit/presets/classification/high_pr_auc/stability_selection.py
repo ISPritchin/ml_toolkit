@@ -17,12 +17,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_calibrator
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -30,6 +31,9 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +162,7 @@ class StabilitySelectionClassifier(BasePreset):
         self.selection_freq_: pd.Series | None = None
         self.stable_features_: list[str] = []
 
-    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -195,9 +199,10 @@ class StabilitySelectionClassifier(BasePreset):
         return dict(study.best_trial.user_attrs['cb_params'])
 
     def _stratified_bootstrap(self, y: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-        """Бутстрэп (с возвратом) отдельно по каждому классу — иначе редкий
-        позитивный класс рискует полностью выпасть из подвыборки при сильном
-        дисбалансе.
+        """Бутстрэп (с возвратом) отдельно по каждому классу.
+
+        Иначе редкий позитивный класс рискует полностью выпасть из подвыборки
+        при сильном дисбалансе.
         """
         parts = [
             rng.choice(np.where(y == cls)[0], size=int((y == cls).sum()), replace=True)
@@ -207,10 +212,10 @@ class StabilitySelectionClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> StabilitySelectionClassifier:

@@ -23,18 +23,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.regression._base import BasePreset
 from ml_toolkit.presets.regression._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostRegressor, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +136,9 @@ class TrimmedLossRegressor(BasePreset):
 
     # ── Optuna (раунд 0) ────────────────────────────────────────────────────
 
-    def _fit_round0_optuna(self, tr_pool, va_pool, y_va):
+    def _fit_round0_optuna(
+        self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray,
+    ) -> tuple[CatBoostRegressor, dict]:
         from catboost import CatBoostRegressor
         import optuna
 
@@ -174,10 +180,10 @@ class TrimmedLossRegressor(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> TrimmedLossRegressor:
@@ -191,7 +197,7 @@ class TrimmedLossRegressor(BasePreset):
         y_tr = y_train.values
         y_va = y_valid.values
         n = len(y_tr)
-        n_trim = max(1, int(round(n * self.trim_frac)))
+        n_trim = max(1, round(n * self.trim_frac))
 
         va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
         active = np.ones(n, dtype=bool)

@@ -1,4 +1,4 @@
-"""Смоук-тест fit/predict для InfluenceBalancedLossClassifier
+"""Смоук-тест fit/predict для InfluenceBalancedLossClassifier.
 
 (ml_toolkit/presets/classification/high_pr_auc/influence_balanced_loss.py).
 """

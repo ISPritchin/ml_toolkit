@@ -10,16 +10,16 @@ import pickle
 
 import numpy as np
 
-from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._base import BaseModel, XInput
 
 
 class BasePreset(BaseModel):
     """BaseModel с predict() через порог вместо _predict_impl."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
-    def predict(self, X, threshold: float = 0.5) -> np.ndarray:  # type: ignore[override]
+    def predict(self, X: XInput, threshold: float = 0.5) -> np.ndarray:  # type: ignore[override]
         """Бинарная классификация по порогу вероятности."""
         return (self.predict_proba(X) >= threshold).astype(int)
 
@@ -37,13 +37,13 @@ class BasePreset(BaseModel):
         ...) — pickle всего `self` сохраняет их разом, без знания о внутренней
         структуре конкретного подкласса.
         """
-        with open(path, 'wb') as f:
+        with Path(path).open('wb') as f:
             pickle.dump(self, f)
 
     @classmethod
     def load(cls, path: str | Path) -> BasePreset:
         """Загружает пресет, сохранённый через .save()."""
-        with open(path, 'rb') as f:
+        with Path(path).open('rb') as f:
             obj = pickle.load(f)
         if not isinstance(obj, cls):
             raise TypeError(

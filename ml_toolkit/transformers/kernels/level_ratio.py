@@ -40,7 +40,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'level_ratio'
 
@@ -67,7 +67,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"pairs": [[6, 12]]}"""
+    """params: {"pairs": [[6, 12]]}."""
     pairs = params['pairs']
     short_w = np.array([p[0] for p in pairs], dtype=np.int64)
     long_w = np.array([p[1] for p in pairs], dtype=np.int64)

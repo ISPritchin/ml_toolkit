@@ -30,12 +30,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -43,6 +44,10 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier
+    from lightgbm import LGBMClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +180,7 @@ class EasyEnsembleClassifier(BasePreset):
         y_va: np.ndarray,
         seed: int,
         params: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> LGBMClassifier:
         import lightgbm as lgb
 
         p = {**(params or self.base_params or _DEFAULT_LGB_PARAMS), 'random_state': seed}
@@ -195,7 +200,7 @@ class EasyEnsembleClassifier(BasePreset):
         y_va: np.ndarray,
         seed: int,
         params: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier, Pool
 
         p = {**(params or self.base_params or _DEFAULT_CBT_PARAMS), 'random_seed': seed}
@@ -205,7 +210,7 @@ class EasyEnsembleClassifier(BasePreset):
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
         return model
 
-    def _predict_one(self, model: Any, X: pd.DataFrame) -> np.ndarray:
+    def _predict_one(self, model: CatBoostClassifier | LGBMClassifier, X: pd.DataFrame) -> np.ndarray:
         if self.base == 'lightgbm':
             return model.predict_proba(X)[:, 1]
         from catboost import Pool
@@ -299,10 +304,10 @@ class EasyEnsembleClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> EasyEnsembleClassifier:
@@ -386,7 +391,7 @@ class EasyEnsembleClassifier(BasePreset):
         self._rank_refs_ = [fit_rank_reference(s) for s in tr_raw_scores]
 
         va_ensemble = np.stack(
-            [rank_transform(s, ref) for s, ref in zip(va_raw_scores, self._rank_refs_)],
+            [rank_transform(s, ref) for s, ref in zip(va_raw_scores, self._rank_refs_, strict=False)],
             axis=1,
         ).mean(axis=1)
         self.ensemble_score_ = float(average_precision_score(y_va, va_ensemble))
@@ -395,7 +400,7 @@ class EasyEnsembleClassifier(BasePreset):
 
         self.valid_pred_ = va_ensemble
         self.train_pred_ = np.stack(
-            [rank_transform(s, ref) for s, ref in zip(tr_raw_scores, self._rank_refs_)],
+            [rank_transform(s, ref) for s, ref in zip(tr_raw_scores, self._rank_refs_, strict=False)],
             axis=1,
         ).mean(axis=1)
 
@@ -416,6 +421,6 @@ class EasyEnsembleClassifier(BasePreset):
         X_feats = X[self.selected_features_]
         rank_matrix = [
             rank_transform(self._predict_one(m, X_feats), ref)
-            for m, ref in zip(self.estimators_, self._rank_refs_)
+            for m, ref in zip(self.estimators_, self._rank_refs_, strict=False)
         ]
         return np.stack(rank_matrix, axis=1).mean(axis=1)

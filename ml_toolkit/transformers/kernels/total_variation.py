@@ -41,7 +41,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'total_variation'
 
@@ -67,7 +67,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}"""
+    """params: {"windows": [6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out_tv, out_tv_norm = _kernel(values, position, windows)
     arrays = []

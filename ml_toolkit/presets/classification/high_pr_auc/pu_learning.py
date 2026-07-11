@@ -27,17 +27,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +144,7 @@ class PULearningClassifier(BasePreset):
 
     # ── Optuna ────────────────────────────────────────────────────────────────
 
-    def _tune(self, tr_pool: Any, va_pool: Any) -> Any:
+    def _tune(self, tr_pool: Pool, va_pool: Pool) -> CatBoostClassifier:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -151,7 +155,7 @@ class PULearningClassifier(BasePreset):
         def objective(trial: optuna.Trial) -> float:
             custom = self.param_space(trial) if self.param_space is not None else {}
 
-            def val(key: str, suggest: Callable[[], Any]) -> Any:
+            def val(key: str, suggest: Callable[[], int | float]) -> int | float:
                 return custom[key] if key in custom else suggest()
 
             params = {
@@ -194,7 +198,7 @@ class PULearningClassifier(BasePreset):
     # ── Оценка c ──────────────────────────────────────────────────────────────
 
     def _estimate_c(self, raw_c: np.ndarray, y_c: np.ndarray) -> None:
-        """Точечная оценка c = mean(raw score) по c-holdout позитивам, с клипом
+        """Точечная оценка c = mean(raw score) по c-holdout позитивам, с клипом.
 
         снизу по c_lower_bound. Выделено в отдельный метод, чтобы
         ElkanNotoHoldoutPU (029) мог переопределить его и добавить bootstrap-CI,
@@ -220,10 +224,10 @@ class PULearningClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> PULearningClassifier:

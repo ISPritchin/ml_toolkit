@@ -21,8 +21,8 @@ import pytest
 
 pytest.importorskip('lightautoml')
 
-from ml_toolkit.models._lama import LAMAClassifier, LAMARegressor, _build_roles  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES  # noqa: E402
+from ml_toolkit.models._lama import LAMAClassifier, LAMARegressor, _build_roles
+from tests.models.conftest import MULTI_CAT_FEATURES
 
 FAST_SETTINGS = {'timeout': 20, 'cpu_limit': 1}
 
@@ -42,8 +42,9 @@ class TestBuildRoles:
         assert roles == {'target': '__lama_target__', 'category': ['cat_a']}
 
     def test_multiple_categorical_features_of_varying_cardinality(self):
-        """Три категориальных признака разной кардинальности (2/4/10 уровней, как в
-        MULTI_CAT_FEATURES) должны попасть под один ключ 'category' одним списком —
+        """Три категориальных признака разной кардинальности должны попасть под один ключ 'category'.
+
+        2/4/10 уровней, как в MULTI_CAT_FEATURES, одним списком —
         роли LightAutoML не зависят от кардинальности значений колонки, только от dtype/роли.
         """
         selected = ['f0', 'f1', 'f2', *MULTI_CAT_FEATURES]

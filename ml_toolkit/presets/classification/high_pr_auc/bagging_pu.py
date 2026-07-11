@@ -22,13 +22,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +105,7 @@ class BaggingPUClassifier(BasePreset):
         u_sample_size: int | None = None,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         random_seed: int = 42,
@@ -126,7 +131,7 @@ class BaggingPUClassifier(BasePreset):
 
     def _fit_one(
         self, X: pd.DataFrame, y: np.ndarray, seed: int, params: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier, Pool
 
         p = {**(params or self.base_params or _DEFAULT_PARAMS), 'random_seed': seed}
@@ -134,7 +139,7 @@ class BaggingPUClassifier(BasePreset):
         m.fit(Pool(X, y, cat_features=self.cat_features_), verbose=False)
         return m
 
-    def _predict(self, model: Any, X: pd.DataFrame) -> np.ndarray:
+    def _predict(self, model: CatBoostClassifier, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
         return model.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
 
@@ -189,10 +194,10 @@ class BaggingPUClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> BaggingPUClassifier:

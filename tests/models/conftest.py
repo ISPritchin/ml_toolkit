@@ -68,8 +68,9 @@ MULTI_CAT_FEATURES = ['cat_binary', 'cat_low_card', 'cat_high_card']
 
 
 def _make_multi_cat_frame(n: int, seed: int) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
-    """Строит DataFrame с тремя категориальными признаками разной кардинальности
-    (2 / 4 / 10 уровней) плюс числовые признаки. Возвращает (X, binary_effect, low_card_effect)
+    """Строит DataFrame с тремя категориальными признаками разной кардинальности.
+
+    2 / 4 / 10 уровней, плюс числовые признаки. Возвращает (X, binary_effect, low_card_effect)
     — эффекты используются вызывающим для построения таргета классификации/регрессии.
     """
     r = np.random.default_rng(seed)

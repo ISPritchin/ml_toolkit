@@ -1,5 +1,6 @@
-"""Тесты для InterpretableTreeRegressor/InterpretableTreeClassifier
-(ml_toolkit/models/_interpretable_trees.py): Soft Decision Tree и Locally Linear Forest.
+"""Тесты для InterpretableTreeRegressor/InterpretableTreeClassifier (Soft Decision Tree, Locally Linear Forest).
+
+ml_toolkit/models/_interpretable_trees.py.
 
 PyTorch не входит в обязательные зависимости проекта (нужен только для 'soft_decision_tree') —
 весь модуль пропускается через importorskip, если torch не установлен, хотя
@@ -12,11 +13,11 @@ import pytest
 
 pytest.importorskip('torch')
 
-from ml_toolkit.models._interpretable_trees import (  # noqa: E402
+from ml_toolkit.models._interpretable_trees import (
     InterpretableTreeClassifier,
     InterpretableTreeRegressor,
 )
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 SDT_PARAMS = {'depth': 2, 'lr': 0.05, 'n_epochs': 30, 'patience': 10}
 LLF_PARAMS = {'n_estimators': 20, 'max_depth': 4, 'n_neighbors': 20, 'ridge_alpha': 1.0, 'random_state': 42}
@@ -96,8 +97,9 @@ class TestLocallyLinearForestClassifier:
         assert_valid_proba(model, X_valid)
 
     def test_explicit_params_default_to_balanced_class_weight(self, classification_data):
-        """Regression test: explicit-ветка раньше не форсировала class_weight='balanced' в
-        отличие от Optuna-ветки — теперь обе ветки согласованы.
+        """Regression test: explicit-ветка раньше не форсировала class_weight='balanced'.
+
+        В отличие от Optuna-ветки — теперь обе ветки согласованы.
         """
         X_train, y_train, X_valid, y_valid = classification_data
         model = InterpretableTreeClassifier(params=self.RF_PARAMS, model_settings={'name': 'locally_linear_forest'})

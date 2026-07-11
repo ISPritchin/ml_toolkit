@@ -56,20 +56,20 @@ class _QuantileMedianWrapper(BaseEstimator, RegressorMixin):
     Pipeline.predict() падает с AttributeError на этой обёртке.
     """
 
-    def __init__(self, **params):
+    def __init__(self, **params) -> None:
         self._model = RandomForestQuantileRegressor(**params)
 
-    def fit(self, X, y):
+    def fit(self, X: np.ndarray, y: np.ndarray):
         """Обучает внутренний RandomForestQuantileRegressor и копирует feature_importances_."""
         self._model.fit(X, y)
         self.feature_importances_ = self._model.feature_importances_
         return self
 
-    def predict(self, X):
+    def predict(self, X: np.ndarray) -> np.ndarray:
         """Возвращает медианное предсказание (quantile=0.5) для совместимости с Pipeline.predict()."""
         return self._model.predict(X, quantiles=_MEDIAN_QUANTILE)
 
-    def predict_quantiles(self, X, quantiles):
+    def predict_quantiles(self, X: np.ndarray, quantiles: float | list[float]) -> np.ndarray:
         """Возвращает предсказания для произвольных квантилей `quantiles`."""
         return self._model.predict(X, quantiles=quantiles)
 

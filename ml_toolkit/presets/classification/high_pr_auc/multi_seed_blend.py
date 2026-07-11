@@ -19,12 +19,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -32,6 +33,10 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +107,7 @@ class MultiSeedBlend(BasePreset):
         n_seeds: int = 7,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         optuna_pruner: str | object | None = 'none',
@@ -128,7 +133,7 @@ class MultiSeedBlend(BasePreset):
         self.blend_score_: float = 0.0
         self._rank_refs_: list[np.ndarray] = []
 
-    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -171,10 +176,10 @@ class MultiSeedBlend(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> MultiSeedBlend:
@@ -229,7 +234,7 @@ class MultiSeedBlend(BasePreset):
         self._rank_refs_ = [fit_rank_reference(s) for s in tr_raw_scores]
 
         va_blend = np.stack(
-            [rank_transform(s, ref) for s, ref in zip(va_raw_scores, self._rank_refs_)], axis=1,
+            [rank_transform(s, ref) for s, ref in zip(va_raw_scores, self._rank_refs_, strict=False)], axis=1,
         ).mean(axis=1)
         self.blend_score_ = float(average_precision_score(y_va, va_blend))
         logger.info('[MultiSeedBlend] single seed mean PR-AUC=%.4f (std=%.4f)  blend PR-AUC=%.4f',
@@ -237,7 +242,7 @@ class MultiSeedBlend(BasePreset):
 
         self.valid_pred_ = va_blend
         self.train_pred_ = np.stack(
-            [rank_transform(s, ref) for s, ref in zip(tr_raw_scores, self._rank_refs_)], axis=1,
+            [rank_transform(s, ref) for s, ref in zip(tr_raw_scores, self._rank_refs_, strict=False)], axis=1,
         ).mean(axis=1)
         self.best_params_ = {
             'n_seeds': self.n_seeds,
@@ -253,5 +258,5 @@ class MultiSeedBlend(BasePreset):
         pool = Pool(X_feats, cat_features=self.cat_features_)
         raw_scores = [m.predict_proba(pool)[:, 1] for m in self.models_]
         return np.stack(
-            [rank_transform(s, ref) for s, ref in zip(raw_scores, self._rank_refs_)], axis=1,
+            [rank_transform(s, ref) for s, ref in zip(raw_scores, self._rank_refs_, strict=False)], axis=1,
         ).mean(axis=1)

@@ -34,11 +34,11 @@ class TestLogitNormLoss:
                 assert abs(numeric - der1[k]) < 1e-3
 
     def test_rejects_nonpositive_temperature(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='temperature должна быть положительной'):
             LogitNormLoss(temperature=0.0)
 
     def test_respects_sample_weight(self):
-        """Регресс: ранняя версия принимала weight в сигнатуре, но не
+        """Регресс: ранняя версия принимала weight в сигнатуре, но не.
 
         домножала на него der1/der2 (в отличие от сестринских
         EqualizationLoss/BalancedSoftmaxLoss, где weight используется).

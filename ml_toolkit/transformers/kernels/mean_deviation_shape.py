@@ -49,12 +49,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import (
-    EPS,
-    compute_window_mean_and_std,
-    resolve_window_size,
-    safe_ratio,
-)
+from ml_toolkit.transformers._windowing import EPS, compute_window_mean_and_std, resolve_window_size, safe_ratio
 
 FEATURE = 'mean_deviation_shape'
 
@@ -77,10 +72,14 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             ws = resolve_window_size(pos, windows[j])
             mean, std = compute_window_mean_and_std(product_values, row_idx, ws)
 
-            up_sq = 0.0; down_sq = 0.0
-            n_up = 0; n_down = 0
-            max_up_z = 0.0; max_down_z = 0.0
-            sum_abs_dev = 0.0; sum_pos_dev = 0.0
+            up_sq = 0.0
+            down_sq = 0.0
+            n_up = 0
+            n_down = 0
+            max_up_z = 0.0
+            max_down_z = 0.0
+            sum_abs_dev = 0.0
+            sum_pos_dev = 0.0
             cross_count = 0
             prev_side = 0  # +1 above mean, -1 below
 
@@ -120,17 +119,24 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     us, ds, sr, muz, mdz, da, cc = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(us[j]);  suffixes.append(f'up_semi_w{w}')
-        arrays.append(ds[j]);  suffixes.append(f'down_semi_w{w}')
-        arrays.append(sr[j]);  suffixes.append(f'semi_ratio_w{w}')
-        arrays.append(muz[j]); suffixes.append(f'max_up_z_w{w}')
-        arrays.append(mdz[j]); suffixes.append(f'max_down_z_w{w}')
-        arrays.append(da[j]);  suffixes.append(f'dev_asym_w{w}')
-        arrays.append(cc[j]);  suffixes.append(f'cross_count_w{w}')
+        arrays.append(us[j])
+        suffixes.append(f'up_semi_w{w}')
+        arrays.append(ds[j])
+        suffixes.append(f'down_semi_w{w}')
+        arrays.append(sr[j])
+        suffixes.append(f'semi_ratio_w{w}')
+        arrays.append(muz[j])
+        suffixes.append(f'max_up_z_w{w}')
+        arrays.append(mdz[j])
+        suffixes.append(f'max_down_z_w{w}')
+        arrays.append(da[j])
+        suffixes.append(f'dev_asym_w{w}')
+        arrays.append(cc[j])
+        suffixes.append(f'cross_count_w{w}')
     return arrays, suffixes

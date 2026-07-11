@@ -21,5 +21,5 @@ class TestElkanNotoHoldoutPU:
         assert model.c_bootstrap_std_ >= 0.0
 
     def test_rejects_too_few_bootstrap(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='n_bootstrap должен быть'):
             ElkanNotoHoldoutPU(n_bootstrap=1)

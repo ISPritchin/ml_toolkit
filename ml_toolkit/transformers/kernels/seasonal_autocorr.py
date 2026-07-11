@@ -55,7 +55,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, pearson_from_sums, safe_ratio, windowed_lag_pearson
+from ml_toolkit.transformers._windowing import EPS, pearson_from_sums, safe_ratio, windowed_lag_pearson
 
 FEATURE = 'seasonal_autocorr'
 
@@ -84,10 +84,20 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
         v = product_values[row_idx]
         if pos >= 6:
             x6 = product_values[row_idx - 6]
-            n6 += 1.0; sx6 += x6; sy6 += v; sxy6 += x6*v; sx26 += x6*x6; sy26 += v*v
+            n6 += 1.0
+            sx6 += x6
+            sy6 += v
+            sxy6 += x6*v
+            sx26 += x6*x6
+            sy26 += v*v
         if pos >= 12:
             x12 = product_values[row_idx - 12]
-            n12 += 1.0; sx12 += x12; sy12 += v; sxy12 += x12*v; sx212 += x12*x12; sy212 += v*v
+            n12 += 1.0
+            sx12 += x12
+            sy12 += v
+            sxy12 += x12*v
+            sx212 += x12*x12
+            sy212 += v*v
 
         ac_lag6[row_idx] = pearson_from_sums(n6, sx6, sy6, sxy6, sx26, sy26)
         ac_lag12[row_idx] = pearson_from_sums(n12, sx12, sy12, sxy12, sx212, sy212)
@@ -110,23 +120,28 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
                 for q in range(4):
                     qstd_sq += (q_means[q] - qmean) ** 2
                 quarter_cv[row_idx] = (qstd_sq / 4.0) ** 0.5 / abs(qmean)
-                qmax = q_means[0]; qmin = q_means[0]
+                qmax = q_means[0]
+                qmin = q_means[0]
                 for q in range(1, 4):
                     qmax = max(qmax, q_means[q])
                     qmin = min(qmin, q_means[q])
                 seasonal_amp[row_idx] = (qmax - qmin) / abs(qmean)
 
         if ws12 >= 2:
-            even_sum = 0.0; odd_sum = 0.0
-            even_cnt = 0; odd_cnt = 0
+            even_sum = 0.0
+            odd_sum = 0.0
+            even_cnt = 0
+            odd_cnt = 0
             for offset in range(ws12):
                 val = product_values[row_idx - ws12 + 1 + offset]
                 # чётность позиции месяца внутри сущности — стабильна при сдвиге окна
                 month_pos = pos - (ws12 - 1) + offset
                 if month_pos % 2 == 0:
-                    even_sum += val; even_cnt += 1
+                    even_sum += val
+                    even_cnt += 1
                 else:
-                    odd_sum += val; odd_cnt += 1
+                    odd_sum += val
+                    odd_cnt += 1
             even_mean = even_sum / even_cnt if even_cnt > 0 else 0.0
             odd_mean = odd_sum / odd_cnt if odd_cnt > 0 else 0.0
             even_odd[row_idx] = safe_ratio(even_mean, odd_mean)

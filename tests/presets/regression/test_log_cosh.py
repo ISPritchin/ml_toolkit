@@ -1,4 +1,4 @@
-"""Тесты LogCoshRegressor (ml_toolkit/presets/regression/log_cosh.py)
+"""Тесты LogCoshRegressor (ml_toolkit/presets/regression/log_cosh.py).
 
 и корректности градиента LogCoshLoss (ml_toolkit/presets/regression/_losses.py).
 """
@@ -6,13 +6,11 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 from sklearn.metrics import mean_absolute_error
 
 from ml_toolkit.presets.regression import LogCoshRegressor
 from ml_toolkit.presets.regression._losses import LogCoshLoss
 from tests.presets.regression.conftest import BASE_PARAMS
-
 
 # ── 1. Численная проверка градиента ─────────────────────────────────────────
 
@@ -23,7 +21,7 @@ def test_gradient_matches_numeric_finite_difference():
     f = y + rng.normal(scale=2.0, size=n)
 
     loss = LogCoshLoss()
-    der1, der2 = zip(*loss.calc_ders_range(f, y, None))
+    der1, der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
     der1, der2 = np.array(der1), np.array(der2)
 
     eps = 1e-4
@@ -94,7 +92,8 @@ def test_log_cosh_more_robust_to_outliers_than_rmse(regression_data):
 
     params = {'iterations': 300, 'verbose': 0, 'random_seed': 42}
 
-    from catboost import CatBoostRegressor as _RawCB, Pool
+    from catboost import CatBoostRegressor as _RawCB
+    from catboost import Pool
     rmse_model = _RawCB(loss_function='RMSE', **params)
     rmse_model.fit(Pool(X_train, y_train_out), eval_set=Pool(X_valid, y_valid), verbose=False)
     rmse_mae = mean_absolute_error(y_valid, rmse_model.predict(X_valid))

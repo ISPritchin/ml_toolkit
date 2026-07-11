@@ -1,4 +1,4 @@
-"""Тесты QuantileHuberRegressor (ml_toolkit/presets/regression/quantile_huber.py)
+"""Тесты QuantileHuberRegressor (ml_toolkit/presets/regression/quantile_huber.py).
 
 и корректности градиента QuantileHuberLoss (ml_toolkit/presets/regression/_losses.py).
 """
@@ -35,7 +35,7 @@ def test_gradient_matches_numeric_finite_difference(quantile, kappa):
     f = y + rng.normal(scale=2.0, size=n)
 
     loss = QuantileHuberLoss(quantile=quantile, kappa=kappa)
-    der1, _der2 = zip(*loss.calc_ders_range(f, y, None))
+    der1, _der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
     der1 = np.array(der1)
 
     eps = 1e-4
@@ -50,16 +50,16 @@ def test_gradient_matches_numeric_finite_difference(quantile, kappa):
 
 
 def test_der2_negative_and_zero_kappa_bounds_rejected():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='kappa должен быть положительным'):
         QuantileHuberLoss(quantile=0.5, kappa=0.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='quantile должен быть в'):
         QuantileHuberLoss(quantile=1.5, kappa=1.0)
 
     loss = QuantileHuberLoss(quantile=0.5, kappa=1.0)
     rng = np.random.default_rng(0)
     f = rng.normal(size=50)
     y = rng.normal(size=50)
-    _, der2 = zip(*loss.calc_ders_range(f, y, None))
+    _, der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
     assert np.all(np.array(der2) <= 0)
 
 
@@ -78,9 +78,9 @@ def test_fit_predict_each_quantile(regression_data, quantile):
 
 
 def test_constructor_rejects_invalid_quantile():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='quantile должен быть в'):
         QuantileHuberRegressor(quantile=0.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='quantile должен быть в'):
         QuantileHuberRegressor(quantile=1.0)
 
 

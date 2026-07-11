@@ -1,5 +1,4 @@
-"""Тесты для SyntheticOversamplingClassifier
-(ml_toolkit/presets/classification/high_pr_auc/synthetic_oversampling.py).
+"""Тесты для SyntheticOversamplingClassifier (ml_toolkit/presets/classification/high_pr_auc/synthetic_oversampling.py).
 """
 
 from __future__ import annotations

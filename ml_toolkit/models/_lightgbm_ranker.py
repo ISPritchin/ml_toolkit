@@ -1,4 +1,3 @@
-# ruff: noqa: N806
 """LightGBM Ranker адаптер — оптимизирует ранжирование через LambdaMART / XE-NDCG.
 
 При бинарных метках (0/1) LambdaRank оптимизирует попарные предпочтения
@@ -20,13 +19,13 @@ Objective — model_settings['rank_objective']:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from types import ModuleType
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
-from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._base import BaseModel, XInput, YInput
 from ml_toolkit.models._utils import (
     CLS_METRICS,
     fit_calibrator,
@@ -86,10 +85,10 @@ class LightGBMRanker(BaseModel):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> LightGBMRanker:
@@ -145,7 +144,17 @@ class LightGBMRanker(BaseModel):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
-    def _fit_with_optuna(self, lgb, Xtr, ytr, tr_groups, Xva, yva, va_groups, cat_in_sel):
+    def _fit_with_optuna(
+        self,
+        lgb: ModuleType,
+        Xtr: pd.DataFrame,
+        ytr: np.ndarray,
+        tr_groups: list[int],
+        Xva: pd.DataFrame | None,
+        yva: np.ndarray | None,
+        va_groups: list[int] | None,
+        cat_in_sel: list[str],
+    ):
         import optuna
 
         rank_obj = self.model_settings.get('rank_objective', 'lambdarank')
@@ -206,7 +215,17 @@ class LightGBMRanker(BaseModel):
         )
         return model, best_params
 
-    def _fit_direct(self, lgb, Xtr, ytr, tr_groups, Xva, yva, va_groups, cat_in_sel):
+    def _fit_direct(
+        self,
+        lgb: ModuleType,
+        Xtr: pd.DataFrame,
+        ytr: np.ndarray,
+        tr_groups: list[int],
+        Xva: pd.DataFrame | None,
+        yva: np.ndarray | None,
+        va_groups: list[int] | None,
+        cat_in_sel: list[str],
+    ):
         model = lgb.LGBMRanker(**self.params)
         callbacks = [lgb.early_stopping(100, verbose=False), lgb.log_evaluation(-1)]
         logger.debug('[LGB Ranker] fit direct, n_groups=%d', len(tr_groups))

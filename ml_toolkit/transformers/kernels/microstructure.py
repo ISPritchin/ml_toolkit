@@ -45,12 +45,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import (
-    EPS,
-    compute_window_mean_and_std,
-    resolve_window_size,
-    safe_ratio,
-)
+from ml_toolkit.transformers._windowing import EPS, compute_window_mean_and_std, resolve_window_size, safe_ratio
 
 FEATURE = 'microstructure'
 
@@ -99,16 +94,22 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     snr, surp, sdir, pred, cm, vsc = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(snr[j]);  suffixes.append(f'snr_w{w}')
-        arrays.append(surp[j]); suffixes.append(f'surprise_w{w}')
-        arrays.append(pred[j]); suffixes.append(f'predictability_w{w}')
-        arrays.append(cm[j]);   suffixes.append(f'cond_mean_w{w}')
-        arrays.append(vsc[j]);  suffixes.append(f'vs_cond_mean_w{w}')
-    arrays.append(sdir); suffixes.append('surprise_dir')
+        arrays.append(snr[j])
+        suffixes.append(f'snr_w{w}')
+        arrays.append(surp[j])
+        suffixes.append(f'surprise_w{w}')
+        arrays.append(pred[j])
+        suffixes.append(f'predictability_w{w}')
+        arrays.append(cm[j])
+        suffixes.append(f'cond_mean_w{w}')
+        arrays.append(vsc[j])
+        suffixes.append(f'vs_cond_mean_w{w}')
+    arrays.append(sdir)
+    suffixes.append('surprise_dir')
     return arrays, suffixes

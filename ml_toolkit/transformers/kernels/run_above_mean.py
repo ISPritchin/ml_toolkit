@@ -36,7 +36,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean, resolve_window_size
+from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size
 
 FEATURE = 'run_above_mean'
 

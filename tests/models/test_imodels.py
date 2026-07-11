@@ -10,8 +10,8 @@ import pytest
 
 pytest.importorskip('imodels')
 
-from ml_toolkit.models._imodels import IModelsClassifier, IModelsRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._imodels import IModelsClassifier, IModelsRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FIGS_PARAMS = {'max_rules': 10, 'max_trees': 5}
 SKOPE_PARAMS = {'n_estimators': 10, 'max_depth': 3, 'random_state': 42}
@@ -88,8 +88,9 @@ class TestIModelsClassifierBRL:
         assert_valid_proba(model, X_valid)
 
     def test_predict_uses_discretized_space(self, classification_data):
-        """predict_proba() на новых данных должен пройти через тот же дискретизатор, что
-        и train/valid — иначе BRL получит непрерывные признаки вместо one-hot бинов.
+        """predict_proba() на новых данных должен пройти через тот же дискретизатор, что и train/valid.
+
+        Иначе BRL получит непрерывные признаки вместо one-hot бинов.
         """
         X_train, y_train, X_valid, y_valid = classification_data
         model = IModelsClassifier(params=BRL_PARAMS, model_settings={'name': 'brl'})
@@ -101,8 +102,9 @@ class TestIModelsClassifierBRL:
 
 class TestIModelsClassifierRipper:
     def test_ripper_raises_clear_import_error(self, classification_data):
-        """RIPPERClassifier отсутствует в текущем imodels (2.0.4) — должен падать с понятным
-        сообщением, а не с обычным confusing ImportError из самого imodels.
+        """RIPPERClassifier отсутствует в текущем imodels (2.0.4) — должен падать с понятным сообщением.
+
+        А не с обычным confusing ImportError из самого imodels.
         """
         X_train, y_train, X_valid, y_valid = classification_data
         model = IModelsClassifier(params={'k': 2}, model_settings={'name': 'ripper'})

@@ -14,7 +14,7 @@ _SMALL_PARAMS = {'iterations': 80, 'max_depth': 4, 'early_stopping_rounds': 30}
 
 @pytest.fixture
 def bimodal_data():
-    """Таргет с двумя чётко разделёнными модами — MSE-регрессия «размазывает»
+    """Таргет с двумя чётко разделёнными модами — MSE-регрессия «размазывает».
 
     прогноз между ними, ожидаем, что биннинг справляется заметно лучше.
     """
@@ -34,17 +34,17 @@ def bimodal_data():
 # ── 1. Валидация конструктора ───────────────────────────────────────────────
 
 def test_constructor_rejects_invalid_n_bins():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='n_bins должен быть'):
         RegressionByBinnedClassification(n_bins=1)
 
 
 def test_constructor_rejects_invalid_binning():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='binning должен быть'):
         RegressionByBinnedClassification(binning='bogus')
 
 
 def test_constructor_rejects_invalid_decode():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='decode должен быть'):
         RegressionByBinnedClassification(decode='bogus')
 
 
@@ -92,7 +92,7 @@ def test_quantile_binning_gives_roughly_equal_bin_counts(regression_data):
 # ── 3. Мультимодальный таргет: предсказания не «застревают» в пустом провале ──
 
 def test_predictions_avoid_the_empty_gap_between_modes(bimodal_data):
-    """С quantile-биннингом на этих данных один из бинов может «перекрыть»
+    """С quantile-биннингом на этих данных один из бинов может «перекрыть».
 
     пустой промежуток между модами (квантильные границы схлопывают редкие
     хвостовые точки обеих мод в один бин) — используем binning='uniform',

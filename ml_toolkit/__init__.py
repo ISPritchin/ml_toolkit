@@ -1,5 +1,7 @@
-"""Пакет переиспользуемых примитивов (`feature_generation.py`, `transformers/`,
-`models/`, `feature_selection/`, `model_evaluation/`, ...).
+"""Пакет переиспользуемых примитивов.
+
+`feature_generation.py`, `transformers/`, `models/`, `feature_selection/`,
+`model_evaluation/`, ...
 
 Конкретные бизнес-задачи, которые собирают эти примитивы в решение одной
 проблемы (сборка датасетов, фиксированный набор входных/выходных данных),

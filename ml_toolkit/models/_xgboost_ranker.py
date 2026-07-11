@@ -1,4 +1,3 @@
-# ruff: noqa: N806
 """XGBoost Ranker адаптер — оптимизирует ранжирование через rank:ndcg / rank:pairwise.
 
 Весь датасет подаётся как одна группа (qid=zeros). При бинарных метках (0/1)
@@ -15,13 +14,13 @@ Objective выбирается через model_settings['rank_objective']:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from types import ModuleType
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
-from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._base import BaseModel, XInput, YInput
 from ml_toolkit.models._utils import (
     CLS_METRICS,
     fit_calibrator,
@@ -77,10 +76,10 @@ class XGBoostRanker(BaseModel):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> XGBoostRanker:
@@ -132,7 +131,16 @@ class XGBoostRanker(BaseModel):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
-    def _fit_with_optuna(self, xgb, Xtr, ytr, qid_tr, Xva, yva, qid_va):
+    def _fit_with_optuna(
+        self,
+        xgb: ModuleType,
+        Xtr: pd.DataFrame,
+        ytr: np.ndarray,
+        qid_tr: np.ndarray,
+        Xva: pd.DataFrame | None,
+        yva: np.ndarray | None,
+        qid_va: np.ndarray | None,
+    ):
         import optuna
 
         rank_obj = self.model_settings.get('rank_objective', 'rank:ndcg')
@@ -188,7 +196,16 @@ class XGBoostRanker(BaseModel):
         )
         return model, best_params
 
-    def _fit_direct(self, xgb, Xtr, ytr, qid_tr, Xva, yva, qid_va):
+    def _fit_direct(
+        self,
+        xgb: ModuleType,
+        Xtr: pd.DataFrame,
+        ytr: np.ndarray,
+        qid_tr: np.ndarray,
+        Xva: pd.DataFrame | None,
+        yva: np.ndarray | None,
+        qid_va: np.ndarray | None,
+    ):
         params = dict(self.params)
         model = xgb.XGBRanker(**params)
         if Xva is not None:

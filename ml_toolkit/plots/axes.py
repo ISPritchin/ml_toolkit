@@ -1,8 +1,13 @@
 """Утилиты для осей: symmetrize_ylim, log_axis."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+
+if TYPE_CHECKING:
+    from matplotlib.axis import Axis
 
 
 def symmetrize_ylim(
@@ -13,6 +18,8 @@ def symmetrize_ylim(
     """Сделать ось Y симметричной вокруг center (полезно для residuals/returns).
 
     Args:
+        ax:     Axes для настройки.
+        center: центр симметрии оси Y.
         margin: относительный отступ сверху и снизу (доля от диапазона).
 
     """
@@ -32,14 +39,16 @@ def log_axis(
     """Log-ось с правильными minor-тиками и форматом без научной нотации.
 
     Args:
+        ax:    Axes для настройки.
         axis:  'x' | 'y' | 'both'.
+        base:  основание логарифма.
         subs:  позиции minor-тиков; авто если None.
         fmt:   'auto' — без научной нотации | 'sci' — оставить как есть.
 
     """
     _subs = subs or (2, 3, 4, 5, 6, 7, 8, 9)
 
-    def _setup(target_axis):
+    def _setup(target_axis: Axis) -> None:
         if base == 10:
             target_axis.set_major_locator(mticker.LogLocator(base=10, numticks=10))
             target_axis.set_minor_locator(mticker.LogLocator(base=10, subs=_subs, numticks=50))

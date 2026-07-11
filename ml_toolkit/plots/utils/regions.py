@@ -43,10 +43,18 @@ def fill_region(
     """Заливка вертикальной области с необязательной подписью.
 
     Args:
+        ax:        Axes для отрисовки.
+        x1:        левая граница области.
+        x2:        правая граница области.
+        label:     текст подписи; '' — без подписи.
+        color:     цвет заливки и подписи.
+        alpha:     прозрачность заливки.
         label_loc: положение подписи внутри области —
             'top-left' | 'top-center' | 'top-right' |
             'center-left' | 'center' | 'center-right' |
             'bottom-left' | 'bottom-center' | 'bottom-right'
+        fontsize:  размер шрифта подписи.
+        **span_kwargs: дополнительные kwargs для ax.axvspan.
 
     """
     ax.axvspan(x1, x2, color=color, alpha=alpha, **span_kwargs)

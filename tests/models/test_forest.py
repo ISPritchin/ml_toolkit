@@ -74,8 +74,9 @@ class TestForestClassifiers:
 @pytest.mark.parametrize('ClsClass', [RandomForestClassifier, ExtraTreesClassifier])
 class TestForestClassWeight:
     def test_explicit_class_weight_is_not_overridden(self, ClsClass, classification_data):
-        """Регрессия бага: {**self.params, 'class_weight': 'balanced'} молча отбрасывал
-        явный class_weight пользователя (последний ключ dict-literal побеждает).
+        """Регрессия бага: dict-literal молча отбрасывал явный class_weight пользователя.
+
+        {**self.params, 'class_weight': 'balanced'} — последний ключ dict-literal побеждает.
         """
         X_train, y_train, X_valid, y_valid = classification_data
         model = ClsClass(params={**FAST_PARAMS, 'class_weight': None})
@@ -84,8 +85,9 @@ class TestForestClassWeight:
         assert model._model.named_steps['estimator'].class_weight is None
 
     def test_explicit_class_weight_balanced_does_not_raise(self, ClsClass, classification_data):
-        """До фикса это тоже проходило бы (случайно, dict-literal без дублирующегося
-        keyword-аргумента), но явный тест на этот сценарий не был написан.
+        """До фикса это тоже проходило бы случайно, но явный тест на этот сценарий не был написан.
+
+        dict-literal без дублирующегося keyword-аргумента.
         """
         X_train, y_train, X_valid, y_valid = classification_data
         model = ClsClass(params={**FAST_PARAMS, 'class_weight': 'balanced'})

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -30,12 +30,16 @@ from sklearn.metrics import (
     recall_score,
 )
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +109,7 @@ class TwoStageCascade(BasePreset):
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(params=None, n_optuna_trials=0)
         self.recall_target = recall_target
         self.stage1_params = stage1_params
@@ -159,9 +163,9 @@ class TwoStageCascade(BasePreset):
         }
 
     def _train_with_optuna(
-        self, CB, tr_pool, va_pool, n_trials: int, is_stage2: bool,
+        self, tr_pool: Pool, va_pool: Pool, n_trials: int, is_stage2: bool,
         param_space: Callable[[Any], dict[str, Any]] | None = None,
-    ):
+    ) -> tuple[CatBoostClassifier, dict[str, Any]]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -173,7 +177,7 @@ class TwoStageCascade(BasePreset):
         def objective(trial: optuna.Trial) -> float:
             custom = param_space(trial) if param_space is not None else {}
 
-            def val(key: str, suggest: Callable[[], Any]) -> Any:
+            def val(key: str, suggest: Callable[[], float]) -> float:
                 return custom[key] if key in custom else suggest()
 
             params = {
@@ -215,7 +219,7 @@ class TwoStageCascade(BasePreset):
     # ── Поиск порога ────────────────────────────────────────────────────────
 
     def _find_threshold(self, y_val: np.ndarray, stage1_proba: np.ndarray) -> float:
-        p_curve, r_curve, t_curve = precision_recall_curve(y_val, stage1_proba)
+        _p_curve, r_curve, t_curve = precision_recall_curve(y_val, stage1_proba)
         # r_curve убывает слева направо (r_curve[0]=1.0); последняя точка
         # (precision=1, recall=0) — dummy без threshold, r_curve[:-1] соответствует t_curve
         mask = r_curve[:-1] >= self.recall_target
@@ -283,10 +287,10 @@ class TwoStageCascade(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> TwoStageCascade:
@@ -309,7 +313,7 @@ class TwoStageCascade(BasePreset):
 
         if self.stage1_n_trials > 0:
             self.model1_, s1_used_params = self._train_with_optuna(
-                CatBoostClassifier, tr1, va1, self.stage1_n_trials, is_stage2=False,
+                tr1, va1, self.stage1_n_trials, is_stage2=False,
                 param_space=self.stage1_param_space,
             )
         else:
@@ -366,7 +370,7 @@ class TwoStageCascade(BasePreset):
 
         if self.stage2_n_trials > 0 and va2 is not None:
             self.model2_, _ = self._train_with_optuna(
-                CatBoostClassifier, tr2, va2, self.stage2_n_trials, is_stage2=True,
+                tr2, va2, self.stage2_n_trials, is_stage2=True,
                 param_space=self.stage2_param_space,
             )
         else:

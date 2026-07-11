@@ -17,13 +17,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, fbeta_score, precision_recall_curve
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +146,7 @@ class ThresholdMovingCV(BasePreset):
         )
         return best_t, best_prec, scan_df
 
-    def plot_threshold_scan(self, ax: Any = None, path: str | None = None) -> None:
+    def plot_threshold_scan(self, ax: Axes | None = None, path: str | None = None) -> None:
         """График метрики по всем порогам с вертикальной линией на оптимуме."""
         import matplotlib.pyplot as plt
 
@@ -172,10 +176,10 @@ class ThresholdMovingCV(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> ThresholdMovingCV:
@@ -221,7 +225,7 @@ class ThresholdMovingCV(BasePreset):
 
     # ── predict / predict_proba ───────────────────────────────────────────────
 
-    def predict(self, X: Any, threshold: float | None = None) -> np.ndarray:
+    def predict(self, X: XInput, threshold: float | None = None) -> np.ndarray:
         """Возвращает бинарные метки. Использует self.threshold_ если threshold не задан."""
         t = threshold if threshold is not None else self.threshold_
         return (self.predict_proba(X) >= t).astype(int)

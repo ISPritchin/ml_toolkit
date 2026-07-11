@@ -35,5 +35,5 @@ class TestHeterogeneousStacking:
             assert_valid_proba(model, X_valid)
 
     def test_rejects_too_small_zoo_after_filtering(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='base_zoo должен содержать'):
             HeterogeneousStacking(base_zoo=['xgboost'])

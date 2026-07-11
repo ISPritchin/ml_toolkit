@@ -17,13 +17,17 @@ fit/tune/predict реализованы в _CustomLossClassifierMulticlassBase �
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ml_toolkit.losses import LogitNormLoss as _LogitNormLoss
 from ml_toolkit.presets.classification.multiclass_imbalance._custom_loss_base import (
     _CustomLossClassifierMulticlassBase,
     _MulticlassLossSpec,
 )
+
+if TYPE_CHECKING:
+    import optuna
+    from optuna.pruners import BasePruner
 
 
 class LogitNormLossClassifier(_CustomLossClassifierMulticlassBase):
@@ -79,10 +83,10 @@ class LogitNormLossClassifier(_CustomLossClassifierMulticlassBase):
         temperature: float = 0.04,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,

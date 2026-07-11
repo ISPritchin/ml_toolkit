@@ -1,4 +1,3 @@
-# ruff: noqa: N806
 """CatBoost Ranker адаптер — оптимизирует ранжирование через YetiRank / QuerySoftMax.
 
 Весь датасет подаётся как одна группа (group_id=zeros). YetiRank использует
@@ -16,13 +15,13 @@ Objective выбирается через model_settings['rank_objective']:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
-from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._base import BaseModel, XInput, YInput
 from ml_toolkit.models._utils import (
     CLS_METRICS,
     fit_calibrator,
@@ -32,6 +31,10 @@ from ml_toolkit.models._utils import (
     resolve_timeout,
     set_optuna_verbosity,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool as _Pool
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,7 @@ def _make_group_ids(n: int, group_size: int | None) -> np.ndarray:
 
 
 def _make_rank_pool(
-    Pool,
+    Pool: type,
     X: pd.DataFrame,
     y: np.ndarray | None,
     cat_features: list[str],
@@ -85,10 +88,10 @@ class CatBoostRanker(BaseModel):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> CatBoostRanker:
@@ -138,7 +141,17 @@ class CatBoostRanker(BaseModel):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
-    def _fit_with_optuna(self, _CB_Ranker, Pool, tr_pool, va_pool, Xva, yva, cat_in_sel, group_size):
+    def _fit_with_optuna(
+        self,
+        _CB_Ranker: type,
+        Pool: type,
+        tr_pool: _Pool,
+        va_pool: _Pool,
+        Xva: pd.DataFrame,
+        yva: np.ndarray,
+        cat_in_sel: list[str],
+        group_size: int | None,
+    ):
         import optuna
 
         rank_obj = self.model_settings.get('rank_objective', 'YetiRank')
@@ -187,7 +200,7 @@ class CatBoostRanker(BaseModel):
         model.fit(tr_pool, eval_set=va_pool)
         return model, best_params
 
-    def _fit_direct(self, _CB_Ranker, tr_pool, va_pool):
+    def _fit_direct(self, _CB_Ranker: type, tr_pool: _Pool, va_pool: _Pool | None):
         model = _CB_Ranker(**self.params)
         model.fit(tr_pool, eval_set=va_pool)
         return model, dict(self.params)

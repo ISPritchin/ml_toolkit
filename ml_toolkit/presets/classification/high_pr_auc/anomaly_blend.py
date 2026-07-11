@@ -27,19 +27,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
+    from matplotlib.axes import Axes
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +184,7 @@ class AnomalyBlendClassifier(BasePreset):
         y_tr: np.ndarray,
         X_va: pd.DataFrame,
         y_va: np.ndarray,
-    ) -> Any:
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier, Pool
 
         tr_pool = Pool(X_tr, y_tr, cat_features=self.cat_features_)
@@ -193,7 +198,7 @@ class AnomalyBlendClassifier(BasePreset):
         self.best_supervised_params_ = params
         return model
 
-    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -251,10 +256,10 @@ class AnomalyBlendClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> AnomalyBlendClassifier:
@@ -339,7 +344,7 @@ class AnomalyBlendClassifier(BasePreset):
         sup_s = self._sup_score(X)
         return self.alpha_ * sup_s + (1 - self.alpha_) * if_s
 
-    def plot_alpha_scan(self, ax: Any = None, path: str | None = None) -> None:
+    def plot_alpha_scan(self, ax: Axes | None = None, path: str | None = None) -> None:
         """График PR-AUC по всем значениям alpha с отмеченным оптимумом."""
         import matplotlib.pyplot as plt
 

@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ._base import BaseEvaluator, logger
+from ._base import BaseEvaluator, SavePath, logger
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 # ── Preset metric functions ────────────────────────────────────────────────────
 
@@ -90,8 +94,8 @@ class RegressionEvaluator(BaseEvaluator):
     def plot_actual_vs_predicted(
         self,
         splits: list[str] | None = None,
-        axes: list | None = None,
-        path: Any = None,
+        axes: list[Axes] | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Scatter of actual vs predicted with identity line — one panel per split.
 
@@ -101,7 +105,7 @@ class RegressionEvaluator(BaseEvaluator):
         fig, ax_list, created = self._prepare_axes_grid(
             axes, len(split_names), figsize=(5 * len(split_names), 5)
         )
-        for ax_, sname, color in zip(ax_list, split_names, self._palette(len(split_names))):
+        for ax_, sname, color in zip(ax_list, split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             ax_.scatter(y, p, alpha=0.3, s=12, color=color)
             lo, hi = min(y.min(), p.min()), max(y.max(), p.max())
@@ -117,8 +121,8 @@ class RegressionEvaluator(BaseEvaluator):
     def plot_residuals_distribution(
         self,
         splits: list[str] | None = None,
-        axes: list | None = None,
-        path: Any = None,
+        axes: list[Axes] | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Histogram of residuals (actual − predicted) — one panel per split.
 
@@ -128,7 +132,7 @@ class RegressionEvaluator(BaseEvaluator):
         fig, ax_list, created = self._prepare_axes_grid(
             axes, len(split_names), figsize=(5 * len(split_names), 4)
         )
-        for ax_, sname, color in zip(ax_list, split_names, self._palette(len(split_names))):
+        for ax_, sname, color in zip(ax_list, split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             residuals = y - p
             ax_.hist(residuals, bins=40, color=color, alpha=0.7, density=True)
@@ -142,8 +146,8 @@ class RegressionEvaluator(BaseEvaluator):
     def plot_residuals_vs_predicted(
         self,
         splits: list[str] | None = None,
-        axes: list | None = None,
-        path: Any = None,
+        axes: list[Axes] | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Scatter of residuals vs predicted — reveals heteroscedasticity.
 
@@ -153,7 +157,7 @@ class RegressionEvaluator(BaseEvaluator):
         fig, ax_list, created = self._prepare_axes_grid(
             axes, len(split_names), figsize=(5 * len(split_names), 4)
         )
-        for ax_, sname, color in zip(ax_list, split_names, self._palette(len(split_names))):
+        for ax_, sname, color in zip(ax_list, split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             residuals = y - p
             ax_.scatter(p, residuals, alpha=0.3, s=12, color=color)
@@ -166,7 +170,7 @@ class RegressionEvaluator(BaseEvaluator):
         self._finalize(fig, path, created, tight=True)
 
     def plot_error_percentile(
-        self, splits: list[str] | None = None, ax: Any = None, path: Any = None
+        self, splits: list[str] | None = None, ax: Axes | None = None, path: SavePath | None = None
     ) -> None:
         """Sorted absolute errors — shows where the model is worst.
 
@@ -174,7 +178,7 @@ class RegressionEvaluator(BaseEvaluator):
         """
         split_names = self._resolve_splits(splits)
         fig, ax_, created = self._prepare_ax(ax, figsize=(8, 5))
-        for sname, color in zip(split_names, self._palette(len(split_names))):
+        for sname, color in zip(split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             abs_err = np.sort(np.abs(y - p))
             pcts = np.arange(1, len(abs_err) + 1) / len(abs_err)
@@ -189,8 +193,8 @@ class RegressionEvaluator(BaseEvaluator):
         self,
         split: str,
         n_bins: int = 10,
-        ax: Any = None,
-        path: Any = None,
+        ax: Axes | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Mean absolute error per quantile bin of actual values.
 
@@ -242,6 +246,6 @@ class RegressionEvaluator(BaseEvaluator):
                 sections.append(section)
 
         html = self._render_html(sections, 'Regression Evaluation Report')
-        with open(path, 'w', encoding='utf-8') as f:
+        with Path(path).open('w', encoding='utf-8') as f:
             f.write(html)
         logger.info('Report saved to %s', path)

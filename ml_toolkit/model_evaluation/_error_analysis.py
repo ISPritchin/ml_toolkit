@@ -270,7 +270,10 @@ class ErrorAnalyzer:
         (easy to recover) or are deep in the negative zone (structural misses).
 
         Args:
+            threshold: Decision threshold; defaults to self.threshold if None.
+            n_bins: Number of histogram bins.
             log_scale: Use log-scale on the y-axis (useful when n_FN << n_TP or vice versa).
+            path: If set, saves the figure to this path instead of showing it.
 
         """
         import matplotlib.pyplot as plt

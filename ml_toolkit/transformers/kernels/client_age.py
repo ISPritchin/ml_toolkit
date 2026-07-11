@@ -90,7 +90,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"new_client_months": 3, "norm_months": 12 (опционально)}"""
+    """params: {"new_client_months": 3, "norm_months": 12 (опционально)}."""
     new_client_months = int(params.get('new_client_months', 3))
     norm_months = float(params.get('norm_months', 12.0))
     ncf, msn = _kernel(values, position, new_client_months, norm_months)

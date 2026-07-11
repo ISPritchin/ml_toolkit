@@ -46,8 +46,9 @@ class TestCatBoostRegressorOptuna:
 
 class TestCatBoostRegressorBaseline:
     def test_predict_uses_baseline_from_input(self, regression_data):
-        """baseline_col передаётся Pool(baseline=...) на train И на predict — trees учат
-        только residual относительно baseline. Если на predict() baseline-колонку убрать,
+        """baseline_col передаётся Pool(baseline=...) на train И на predict.
+
+        Trees учат только residual относительно baseline. Если на predict() baseline-колонку убрать,
         то её вклад в предсказание пропадёт и итоговый скор станет намного хуже,
         доказывая, что predict() реально читает baseline из X, а не игнорирует его.
         """
@@ -309,8 +310,9 @@ class TestCatBoostOptunaTimeout:
 
 
 class TestCatBoostOptunaVerbose:
-    """capfd намеренно не используется: логи optuna пишутся через logging-хендлер, который
-    буферизует/флашит асинхронно относительно вызовов capfd.readouterr() — на практике это
+    """capfd намеренно не используется: логи optuna пишутся через logging-хендлер.
+
+    Хендлер буферизует/флашит асинхронно относительно вызовов capfd.readouterr() — на практике это
     приводило к тому, что строки Trial N finished оказывались в чужом окне захвата. caplog
     перехватывает LogRecord синхронно в момент emit(), без этой гонки.
     """

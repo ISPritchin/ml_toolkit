@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+from sklearn.base import TransformerMixin
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
+
+if TYPE_CHECKING:
+    import lightgbm as lgb
+    import optuna
+    from optuna.pruners import BasePruner
+    import xgboost as xgb
 
 # ── Именованные метрики ────────────────────────────────────────────────────────
 
@@ -152,7 +159,7 @@ def build_cat_encoder(
     selected_features: list[str],
     cat_features: list[str],
     model_settings: dict[str, Any],
-) -> tuple[Any, list[str], list[str], list[str]]:
+) -> tuple[TransformerMixin | None, list[str], list[str], list[str]]:
     """Обучает категориальный энкодер на X_train и возвращает его для последующего apply.
 
     Args:
@@ -209,7 +216,7 @@ def build_cat_encoder(
 
 def apply_cat_encoder(
     X: pd.DataFrame,
-    encoder: Any,
+    encoder: TransformerMixin | None,
     cat_in_sel: list[str],
     new_col_names: list[str],
 ) -> pd.DataFrame:
@@ -325,7 +332,7 @@ def resolve_timeout(model_settings: dict[str, Any]) -> float | None:
     return float(timeout) if timeout is not None else None
 
 
-def resolve_pruner(model_settings: dict[str, Any]) -> Any:
+def resolve_pruner(model_settings: dict[str, Any]) -> BasePruner:
     """Резолвит optuna.pruners.BasePruner из model_settings['optuna_pruner'].
 
     None (по умолчанию) → MedianPruner() — тот же дефолт, который Optuna сама подставляет
@@ -365,7 +372,7 @@ def resolve_pruner(model_settings: dict[str, Any]) -> Any:
     )
 
 
-def make_xgb_pruning_callback(trial: Any) -> Any:
+def make_xgb_pruning_callback(trial: optuna.Trial) -> xgb.callback.TrainingCallback:
     """XGBoost TrainingCallback: trial.report()/should_prune() на каждой итерации бустинга.
 
     Ожидает ровно один eval_set (как во всех Optuna-objective этого пакета) — метрика
@@ -377,7 +384,9 @@ def make_xgb_pruning_callback(trial: Any) -> Any:
     import xgboost as xgb
 
     class _XGBPruningCallback(xgb.callback.TrainingCallback):
-        def after_iteration(self, model: Any, epoch: int, evals_log: Any) -> bool:
+        def after_iteration(
+            self, model: xgb.Booster, epoch: int, evals_log: dict[str, dict[str, list[float]]],
+        ) -> bool:
             valid_log = next(iter(evals_log.values()))
             value = next(iter(valid_log.values()))[-1]
             trial.report(value, step=epoch)
@@ -388,14 +397,15 @@ def make_xgb_pruning_callback(trial: Any) -> Any:
     return _XGBPruningCallback()
 
 
-def make_lgb_pruning_callback(trial: Any) -> Callable[[Any], None]:
-    """LightGBM callback: см. make_xgb_pruning_callback — тот же report()/should_prune(),
-    берёт первую строку env.evaluation_result_list (в этом пакете objective всегда передаёт
+def make_lgb_pruning_callback(trial: optuna.Trial) -> Callable[[lgb.callback.CallbackEnv], None]:
+    """LightGBM callback: тот же report()/should_prune(), что и make_xgb_pruning_callback.
+
+    Берёт первую строку env.evaluation_result_list (в этом пакете objective всегда передаёт
     ровно один eval_set с одной метрикой).
     """
     import optuna
 
-    def _callback(env: Any) -> None:
+    def _callback(env: lgb.callback.CallbackEnv) -> None:
         _, _, value, _ = env.evaluation_result_list[0]
         trial.report(value, step=env.iteration)
         if trial.should_prune():
@@ -405,9 +415,11 @@ def make_lgb_pruning_callback(trial: Any) -> Callable[[Any], None]:
     return _callback
 
 
-def make_catboost_pruning_callback(trial: Any) -> Any:
-    """CatBoost callback: см. make_xgb_pruning_callback. CatBoost оборачивает любое исключение,
-    поднятое внутри after_iteration, в catboost.CatBoostError (Cython-граница) — optuna.TrialPruned
+def make_catboost_pruning_callback(trial: optuna.Trial) -> Any:  # noqa: ANN401 - класс объявлен локально внутри функции
+    """CatBoost callback: см. make_xgb_pruning_callback.
+
+    CatBoost оборачивает любое исключение, поднятое внутри after_iteration, в
+    catboost.CatBoostError (Cython-граница) — optuna.TrialPruned
     там не долетел бы до study.optimize нераспознанным. Вместо этого after_iteration возвращает
     False (штатная остановка обучения по колбэку) и взводит self.pruned; вызывающий objective
     обязан проверить callback.pruned сразу после m.fit(...) и поднять optuna.TrialPruned вручную.
@@ -416,7 +428,7 @@ def make_catboost_pruning_callback(trial: Any) -> Any:
         def __init__(self) -> None:
             self.pruned = False
 
-        def after_iteration(self, info: Any) -> bool:
+        def after_iteration(self, info: Any) -> bool:  # noqa: ANN401 - CatBoost не экспортирует публичный тип info
             metrics = info.metrics.get('validation', next(iter(info.metrics.values())))
             value = next(iter(metrics.values()))[-1]
             trial.report(value, step=info.iteration)

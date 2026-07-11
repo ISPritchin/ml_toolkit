@@ -12,8 +12,8 @@ import pytest
 
 pytest.importorskip('sktree')
 
-from ml_toolkit.models._oblique_forest import ObliqueForestClassifier, ObliqueForestRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._oblique_forest import ObliqueForestClassifier, ObliqueForestRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'n_estimators': 30, 'max_depth': 4, 'random_state': 42, 'n_jobs': -1}
 
@@ -58,8 +58,9 @@ class TestObliqueForestClassifier:
         assert_valid_proba(model, X_valid)
 
     def test_explicit_class_weight_is_not_overridden(self, classification_data):
-        """Regression test: {**self.params, 'class_weight': 'balanced'} молча отбрасывал
-        явный class_weight из self.params (последний ключ dict-literal побеждает).
+        """Regression test: dict-literal молча отбрасывал явный class_weight из self.params.
+
+        {**self.params, 'class_weight': 'balanced'} — последний ключ dict-literal побеждает.
         """
         X_train, y_train, X_valid, y_valid = classification_data
         params = {**FAST_PARAMS, 'class_weight': None}

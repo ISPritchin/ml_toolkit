@@ -10,13 +10,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, mean_absolute_error, roc_auc_score
 
-from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._base import BaseModel, XInput, YInput
+
+if TYPE_CHECKING:
+    from catboost import Pool as _Pool
+    import optuna
 from ml_toolkit.models._undersampling import UndersampleSampler
 from ml_toolkit.models._utils import (
     CLS_METRICS,
@@ -55,7 +59,7 @@ def _make_pool(
     return Pool(X, label=y, cat_features=cat_features, baseline=baseline)
 
 
-def _default_reg_param_space(trial: Any, task_type: str) -> dict[str, Any]:
+def _default_reg_param_space(trial: optuna.Trial, task_type: str) -> dict[str, Any]:
     """Пространство поиска CatBoost по умолчанию для регрессии (переопределяется model_settings['param_space'])."""
     params: dict[str, Any] = {
         'iterations': trial.suggest_int('iterations', 500, 1000, step=100),
@@ -78,7 +82,7 @@ def _default_reg_param_space(trial: Any, task_type: str) -> dict[str, Any]:
     return params
 
 
-def _default_cls_param_space(trial: Any, task_type: str) -> dict[str, Any]:
+def _default_cls_param_space(trial: optuna.Trial, task_type: str) -> dict[str, Any]:
     """Пространство поиска CatBoost по умолчанию для классификации (переопределяется model_settings['param_space'])."""
     params: dict[str, Any] = {
         'iterations': trial.suggest_int('iterations', 500, 1000, step=100),
@@ -179,10 +183,10 @@ class CatBoostRegressor(BaseModel):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> CatBoostRegressor:
@@ -213,7 +217,7 @@ class CatBoostRegressor(BaseModel):
                 )
             self._model, self.best_params_ = self._fit_with_optuna(
                 _CB_Regressor, tr_pool, va_pool,
-                X_train, X_valid, y_valid, baseline_col, pp,
+                X_valid, y_valid, baseline_col, pp,
             )
         else:
             self._model, self.best_params_ = self._fit_direct(_CB_Regressor, tr_pool, va_pool)
@@ -228,8 +232,16 @@ class CatBoostRegressor(BaseModel):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
-    def _fit_with_optuna(self, _CB_Regressor, tr_pool, va_pool,
-                         X_train, X_valid, y_valid, baseline_col, pp):
+    def _fit_with_optuna(
+        self,
+        _CB_Regressor: type,
+        tr_pool: _Pool,
+        va_pool: _Pool,
+        X_valid: pd.DataFrame,
+        y_valid: pd.Series,
+        baseline_col: str | None,
+        pp: Callable,
+    ):
         import optuna
 
         metric_fn, direction = resolve_metric_fn(
@@ -266,7 +278,7 @@ class CatBoostRegressor(BaseModel):
         if task_type == 'GPU':
             logger.warning(
                 '[CatBoost Reg] task_type=GPU: CatBoost не поддерживает user-defined callbacks '
-                'на GPU — Optuna-прунинг для этого тюнинга отключён, trial\'ы доучиваются до конца.'
+                "на GPU — Optuna-прунинг для этого тюнинга отключён, trial'ы доучиваются до конца."
             )
         logger.info(
             '[CatBoost Reg] Optuna: %d trials, baseline=%s, custom_param_space=%s',
@@ -284,7 +296,7 @@ class CatBoostRegressor(BaseModel):
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
         return model, best_params
 
-    def _fit_direct(self, _CB_Regressor, tr_pool, va_pool):
+    def _fit_direct(self, _CB_Regressor: type, tr_pool: _Pool, va_pool: _Pool | None):
         model = _CB_Regressor(**self.params)
         if va_pool is not None:
             model.fit(tr_pool, eval_set=va_pool, verbose=False)
@@ -305,8 +317,9 @@ class CatBoostRegressor(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CatBoostClassifier(BaseModel):
-    """CatBoost-классификатор: бинарный и мультикласс в одном классе, с
-    изотонической калибровкой и урезанием мажоритарного класса внутри Optuna.
+    """CatBoost-классификатор: бинарный и мультикласс в одном классе.
+
+    С изотонической калибровкой и урезанием мажоритарного класса внутри Optuna.
 
     ``params=None`` запускает Optuna (`X_valid`/`y_valid` обязательны, иначе
     `ValueError`); ``params={...}`` — прямое обучение без тюнинга.
@@ -374,10 +387,10 @@ class CatBoostClassifier(BaseModel):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None = None,
-        y_valid: Any | None = None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None = None,
+        y_valid: YInput | None = None,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> CatBoostClassifier:
@@ -430,7 +443,15 @@ class CatBoostClassifier(BaseModel):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return self
 
-    def _fit_with_optuna(self, _CB_Classifier, Pool, va_pool, X_train_feats, y_train, y_valid):
+    def _fit_with_optuna(
+        self,
+        _CB_Classifier: type,
+        Pool: type,
+        va_pool: _Pool,
+        X_train_feats: pd.DataFrame,
+        y_train: pd.Series,
+        y_valid: pd.Series,
+    ):
         import optuna
 
         ms = self.model_settings
@@ -495,7 +516,7 @@ class CatBoostClassifier(BaseModel):
         if task_type == 'GPU':
             logger.warning(
                 '[CatBoost Cls] task_type=GPU: CatBoost не поддерживает user-defined callbacks '
-                'на GPU — Optuna-прунинг для этого тюнинга отключён, trial\'ы доучиваются до конца.'
+                "на GPU — Optuna-прунинг для этого тюнинга отключён, trial'ы доучиваются до конца."
             )
         logger.info(
             '[CatBoost Cls] Optuna: %d trials, task_type=%s, custom_param_space=%s, undersample_majority=%s',
@@ -529,7 +550,7 @@ class CatBoostClassifier(BaseModel):
         model.fit(final_pool, eval_set=va_pool, verbose=False)
         return model, best_params
 
-    def _fit_direct(self, _CB_Classifier, tr_pool, va_pool):
+    def _fit_direct(self, _CB_Classifier: type, tr_pool: _Pool, va_pool: _Pool | None):
         model = _CB_Classifier(**self.params)
         if va_pool is not None:
             model.fit(tr_pool, eval_set=va_pool, verbose=False)

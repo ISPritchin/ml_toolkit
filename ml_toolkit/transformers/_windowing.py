@@ -134,7 +134,7 @@ def compute_window_sorted_buffer(product_values: np.ndarray, row_idx: int, windo
 
 
 @nb.njit(cache=True)
-def fill_window_sorted(buf: np.ndarray, product_values: np.ndarray, row_idx: int, window_size: int):
+def fill_window_sorted(buf: np.ndarray, product_values: np.ndarray, row_idx: int, window_size: int) -> None:
     """Как compute_window_sorted_buffer, но в предвыделенный buf (без аллокации).
 
     Использует buf[:window_size]; buf должен иметь длину >= window_size.

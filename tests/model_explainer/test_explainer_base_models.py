@@ -1,5 +1,6 @@
-"""Проверяет, что все способы объяснения ModelExplainer работают на базовых моделях
-(ml_toolkit.models), по одной модели на каждую ветку поведения explainer'а:
+"""Проверяет, что все способы объяснения ModelExplainer работают на базовых моделях.
+
+По одной модели (ml_toolkit.models) на каждую ветку поведения explainer'а:
 
 - CatBoostClassifier          — tree + SHAP (ветка catboost в _compute_shap)
 - LightGBMClassifier          — tree + SHAP (ветка lightgbm в _compute_shap)
@@ -65,7 +66,7 @@ def _run_full_battery(explainer: ModelExplainer, X_valid: pd.DataFrame, feats: l
         fig = explainer.plot_shap_waterfall(n_show=2)
         plt.close(fig)
     else:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='SHAP недоступен'):
             explainer.shap_values()
 
     imp_perm = explainer.feature_importance(method='permutation', n_repeats=2)
@@ -198,17 +199,20 @@ class TestCatBoostRegressor:
 
 
 def test_mondrian_excluded_from_shap_support():
-    """Mondrian — tree, но без SHAP (пакет scikit-garden не входит в зависимости
-    проекта и недоступен в этом окружении, поэтому проверяем множества напрямую,
-    без обучения реальной модели).
+    """Mondrian — tree, но без SHAP.
+
+    Пакет scikit-garden не входит в зависимости проекта и недоступен в этом
+    окружении, поэтому проверяем множества напрямую, без обучения реальной модели.
     """
     assert 'mondrian' in _TREE_NAMES
     assert 'mondrian' not in _SHAP_SUPPORTED
 
 
 class TestPermutationImportanceVerbose:
-    """verbose=False (по умолчанию) — тихо; verbose=True — tqdm-прогресс, тот же
-    результат (только для permutation — единственного метода с итеративным циклом).
+    """verbose=False (по умолчанию) — тихо; verbose=True — tqdm-прогресс.
+
+    Результат тот же (только для permutation — единственного метода с итеративным
+    циклом).
     """
 
     def test_verbose_toggles_progress_bar_without_changing_result(self, classification_data, capfd):

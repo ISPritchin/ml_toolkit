@@ -14,14 +14,18 @@ p → 2 — к Gamma (строго положительная непрерывн
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.regression._custom_loss_base import (
     _CustomLossRegressorBase,
     _LossSpec,
 )
+
+if TYPE_CHECKING:
+    from optuna.pruners import BasePruner
 
 
 class TweedieOptunaRegressor(_CustomLossRegressorBase):
@@ -66,7 +70,7 @@ class TweedieOptunaRegressor(_CustomLossRegressorBase):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -87,7 +91,15 @@ class TweedieOptunaRegressor(_CustomLossRegressorBase):
         )
         self.power = power
 
-    def fit(self, X_train, y_train, X_valid, y_valid, selected_features=None, cat_features=None):
+    def fit(
+        self,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
+        selected_features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> TweedieOptunaRegressor:
         for name, y in (('y_train', y_train), ('y_valid', y_valid)):
             if (np.asarray(y) < 0).any():
                 raise ValueError(f'TweedieOptunaRegressor требует неотрицательный таргет: {name} содержит y < 0')

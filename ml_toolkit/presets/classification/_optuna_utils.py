@@ -114,7 +114,7 @@ class CatBoostPruningCallback:
         self._pruned = False
         self._message = ''
 
-    def after_iteration(self, info: Any) -> bool:
+    def after_iteration(self, info: Any) -> bool:  # noqa: ANN401 — info: непубличный C++ объект CatBoost без экспортируемого типа
         values = info.metrics.get(self._valid_name, {}).get(self._metric)
         if not values:
             return True

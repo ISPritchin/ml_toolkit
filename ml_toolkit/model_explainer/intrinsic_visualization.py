@@ -21,7 +21,6 @@ from __future__ import annotations
 import io
 import logging
 from pathlib import Path
-from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -56,7 +55,7 @@ ALL_INTERPRETABLE: frozenset[str] = (
 # ── Decision Tree ─────────────────────────────────────────────────────────────
 
 def _plot_decision_tree(
-    model: Any,
+    model: object,
     feature_names: list[str],
     save_path: Path,
     task: str,
@@ -181,7 +180,7 @@ def _plot_linear_tree(
 # ── EBM shape functions ───────────────────────────────────────────────────────
 
 def _plot_ebm_shapes(
-    model: Any,
+    model: object,
     feature_names: list[str],
     save_path: Path,
     task: str,
@@ -411,7 +410,7 @@ def _plot_rulefit_rules(
         ax.grid(axis='x', alpha=0.25, linestyle='--')
 
         x_max = float(rules['importance'].max()) if len(rules) > 0 else 1.0
-        for bar, val in zip(bars, rules['importance'].values):
+        for bar, val in zip(bars, rules['importance'].values, strict=False):
             ax.text(
                 min(val + x_max * 0.01, x_max * 1.08),
                 bar.get_y() + bar.get_height() / 2,
@@ -430,7 +429,7 @@ def _plot_rulefit_rules(
 
 # ── Rule-text models (FIGS, SKOPE, BRL, RIPPER) ───────────────────────────────
 
-def _collect_rules_text(model: Any, model_name: str) -> str:
+def _collect_rules_text(model: object, model_name: str) -> str:
     """Собирает текстовое представление правил модели."""
     lines: list[str] = []
 
@@ -605,9 +604,9 @@ def _plot_nam_shapes(
 
 
 def _plot_logistic_coef(
-    clf: Any,
-    imputer: Any,
-    qt: Any,
+    clf: object,
+    imputer: object,
+    qt: object,
     num_feats: list[str],
     feature_names: list[str],
     save_path: Path,
@@ -750,7 +749,7 @@ def _plot_locally_linear_forest(
         ax.grid(axis='x', alpha=0.25, linestyle='--')
 
         x_max = float(imp_s.values.max()) if n > 0 else 1.0
-        for bar, val in zip(ax.patches, imp_s.values):
+        for bar, val in zip(ax.patches, imp_s.values, strict=False):
             ax.text(
                 min(val + x_max * 0.01, x_max * 1.12),
                 bar.get_y() + bar.get_height() / 2,
@@ -774,7 +773,7 @@ def _plot_locally_linear_forest(
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def plot_interpretable_extra(
-    model: Any,
+    model: object,
     model_name: str,
     feature_names: list[str],
     X_valid: pd.DataFrame,

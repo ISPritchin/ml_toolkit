@@ -12,12 +12,15 @@ Optuna вместе с архитектурой. Использует встро
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ml_toolkit.presets.regression._custom_loss_base import (
     _CustomLossRegressorBase,
     _LossSpec,
 )
+
+if TYPE_CHECKING:
+    from optuna.pruners import BasePruner
 
 
 class HuberOptunaRegressor(_CustomLossRegressorBase):
@@ -59,7 +62,7 @@ class HuberOptunaRegressor(_CustomLossRegressorBase):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,

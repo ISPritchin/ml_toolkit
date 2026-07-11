@@ -38,7 +38,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, fit_linear_trend_slope, resolve_window_size
 
 FEATURE = 'direction_flag'
 
@@ -65,8 +65,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """Args:
-    params: {"windows": [6, 12]}
+    """params: {"windows": [6, 12]}.
 
     """
     windows = np.array(params['windows'], dtype=np.int64)

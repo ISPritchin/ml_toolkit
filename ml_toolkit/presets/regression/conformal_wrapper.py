@@ -26,19 +26,22 @@ X_valid уже не участвует в обучении базовой мод
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
-from ml_toolkit.models._base import _to_pandas
+from ml_toolkit.models._base import BaseModel, XInput, YInput, _to_pandas
 from ml_toolkit.presets.regression._base import BasePreset
+
+if TYPE_CHECKING:
+    from catboost import CatBoostRegressor
 
 _SIGMA_FLOOR = 1e-3
 
 
 def _conformal_quantile(scores: np.ndarray, alpha: float) -> float:
-    """Конечновыборочная поправка split-conformal: квантиль уровня
+    """Конечновыборочная поправка split-conformal: квантиль уровня.
 
     ceil((n+1)*(1-alpha))/n (а не «наивный» (1-alpha)-квантиль) — то, что
     реально гарантирует финитно-выборочное покрытие (Vovk et al., Lei et al. 2018).
@@ -82,7 +85,7 @@ class ConformalRegressionWrapper(BasePreset):
 
     def __init__(
         self,
-        base_regressor: Any,
+        base_regressor: BaseModel,
         alpha: float = 0.1,
         score: str = 'absolute',
     ) -> None:
@@ -101,7 +104,9 @@ class ConformalRegressionWrapper(BasePreset):
         self._calib_scores_: np.ndarray | None = None
         self._calib_sigma_: np.ndarray | None = None
 
-    def _fit_sigma_model(self, X_train: pd.DataFrame, feats: list[str], abs_resid_train: np.ndarray) -> Any:
+    def _fit_sigma_model(
+        self, X_train: pd.DataFrame, feats: list[str], abs_resid_train: np.ndarray,
+    ) -> CatBoostRegressor:
         from catboost import CatBoostRegressor, Pool
 
         model = CatBoostRegressor(iterations=300, depth=4, loss_function='MAE', verbose=0, random_seed=42)
@@ -117,10 +122,10 @@ class ConformalRegressionWrapper(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> ConformalRegressionWrapper:
@@ -171,8 +176,8 @@ class ConformalRegressionWrapper(BasePreset):
 
     # ── predict ───────────────────────────────────────────────────────────────
 
-    def predict_interval(self, X: Any, alpha: float | None = None) -> tuple[np.ndarray, np.ndarray]:
-        """Предиктивный интервал уровня (1 - alpha). alpha=None → self.alpha конструктора
+    def predict_interval(self, X: XInput, alpha: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+        """Предиктивный интервал уровня (1 - alpha). alpha=None → self.alpha конструктора.
 
         (переиспользует калибровочные scores без повторного обучения — порог
         q_hat пересчитывается на лету для произвольного alpha дёшево).

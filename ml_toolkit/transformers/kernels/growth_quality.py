@@ -46,7 +46,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'growth_quality'
 
@@ -122,16 +122,22 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     bs, cs, pc, gg, org, nss = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(bs[j]);  suffixes.append(f'best_share_w{w}')
-        arrays.append(cs[j]);  suffixes.append(f'consist_score_w{w}')
-        arrays.append(pc[j]);  suffixes.append(f'pos_count_w{w}')
-        arrays.append(gg[j]);  suffixes.append(f'growth_gini_w{w}')
-        arrays.append(org[j]); suffixes.append(f'organic_w{w}')
-        arrays.append(nss[j]); suffixes.append(f'neg_sum_share_w{w}')
+        arrays.append(bs[j])
+        suffixes.append(f'best_share_w{w}')
+        arrays.append(cs[j])
+        suffixes.append(f'consist_score_w{w}')
+        arrays.append(pc[j])
+        suffixes.append(f'pos_count_w{w}')
+        arrays.append(gg[j])
+        suffixes.append(f'growth_gini_w{w}')
+        arrays.append(org[j])
+        suffixes.append(f'organic_w{w}')
+        arrays.append(nss[j])
+        suffixes.append(f'neg_sum_share_w{w}')
     return arrays, suffixes

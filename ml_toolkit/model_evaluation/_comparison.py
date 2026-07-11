@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from ._base import BaseEvaluator
+    from matplotlib.axes import Axes
+    from matplotlib.container import BarContainer
+    from matplotlib.figure import Figure
+
+    from ._base import BaseEvaluator, SavePath
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +62,14 @@ def compare_models(
 
 # ── Internal panel helpers ─────────────────────────────────────────────────────
 
-def _annotate_bars(ax_: Any, bars: Any, vals: Any, fmt: str = '{:.4g}') -> None:
+def _annotate_bars(ax_: Axes, bars: BarContainer, vals: np.ndarray, fmt: str = '{:.4g}') -> None:
     """Value annotations above/below each bar, scaled to current y-range."""
     ylims = ax_.get_ylim()
     # Используем фактический y_range (без clamp к 1e-9) для offset.
     # Если offset > y_range, текст улетел бы за пределы axes → raster overflow.
     y_range = abs(ylims[1] - ylims[0])
     offset = y_range * 0.03
-    for bar, val in zip(bars, vals):
+    for bar, val in zip(bars, vals, strict=False):
         if np.isnan(val):
             continue
         ax_.text(
@@ -77,7 +81,7 @@ def _annotate_bars(ax_: Any, bars: Any, vals: Any, fmt: str = '{:.4g}') -> None:
 
 
 def _draw_cmp_panel(
-    ax_: Any,
+    ax_: Axes,
     row: pd.Series,
     model_names: list[str],
     palette: list,
@@ -93,7 +97,7 @@ def _draw_cmp_panel(
 
 
 def _draw_delta_panel(
-    ax_: Any,
+    ax_: Axes,
     row: pd.Series,
     model_names: list[str],
     palette: list,
@@ -101,7 +105,7 @@ def _draw_delta_panel(
     """Delta bars for one metric vs reference, one bar per model."""
     x = np.arange(len(model_names))
     vals = row.values.astype(float)
-    bar_colors = [c if v >= 0 else '#ef9a9a' for c, v in zip(palette, vals)]
+    bar_colors = [c if v >= 0 else '#ef9a9a' for c, v in zip(palette, vals, strict=False)]
     bars = ax_.bar(x, vals, color=bar_colors, alpha=0.85, width=0.65)
     ax_.axhline(0, color='black', lw=1.0, linestyle='--', alpha=0.5)
     _annotate_bars(ax_, bars, vals, fmt='{:+.4g}')
@@ -124,7 +128,7 @@ def _facet_figure(n_metrics: int, ncols: int, cell_w: float = 4.5, cell_h: float
     return fig, flat[:n_metrics]
 
 
-def _save_facet(fig: Any, path: Any, n_legend_rows: int = 1) -> None:
+def _save_facet(fig: Figure, path: SavePath | None, n_legend_rows: int = 1) -> None:
     import matplotlib.pyplot as plt
     # suptitle(y>1) + tight_layout вызывают бесконечное расширение фигуры.
     # Используем subplots_adjust с фиксированными долями, без tight_layout.
@@ -145,8 +149,8 @@ def plot_model_comparison(
     metrics: list[str] | None = None,
     sort_by: str | None = None,
     ncols: int = 3,
-    ax: Any = None,
-    path: Any = None,
+    ax: Axes | None = None,
+    path: SavePath | None = None,
 ) -> None:
     """Faceted bar chart: one panel per metric, models as bars.
 
@@ -186,11 +190,11 @@ def plot_model_comparison(
         return
 
     fig, axes = _facet_figure(n_metrics, ncols)
-    for ax_, metric_name in zip(axes, df.index):
+    for ax_, metric_name in zip(axes, df.index, strict=False):
         _draw_cmp_panel(ax_, df.loc[metric_name], model_names, palette)
         ax_.set_title(metric_name, fontsize=9, fontweight='bold')
 
-    legend_handles = [Patch(color=c, label=n) for c, n in zip(palette, model_names)]
+    legend_handles = [Patch(color=c, label=n) for c, n in zip(palette, model_names, strict=False)]
     ncol_legend = min(n_models, 5)
     fig.legend(handles=legend_handles, loc='lower center',
                ncol=ncol_legend, fontsize=9,
@@ -204,8 +208,8 @@ def plot_model_heatmap(
     split: str,
     metrics: list[str] | None = None,
     normalize_rows: bool = True,
-    ax: Any = None,
-    path: Any = None,
+    ax: Axes | None = None,
+    path: SavePath | None = None,
 ) -> None:
     """Heatmap of metrics × models with per-row normalisation.
 
@@ -265,8 +269,8 @@ def plot_model_delta(
     split: str,
     metrics: list[str] | None = None,
     ncols: int = 3,
-    ax: Any = None,
-    path: Any = None,
+    ax: Axes | None = None,
+    path: SavePath | None = None,
 ) -> None:
     """Faceted delta bar chart: one panel per metric, showing Δ vs a reference model.
 
@@ -301,7 +305,7 @@ def plot_model_delta(
 
     all_names = list(evaluators.keys())
     all_colors = ev0._palette(len(all_names))
-    palette = [c for name, c in zip(all_names, all_colors) if name != ref]
+    palette = [c for name, c in zip(all_names, all_colors, strict=False) if name != ref]
     other_names = list(delta.columns)
 
     if n_metrics == 1 and ax is not None:
@@ -312,11 +316,11 @@ def plot_model_delta(
         return
 
     fig, axes = _facet_figure(n_metrics, ncols)
-    for ax_, metric_name in zip(axes, delta.index):
+    for ax_, metric_name in zip(axes, delta.index, strict=False):
         _draw_delta_panel(ax_, delta.loc[metric_name], other_names, palette)
         ax_.set_title(metric_name, fontsize=9, fontweight='bold')
 
-    legend_handles = [Patch(color=c, label=n) for c, n in zip(palette, other_names)]
+    legend_handles = [Patch(color=c, label=n) for c, n in zip(palette, other_names, strict=False)]
     ncol_legend = min(n_others, 5)
     fig.legend(handles=legend_handles, loc='lower center',
                ncol=ncol_legend, fontsize=9,

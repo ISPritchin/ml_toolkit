@@ -41,7 +41,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_sum, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_sum, resolve_window_size, safe_ratio
 
 FEATURE = 'recent_share'
 
@@ -68,7 +68,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"pairs": [[3, 12], [6, 24]]}"""
+    """params: {"pairs": [[3, 12], [6, 24]]}."""
     pairs = params['pairs']
     short_w = np.array([p[0] for p in pairs], dtype=np.int64)
     long_w = np.array([p[1] for p in pairs], dtype=np.int64)

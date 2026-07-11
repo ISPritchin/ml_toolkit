@@ -244,7 +244,7 @@ def _load_preset(preset: Path | str | dict | None) -> dict[str, dict]:
                 preset_path = Path(__file__).parent / 'transformers' / 'presets' / f'{preset}.yaml'
             preset = preset_path
 
-        with open(preset, encoding='utf-8') as f:
+        with Path(preset).open(encoding='utf-8') as f:
             raw = yaml.safe_load(f)
 
     segments_registry = raw.get('segments') or {}
@@ -473,8 +473,7 @@ def _temp_working_dir(tmp_dir: Path | str | None):
 
 
 def _pearson_excluding_invalid_pairs(left: np.ndarray, right: np.ndarray) -> float:
-    """Корреляция Пирсона, исключая наблюдения, где оба значения равны нулю, либо
-    хотя бы одно из них — NaN.
+    """Корреляция Пирсона, исключая наблюдения, где оба значения равны нулю, либо хотя бы одно из них — NaN.
 
     Нули-оба не считаются «согласием» по спецификации — они убираются из выборки
     перед расчётом. NaN появляется у сегментированных фич (см. `_segmentation.py`)
@@ -640,7 +639,7 @@ def _generate_candidate_features_to_parquets(
                 suffixes = [f'{s}__{seg_fragment}' if s else seg_fragment for s in suffixes]
 
             group_arrays: dict[str, np.ndarray] = {}
-            for suffix, arr in zip(suffixes, arrays):
+            for suffix, arr in zip(suffixes, arrays, strict=False):
                 col = _col_name(product_col, transformer_name, suffix)
                 group_arrays[col] = np.asarray(arr, dtype=np.float32)
                 all_candidate_cols.append(col)
@@ -756,8 +755,8 @@ def _build_output_from_parquets(
     accepted_cols: list[str],
     col_to_file: dict[str, Path],
     out_path: Path,
-    min_ts: Any | None = None,
-    max_ts: Any | None = None,
+    min_ts: Any | None = None,  # noqa: ANN401 — тип совпадает с dtype ts_col в рантайме (int/date/datetime/str), единого статического типа нет
+    max_ts: Any | None = None,  # noqa: ANN401 — см. min_ts
 ) -> None:
     """Записывает итоговый датасет в out_path, читая по одному row group за раз.
 
@@ -845,8 +844,8 @@ def generate_feature_groups(
     feature_spec: list[FeatureSpecEntry],
     out_path: Path | str,
     corr_threshold: float | None = None,
-    min_output_ts_key: Any | None = None,
-    max_output_ts_key: Any | None = None,
+    min_output_ts_key: Any | None = None,  # noqa: ANN401 — тип совпадает с dtype ts_column_name в рантайме (int/date/datetime/str), единого статического типа нет
+    max_output_ts_key: Any | None = None,  # noqa: ANN401 — см. min_output_ts_key
     max_rows_for_correlation: int | None = _DEFAULT_MAX_ROWS_FOR_CORRELATION,
     tmp_dir: Path | str | None = None,
     name: str = 'dataset',
@@ -996,8 +995,8 @@ def select_features(
     out_path: Path | str,
     corr_threshold: float | None = _DEFAULT_CORR_THRESHOLD,
     transformer_names: list[str] | None = None,
-    min_output_ts_key: Any | None = None,
-    max_output_ts_key: Any | None = None,
+    min_output_ts_key: Any | None = None,  # noqa: ANN401 — тип совпадает с dtype ts_column_name в рантайме (int/date/datetime/str), единого статического типа нет
+    max_output_ts_key: Any | None = None,  # noqa: ANN401 — см. min_output_ts_key
     max_rows_for_correlation: int | None = _DEFAULT_MAX_ROWS_FOR_CORRELATION,
     tmp_dir: Path | str | None = None,
     preset: Path | str | dict | None = None,
@@ -1083,8 +1082,8 @@ def apply_feature_groups(
     feature_spec: list[FeatureSpecEntry],
     accepted_cols: list[str],
     out_path: Path | str,
-    min_output_ts_key: Any | None = None,
-    max_output_ts_key: Any | None = None,
+    min_output_ts_key: Any | None = None,  # noqa: ANN401 — тип совпадает с dtype ts_column_name в рантайме (int/date/datetime/str), единого статического типа нет
+    max_output_ts_key: Any | None = None,  # noqa: ANN401 — см. min_output_ts_key
     tmp_dir: Path | str | None = None,
     name: str = 'dataset',
 ) -> None:
@@ -1181,8 +1180,8 @@ def apply_selected_features(
     product_cols: list[str],
     accepted_cols: list[str],
     out_path: Path | str,
-    min_output_ts_key: Any | None = None,
-    max_output_ts_key: Any | None = None,
+    min_output_ts_key: Any | None = None,  # noqa: ANN401 — тип совпадает с dtype ts_column_name в рантайме (int/date/datetime/str), единого статического типа нет
+    max_output_ts_key: Any | None = None,  # noqa: ANN401 — см. min_output_ts_key
     transformer_names: list[str] | None = None,
     preset: Path | str | dict | None = None,
     tmp_dir: Path | str | None = None,

@@ -10,8 +10,8 @@ import pytest
 
 pytest.importorskip('pygam')
 
-from ml_toolkit.models._gam import PyGAMClassifier, PyGAMRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._gam import PyGAMClassifier, PyGAMRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'lam': 0.6}
 
@@ -72,8 +72,9 @@ class TestPyGAMClassifier:
         assert_valid_proba(model, X_valid)
 
     def test_predict_proba_is_1d_and_valid(self, classification_data):
-        """LogisticGAM.predict_proba() отдаёт 1D массив, не 2D как sklearn — проверяем,
-        что адаптер корректно с этим работает и не индексирует [:, 1].
+        """LogisticGAM.predict_proba() отдаёт 1D массив, не 2D как sklearn.
+
+        Проверяем, что адаптер корректно с этим работает и не индексирует [:, 1].
         """
         X_train, y_train, X_valid, y_valid = classification_data
         model = PyGAMClassifier(params=FAST_PARAMS)

@@ -24,7 +24,6 @@ from __future__ import annotations
 from collections.abc import Callable
 import logging
 from pathlib import Path
-from typing import Any
 import warnings
 
 import matplotlib.pyplot as plt
@@ -56,7 +55,7 @@ def _linear_importance(model_tuple: tuple, feature_names: list[str]) -> np.ndarr
 # ── individual SHAP waterfall ─────────────────────────────────────────────────
 
 def plot_shap_individuals(
-    model: Any,
+    model: object,
     model_name: str,
     feature_names: list[str],
     X_sample: pd.DataFrame,
@@ -191,7 +190,7 @@ def plot_shap_individuals(
 
 # ── importance computation ────────────────────────────────────────────────────
 
-def _tree_importance(model: Any, model_name: str, feature_names: list[str]) -> np.ndarray | None:
+def _tree_importance(model: object, model_name: str, feature_names: list[str]) -> np.ndarray | None:
     """Встроенная важность для tree-моделей; возвращает массив, выровненный с feature_names.
 
     Возвращает None если встроенная важность недоступна (напр. HistGBM на старом sklearn).
@@ -268,7 +267,7 @@ def _permutation_importance(
 
 def _try_shap_plot(
     ax: plt.Axes,
-    model: Any,
+    model: object,
     model_name: str,
     feature_names: list[str],
     X_val: pd.DataFrame,
@@ -359,7 +358,7 @@ def _draw_bar(
     ax.grid(axis='x', alpha=0.25, linestyle='--')
 
     x_max = float(top.values.max()) if n > 0 else 1.0
-    for bar, val in zip(bars, top.values):
+    for bar, val in zip(bars, top.values, strict=False):
         label = f'{val:.3f}' if abs(val) < 10 else f'{val:.1f}'
         ax.text(
             min(val + x_max * 0.01, x_max * 1.12),
@@ -371,7 +370,7 @@ def _draw_bar(
 # ── public API ────────────────────────────────────────────────────────────────
 
 def plot_feature_importance(
-    model: Any,
+    model: object,
     model_name: str,
     feature_names: list[str],
     X_valid: pd.DataFrame,
@@ -403,7 +402,7 @@ def plot_feature_importance(
 
     # ── compute importance ────────────────────────────────────────────────────
     try:
-        from ml_toolkit.models import LINEAR_NAMES  # noqa: PLC0415
+        from ml_toolkit.models import LINEAR_NAMES
         if model_name in _TREE_MODELS:
             raw = _tree_importance(model, model_name, feature_names)
             if raw is not None:

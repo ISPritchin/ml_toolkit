@@ -32,9 +32,9 @@ def zero_inflated_data():
 # ── 1. Валидация конструктора и входных данных ──────────────────────────────
 
 def test_constructor_rejects_power_out_of_range():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='power должен быть'):
         TweedieOptunaRegressor(power=1.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='power должен быть'):
         TweedieOptunaRegressor(power=2.0)
 
 
@@ -71,7 +71,7 @@ def test_fit_predict_zero_inflated(zero_inflated_data):
 
 
 def test_zero_target_allowed(positive_regression_data):
-    """y == 0 (не только y < 0) должен быть допустим — Tweedie(1,2) поддерживает массу в нуле."""
+    """Y == 0 (не только y < 0) должен быть допустим — Tweedie(1,2) поддерживает массу в нуле."""
     X_train, y_train, X_valid, y_valid = positive_regression_data
     y_train = y_train.copy()
     y_train.iloc[:5] = 0.0

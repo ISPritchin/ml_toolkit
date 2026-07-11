@@ -21,5 +21,5 @@ class TestSpyPUClassifier:
         assert model.n_reliable_negative_ >= 0
 
     def test_rejects_invalid_spy_frac(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='spy_frac должен быть'):
             SpyPUClassifier(spy_frac=0.9)

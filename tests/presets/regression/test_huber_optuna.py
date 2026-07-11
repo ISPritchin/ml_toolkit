@@ -9,7 +9,6 @@ from sklearn.metrics import mean_absolute_error
 from ml_toolkit.presets.regression import HuberOptunaRegressor
 from tests.presets.regression.conftest import BASE_PARAMS
 
-
 # ── 1. Прямой режим ──────────────────────────────────────────────────────────
 
 def test_no_optuna_uses_constructor_delta_directly(regression_data):
@@ -27,9 +26,9 @@ def test_no_optuna_uses_constructor_delta_directly(regression_data):
 
 
 def test_constructor_rejects_non_positive_delta():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='delta должен быть положительным'):
         HuberOptunaRegressor(delta=0.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='delta должен быть положительным'):
         HuberOptunaRegressor(delta=-1.0)
 
 
@@ -78,7 +77,8 @@ def test_huber_more_robust_to_outliers_than_rmse(regression_data):
 
     params = {'iterations': 300, 'verbose': 0, 'random_seed': 42}
 
-    from catboost import CatBoostRegressor as _RawCB, Pool
+    from catboost import CatBoostRegressor as _RawCB
+    from catboost import Pool
     rmse_model = _RawCB(loss_function='RMSE', **params)
     rmse_model.fit(Pool(X_train, y_train_out), eval_set=Pool(X_valid, y_valid), verbose=False)
     rmse_mae = mean_absolute_error(y_valid, rmse_model.predict(X_valid))

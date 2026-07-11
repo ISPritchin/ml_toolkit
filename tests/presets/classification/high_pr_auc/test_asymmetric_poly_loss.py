@@ -1,4 +1,4 @@
-"""Смоук-тест fit/predict для AsymmetricPolyLossClassifier
+"""Смоук-тест fit/predict для AsymmetricPolyLossClassifier.
 
 (ml_toolkit/presets/classification/high_pr_auc/asymmetric_poly_loss.py).
 """

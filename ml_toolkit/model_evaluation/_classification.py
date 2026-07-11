@@ -3,12 +3,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import functools
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-from ._base import BaseEvaluator, logger
+from ._base import BaseEvaluator, SavePath, logger
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 # ── Preset metric functions ────────────────────────────────────────────────────
 
@@ -295,14 +299,14 @@ class ClassificationEvaluator(BaseEvaluator):
     # ── Plots ─────────────────────────────────────────────────────────────────
 
     def plot_roc(
-        self, splits: list[str] | None = None, ax: Any = None, path: Any = None
+        self, splits: list[str] | None = None, ax: Axes | None = None, path: SavePath | None = None
     ) -> None:
         """ROC curve for each split. Pass ax= to draw on an existing Axes."""
         from sklearn.metrics import roc_auc_score, roc_curve
 
         split_names = self._resolve_splits(splits)
         fig, ax_, created = self._prepare_ax(ax, figsize=(7, 6))
-        for sname, color in zip(split_names, self._palette(len(split_names))):
+        for sname, color in zip(split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             p1 = p if p.ndim == 1 else p[:, 1]
             fpr, tpr, _ = roc_curve(y, p1)
@@ -315,14 +319,14 @@ class ClassificationEvaluator(BaseEvaluator):
         self._finalize(fig, path, created)
 
     def plot_pr(
-        self, splits: list[str] | None = None, ax: Any = None, path: Any = None
+        self, splits: list[str] | None = None, ax: Axes | None = None, path: SavePath | None = None
     ) -> None:
         """Precision-Recall curve for each split. Pass ax= to draw on an existing Axes."""
         from sklearn.metrics import average_precision_score, precision_recall_curve
 
         split_names = self._resolve_splits(splits)
         fig, ax_, created = self._prepare_ax(ax, figsize=(7, 6))
-        for sname, color in zip(split_names, self._palette(len(split_names))):
+        for sname, color in zip(split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             p1 = p if p.ndim == 1 else p[:, 1]
             prec, rec, _ = precision_recall_curve(y, p1)
@@ -341,7 +345,7 @@ class ClassificationEvaluator(BaseEvaluator):
         self,
         splits: list[str] | None = None,
         axes: list | None = None,
-        path: Any = None,
+        path: SavePath | None = None,
     ) -> None:
         """Histogram of scores by class — one panel per split.
 
@@ -351,7 +355,7 @@ class ClassificationEvaluator(BaseEvaluator):
         fig, ax_list, created = self._prepare_axes_grid(
             axes, len(split_names), figsize=(5 * len(split_names), 4)
         )
-        for ax_, sname in zip(ax_list, split_names):
+        for ax_, sname in zip(ax_list, split_names, strict=False):
             y, p = self._splits[sname]
             p1 = p if p.ndim == 1 else p[:, 1]
             for cls, label in [(0, 'Negative'), (1, 'Positive')]:
@@ -369,7 +373,7 @@ class ClassificationEvaluator(BaseEvaluator):
         self,
         splits: list[str] | None = None,
         axes: list | None = None,
-        path: Any = None,
+        path: SavePath | None = None,
     ) -> None:
         """CDF of scores by class — one panel per split.
 
@@ -380,7 +384,7 @@ class ClassificationEvaluator(BaseEvaluator):
         fig, ax_list, created = self._prepare_axes_grid(
             axes, len(split_names), figsize=(5 * len(split_names), 4)
         )
-        for ax_, sname in zip(ax_list, split_names):
+        for ax_, sname in zip(ax_list, split_names, strict=False):
             y, p = self._splits[sname]
             p1 = p if p.ndim == 1 else p[:, 1]
             for cls, label, ls in [(0, 'Negative', '-'), (1, 'Positive', '--')]:
@@ -401,14 +405,14 @@ class ClassificationEvaluator(BaseEvaluator):
         self,
         splits: list[str] | None = None,
         n_bins: int = 10,
-        ax: Any = None,
-        path: Any = None,
+        ax: Axes | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Reliability diagram for each split. Pass ax= to draw on an existing Axes."""
         split_names = self._resolve_splits(splits)
         fig, ax_, created = self._prepare_ax(ax, figsize=(7, 6))
         ax_.plot([0, 1], [0, 1], 'k--', lw=0.8, label='Perfect calibration')
-        for sname, color in zip(split_names, self._palette(len(split_names))):
+        for sname, color in zip(split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             p1 = p if p.ndim == 1 else p[:, 1]
             bins = np.linspace(0.0, 1.0, n_bins + 1)
@@ -433,8 +437,8 @@ class ClassificationEvaluator(BaseEvaluator):
         split: str,
         threshold: float = 0.5,
         normalize: str | None = None,
-        ax: Any = None,
-        path: Any = None,
+        ax: Axes | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Confusion matrix. normalize: 'true' | 'pred' | None.
 
@@ -452,14 +456,14 @@ class ClassificationEvaluator(BaseEvaluator):
         self._finalize(fig, path, created)
 
     def plot_lift(
-        self, splits: list[str] | None = None, ax: Any = None, path: Any = None
+        self, splits: list[str] | None = None, ax: Axes | None = None, path: SavePath | None = None
     ) -> None:
         """Lift curve (binary only). Pass ax= to draw on an existing Axes."""
         self._require_binary('plot_lift')
         split_names = self._resolve_splits(splits)
         fig, ax_, created = self._prepare_ax(ax, figsize=(7, 5))
         ax_.axhline(1.0, color='k', linestyle='--', lw=0.8, label='Baseline')
-        for sname, color in zip(split_names, self._palette(len(split_names))):
+        for sname, color in zip(split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             base_rate = y.mean()
             if base_rate == 0:
@@ -476,14 +480,14 @@ class ClassificationEvaluator(BaseEvaluator):
         self._finalize(fig, path, created)
 
     def plot_gains(
-        self, splits: list[str] | None = None, ax: Any = None, path: Any = None
+        self, splits: list[str] | None = None, ax: Axes | None = None, path: SavePath | None = None
     ) -> None:
         """Cumulative gains curve (binary only). Pass ax= to draw on an existing Axes."""
         self._require_binary('plot_gains')
         split_names = self._resolve_splits(splits)
         fig, ax_, created = self._prepare_ax(ax, figsize=(7, 5))
         ax_.plot([0, 1], [0, 1], 'k--', lw=0.8, label='Baseline')
-        for sname, color in zip(split_names, self._palette(len(split_names))):
+        for sname, color in zip(split_names, self._palette(len(split_names)), strict=False):
             y, p = self._splits[sname]
             total_pos = y.sum()
             if total_pos == 0:
@@ -505,8 +509,8 @@ class ClassificationEvaluator(BaseEvaluator):
         min_precision: float | None = None,
         show_f1: bool = False,
         show_counts_axis: bool = False,
-        ax: Any = None,
-        path: Any = None,
+        ax: Axes | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Precision and recall curves as the top-k selection grows (binary only).
 
@@ -541,9 +545,11 @@ class ClassificationEvaluator(BaseEvaluator):
 
         # Line style + width by split rank (last = test = thick solid)
         def _ls(rank: int, n: int) -> tuple[str, float]:
-            if rank == n - 1:   return '-',  2.4   # test
-            if rank == n - 2:   return '--', 1.6   # valid
-            return ':',  1.2                        # train / earlier
+            if rank == n - 1:
+                return '-', 2.4   # test
+            if rank == n - 2:
+                return '--', 1.6   # valid
+            return ':', 1.2                        # train / earlier
 
         # Normalise scalar markers → lists
         k_fracs: list[float] = (
@@ -597,7 +603,7 @@ class ClassificationEvaluator(BaseEvaluator):
                 valid_mask = prec_curve >= min_precision
                 if valid_mask.any():
                     cross_frac = frac_range[valid_mask][-1]
-                    cross_n = int(round(cross_frac * n))
+                    cross_n = round(cross_frac * n)
                     ax_.axvline(cross_frac, color='grey', linestyle=ls,
                                 lw=lw * 0.7, alpha=0.7, zorder=0)
                     ax_.scatter([cross_frac], [min_precision],
@@ -618,7 +624,7 @@ class ClassificationEvaluator(BaseEvaluator):
             ax_.axvline(kf, color='grey', linestyle=':', lw=0.9, zorder=0)
             lines = [f'k = {kf:.0%}']
             for sname, (fr, pc, rc, n) in curves.items():
-                ki = max(0, min(n - 1, int(round(kf * n)) - 1))
+                ki = max(0, min(n - 1, round(kf * n) - 1))
                 lines.append(f'{sname}: p={pc[ki]:.2f}  r={rc[ki]:.2f}')
             # Alternate box y-position: odd markers go higher
             box_y = 0.62 if m_idx % 2 == 0 else 0.38
@@ -691,7 +697,7 @@ class ClassificationEvaluator(BaseEvaluator):
         self._finalize(fig, path, created)
 
     def plot_decile_bar(
-        self, split: str, ax: Any = None, path: Any = None
+        self, split: str, ax: Axes | None = None, path: SavePath | None = None
     ) -> None:
         """Positive rate per score decile. Decile 1 = highest scores (binary only).
 
@@ -719,8 +725,8 @@ class ClassificationEvaluator(BaseEvaluator):
         self,
         split: str,
         metrics: list[str] | None = None,
-        ax: Any = None,
-        path: Any = None,
+        ax: Axes | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Precision/recall/f1 vs threshold with optimal F1 marker (binary only).
 
@@ -741,7 +747,7 @@ class ClassificationEvaluator(BaseEvaluator):
         ax_.legend()
         self._finalize(fig, path, created)
 
-    def plot_ks(self, split: str, ax: Any = None, path: Any = None) -> None:
+    def plot_ks(self, split: str, ax: Axes | None = None, path: SavePath | None = None) -> None:
         """KS plot: positive vs negative CDF with KS statistic (binary only).
 
         Pass ax= to draw on an existing Axes.
@@ -772,7 +778,7 @@ class ClassificationEvaluator(BaseEvaluator):
         target: str,
         n_bins: int = 10,
         axes: list | None = None,
-        path: Any = None,
+        path: SavePath | None = None,
     ) -> None:
         """Score distribution shift and per-bin PSI bar (binary only).
 
@@ -798,7 +804,7 @@ class ClassificationEvaluator(BaseEvaluator):
         self._finalize(fig, path, created, tight=True)
 
     def plot_roc_ovr(
-        self, splits: list[str] | None = None, path: Any = None
+        self, splits: list[str] | None = None, path: SavePath | None = None
     ) -> None:
         """One-vs-Rest ROC curves per class — one figure per split (multiclass only).
 
@@ -813,7 +819,7 @@ class ClassificationEvaluator(BaseEvaluator):
             classes = np.unique(y)
             fig, ax_, created = self._prepare_ax(None, figsize=(7, 6))
             ax_.plot([0, 1], [0, 1], 'k--', lw=0.8)
-            for k, (cls, color) in enumerate(zip(classes, self._palette(len(classes)))):
+            for k, (cls, color) in enumerate(zip(classes, self._palette(len(classes)), strict=False)):
                 y_bin = (y == cls).astype(int)
                 fpr, tpr, _ = roc_curve(y_bin, p[:, k])
                 ax_.plot(fpr, tpr, color=color,
@@ -825,7 +831,7 @@ class ClassificationEvaluator(BaseEvaluator):
             self._finalize(fig, path, created)
 
     def plot_metrics_per_class(
-        self, split: str, ax: Any = None, path: Any = None
+        self, split: str, ax: Axes | None = None, path: SavePath | None = None
     ) -> None:
         """Precision/recall/F1 bar chart per class (multiclass only).
 
@@ -900,7 +906,7 @@ class ClassificationEvaluator(BaseEvaluator):
                 sections.append(section)
 
         html = self._render_html(sections, 'Classification Evaluation Report')
-        with open(path, 'w', encoding='utf-8') as f:
+        with Path(path).open('w', encoding='utf-8') as f:
             f.write(html)
         logger.info('Report saved to %s', path)
 

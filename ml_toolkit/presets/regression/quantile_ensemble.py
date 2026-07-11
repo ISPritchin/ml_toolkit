@@ -22,12 +22,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
-from ml_toolkit.models._base import _to_pandas
+from ml_toolkit.models._base import XInput, YInput, _to_pandas
 from ml_toolkit.models._utils import quantile_loss
 from ml_toolkit.presets.regression._base import BasePreset
 from ml_toolkit.presets.regression._optuna_utils import (
@@ -35,6 +35,9 @@ from ml_toolkit.presets.regression._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostRegressor, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +125,11 @@ class QuantileEnsembleRegressor(BasePreset):
 
     # ── обучение одной квантильной модели ───────────────────────────────────
 
-    def _tune_one_quantile(self, tr_pool, va_pool, y_va, q):
-        import optuna
+    def _tune_one_quantile(
+        self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray, q: float,
+    ) -> tuple[CatBoostRegressor, dict]:
         from catboost import CatBoostRegressor
+        import optuna
 
         _optuna_prev_verbosity = optuna.logging.get_verbosity()
         if not self.optuna_verbose:
@@ -161,7 +166,9 @@ class QuantileEnsembleRegressor(BasePreset):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return model, best
 
-    def _fit_one_quantile(self, tr_pool, va_pool, y_va, q):
+    def _fit_one_quantile(
+        self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray, q: float,
+    ) -> tuple[CatBoostRegressor, dict]:
         from catboost import CatBoostRegressor
 
         if self.n_optuna_trials > 0:
@@ -182,10 +189,10 @@ class QuantileEnsembleRegressor(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> QuantileEnsembleRegressor:
@@ -219,7 +226,7 @@ class QuantileEnsembleRegressor(BasePreset):
 
     # ── predict ───────────────────────────────────────────────────────────────
 
-    def predict_quantiles(self, X: Any) -> pd.DataFrame:
+    def predict_quantiles(self, X: XInput) -> pd.DataFrame:
         """Полный квантильный профиль (после non-crossing поправки, если включена)."""
         self._check_fitted()
         from catboost import Pool

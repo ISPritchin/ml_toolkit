@@ -13,7 +13,7 @@ _SMALL = {'n_estimators': 60, 'early_stopping_rounds': 20}
 # ── 1. Валидация конструктора и входных данных ──────────────────────────────
 
 def test_constructor_rejects_invalid_dist():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='dist должен быть'):
         NGBoostPreset(dist='bogus')
 
 
@@ -88,7 +88,7 @@ def test_predict_interval_rejects_invalid_alpha(positive_regression_data):
     X_train, y_train, X_valid, y_valid = positive_regression_data
     model = NGBoostPreset(dist='LogNormal', **_SMALL)
     model.fit(X_train, y_train, X_valid, y_valid)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='alpha должен быть'):
         model.predict_interval(X_valid, alpha=0.0)
 
 

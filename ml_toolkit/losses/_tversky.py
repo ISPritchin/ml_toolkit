@@ -12,6 +12,8 @@ alpha=beta=0.5 → Dice Loss.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -40,7 +42,10 @@ class TverskyLoss:
         self.smooth = smooth
 
     def calc_ders_range(
-        self, predictions, targets, weights
+        self,
+        predictions: Sequence[float],
+        targets: Sequence[float],
+        weights: Sequence[float] | None,
     ) -> list[tuple[float, float]]:
         eps = 1e-7
         f = np.asarray(predictions, dtype=np.float64)
@@ -76,4 +81,4 @@ class TverskyLoss:
         # строки в общем приближении.
         der2 = np.minimum(-(w * p * (1.0 - p)), -eps)
 
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))

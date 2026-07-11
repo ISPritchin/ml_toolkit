@@ -50,8 +50,8 @@ def data():
 def test_simple_losses_scale_by_weight(data, loss_factory):
     f, y, w = data
     loss = loss_factory()
-    der1_u, der2_u = zip(*loss.calc_ders_range(f, y, None))
-    der1_w, der2_w = zip(*loss.calc_ders_range(f, y, w))
+    der1_u, der2_u = zip(*loss.calc_ders_range(f, y, None), strict=False)
+    der1_w, der2_w = zip(*loss.calc_ders_range(f, y, w), strict=False)
     assert np.allclose(der1_w, w * np.array(der1_u), atol=1e-8)
     assert np.allclose(der2_w, w * np.array(der2_u), atol=1e-8)
 
@@ -61,10 +61,10 @@ def test_ldam_scales_by_weight(data):
     n_pos, n_neg = int(y.sum()), int((1 - y).sum())
     loss = LDAMLoss(n_pos=n_pos, n_neg=n_neg, max_margin=0.5,
                     reweight_epoch_frac=0.9, n_total_iterations=10)
-    der1_u, der2_u = zip(*loss.calc_ders_range(f, y, None))
+    der1_u, der2_u = zip(*loss.calc_ders_range(f, y, None), strict=False)
     loss2 = LDAMLoss(n_pos=n_pos, n_neg=n_neg, max_margin=0.5,
                      reweight_epoch_frac=0.9, n_total_iterations=10)
-    der1_w, der2_w = zip(*loss2.calc_ders_range(f, y, w))
+    der1_w, der2_w = zip(*loss2.calc_ders_range(f, y, w), strict=False)
     assert np.allclose(der1_w, w * np.array(der1_u), atol=1e-8)
     assert np.allclose(der2_w, w * np.array(der2_u), atol=1e-8)
 
@@ -84,7 +84,7 @@ def test_tversky_and_dice_weighted_tp_fp_fn(data):
 
     alpha, beta, smooth = 0.35, 0.65, 1.0
     loss = TverskyLoss(alpha=alpha, beta=beta, smooth=smooth)
-    der1, _ = zip(*loss.calc_ders_range(f, y, w))
+    der1, _ = zip(*loss.calc_ders_range(f, y, w), strict=False)
     der1 = np.array(der1)
     for i in range(len(f)):
         h = 1e-6
@@ -97,8 +97,8 @@ def test_tversky_and_dice_weighted_tp_fp_fn(data):
 
     dice = DiceLoss(smooth=smooth)
     tversky_half = TverskyLoss(alpha=0.5, beta=0.5, smooth=smooth)
-    d1, d2 = zip(*dice.calc_ders_range(f, y, w))
-    t1, t2 = zip(*tversky_half.calc_ders_range(f, y, w))
+    d1, d2 = zip(*dice.calc_ders_range(f, y, w), strict=False)
+    t1, t2 = zip(*tversky_half.calc_ders_range(f, y, w), strict=False)
     assert np.allclose(d1, t1) and np.allclose(d2, t2)
 
 
@@ -130,7 +130,7 @@ def test_nnpu_weighted_risk(data):
         return pi * r_p_plus - gamma * neg_risk
 
     loss = NNPULoss(class_prior=0.3, beta=0.0, gamma=1.0)
-    der1, _ = zip(*loss.calc_ders_range(f, y, w))
+    der1, _ = zip(*loss.calc_ders_range(f, y, w), strict=False)
     der1 = np.array(der1)
     for i in range(len(f)):
         h = 1e-6

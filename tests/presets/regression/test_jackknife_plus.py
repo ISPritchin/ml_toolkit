@@ -27,7 +27,7 @@ def holdout_data():
 # ── 1. Валидация конструктора ───────────────────────────────────────────────
 
 def test_constructor_rejects_too_few_folds():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='n_folds должен быть'):
         JackknifePlusRegressor(n_folds=1)
 
 
@@ -71,7 +71,7 @@ def test_fit_folds_in_valid_when_provided(regression_data):
 # ── 4. predict_interval: базовая корректность ───────────────────────────────
 
 def test_predict_interval_shape_and_ordering(regression_data):
-    X_train, y_train, X_valid, y_valid = regression_data
+    X_train, y_train, X_valid, _y_valid = regression_data
     model = JackknifePlusRegressor(n_folds=5, base_params=_SMALL_PARAMS)
     model.fit(X_train, y_train)
 
@@ -85,7 +85,7 @@ def test_predict_interval_rejects_invalid_alpha(regression_data):
     X_train, y_train, _, _ = regression_data
     model = JackknifePlusRegressor(n_folds=5, base_params=_SMALL_PARAMS)
     model.fit(X_train, y_train)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='alpha должен быть'):
         model.predict_interval(X_train, alpha=0.0)
 
 

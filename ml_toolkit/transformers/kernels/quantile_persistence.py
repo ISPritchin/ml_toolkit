@@ -48,7 +48,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import (
+from ml_toolkit.transformers._windowing import (
     EPS,
     fill_window_sorted,
     resolve_window_size,
@@ -95,14 +95,21 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             p25 = sorted_quantile(sorted_buf, ws, 0.25)
             p75 = sorted_quantile(sorted_buf, ws, 0.75)
 
-            above_med = 0; top_q = 0; bot_q = 0; above_ewma_cnt = 0
+            above_med = 0
+            top_q = 0
+            bot_q = 0
+            above_ewma_cnt = 0
             for offset in range(ws):
                 abs_idx = row_idx - ws + 1 + offset
                 v = product_values[abs_idx]
-                if v > median: above_med += 1
-                if v >= p75: top_q += 1
-                if v <= p25: bot_q += 1
-                if v > ewma_now: above_ewma_cnt += 1
+                if v > median:
+                    above_med += 1
+                if v >= p75:
+                    top_q += 1
+                if v <= p25:
+                    bot_q += 1
+                if v > ewma_now:
+                    above_ewma_cnt += 1
                 # rank within window: доля точек <= v (бинарный поиск по sorted_buf)
                 ranks[offset] = np.searchsorted(sorted_buf[:ws], v, side='right') / ws
 
@@ -121,7 +128,8 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                 for i in range(half):
                     mean_r += ranks[start + i]
                 mean_r /= half
-                sx = 0.0; sxy = 0.0
+                sx = 0.0
+                sxy = 0.0
                 for i in range(half):
                     dx = i - (half - 1) / 2.0
                     sx += dx * dx
@@ -130,10 +138,12 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
             # quartile stability: 1 - CV of ranks
             mean_all_r = 0.0
-            for i in range(ws): mean_all_r += ranks[i]
+            for i in range(ws):
+                mean_all_r += ranks[i]
             mean_all_r /= ws
             var_r = 0.0
-            for i in range(ws): var_r += (ranks[i] - mean_all_r) ** 2
+            for i in range(ws):
+                var_r += (ranks[i] - mean_all_r) ** 2
             std_r = (var_r / ws) ** 0.5
             out_q_stability[j, row_idx] = 1.0 - std_r / (mean_all_r + EPS)
 
@@ -141,16 +151,22 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     am, tq, bq, rt, qs, ae = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(am[j]); suffixes.append(f'above_med_w{w}')
-        arrays.append(tq[j]); suffixes.append(f'top_q_w{w}')
-        arrays.append(bq[j]); suffixes.append(f'bot_q_w{w}')
-        arrays.append(rt[j]); suffixes.append(f'rank_trend_w{w}')
-        arrays.append(qs[j]); suffixes.append(f'q_stability_w{w}')
-        arrays.append(ae[j]); suffixes.append(f'above_ewma_w{w}')
+        arrays.append(am[j])
+        suffixes.append(f'above_med_w{w}')
+        arrays.append(tq[j])
+        suffixes.append(f'top_q_w{w}')
+        arrays.append(bq[j])
+        suffixes.append(f'bot_q_w{w}')
+        arrays.append(rt[j])
+        suffixes.append(f'rank_trend_w{w}')
+        arrays.append(qs[j])
+        suffixes.append(f'q_stability_w{w}')
+        arrays.append(ae[j])
+        suffixes.append(f'above_ewma_w{w}')
     return arrays, suffixes

@@ -43,7 +43,9 @@ def _cat_indices(selected: list[str], cat: list[str]) -> list[int]:
     return [i for i, f in enumerate(selected) if f in cat_set]
 
 
-def _to_arrays(X_train, X_valid, X_inference, features):
+def _to_arrays(
+    X_train: pd.DataFrame, X_valid: pd.DataFrame, X_inference: pd.DataFrame, features: list[str],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     tr = X_train[features].to_numpy(dtype=float)
     va = X_valid[features].to_numpy(dtype=float)
     inf = X_inference[features].to_numpy(dtype=float)

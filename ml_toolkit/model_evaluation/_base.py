@@ -5,10 +5,20 @@ import base64
 from collections.abc import Callable
 import io
 import logging
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
+    from numpy.typing import ArrayLike
+
+# fig.savefig()/plt.savefig() принимают путь или file-like объект (например,
+# io.BytesIO — используется _plot_to_section() для встраивания PNG в HTML-отчёт).
+SavePath = str | Path | io.BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +40,7 @@ class BaseEvaluator:
 
     # ── Registration ──────────────────────────────────────────────────────────
 
-    def add(self, name: str, y_true: Any, y_second: Any) -> BaseEvaluator:
+    def add(self, name: str, y_true: ArrayLike, y_second: ArrayLike) -> BaseEvaluator:
         """Register a split. y_second is y_proba (cls) or y_pred (reg). Returns self."""
         self._splits[name] = (np.asarray(y_true), np.asarray(y_second))
         return self
@@ -138,9 +148,9 @@ class BaseEvaluator:
 
     @staticmethod
     def _prepare_ax(
-        ax: Any | None,
+        ax: Axes | None,
         figsize: tuple[float, float],
-    ) -> tuple[Any, Any, bool]:
+    ) -> tuple[Figure | None, Axes, bool]:
         """Return (fig_or_None, ax, created_by_us).
 
         If caller passed an ax, return it as-is and mark created=False so
@@ -154,10 +164,10 @@ class BaseEvaluator:
 
     @staticmethod
     def _prepare_axes_grid(
-        axes: list | None,
+        axes: list[Axes] | None,
         n: int,
         figsize: tuple[float, float],
-    ) -> tuple[Any, list, bool]:
+    ) -> tuple[Figure | None, list[Axes], bool]:
         """Return (fig_or_None, axes_list, created_by_us) for n-panel layouts."""
         import matplotlib.pyplot as plt
         if axes is not None:
@@ -169,8 +179,8 @@ class BaseEvaluator:
 
     @staticmethod
     def _finalize(
-        fig: Any,
-        path: Any,
+        fig: Figure | None,
+        path: SavePath | None,
         created: bool,
         tight: bool = False,
     ) -> None:
@@ -244,7 +254,7 @@ class BaseEvaluator:
 
     def _draw_ci_panel(
         self,
-        ax_: Any,
+        ax_: Axes,
         df: pd.DataFrame,
         split: str,
         show_point_estimate: bool,
@@ -276,8 +286,8 @@ class BaseEvaluator:
         metrics: list[str] | None = None,
         seed: int | None = None,
         show_point_estimate: bool = True,
-        ax: Any = None,
-        path: Any = None,
+        ax: Axes | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Horizontal CI bars for each metric (bootstrap). Pass ax= for composition.
 
@@ -334,8 +344,8 @@ class BaseEvaluator:
         n_iter: int = 1000,
         ci: float = 0.95,
         seed: int | None = None,
-        axes: list | None = None,
-        path: Any = None,
+        axes: list[Axes] | None = None,
+        path: SavePath | None = None,
     ) -> None:
         """Grid of bootstrap histograms — one panel per metric.
 
@@ -366,7 +376,7 @@ class BaseEvaluator:
                 ax_flat[i].set_visible(False)
             ax_list, created = ax_flat[:n_m], True
 
-        for ax_, m in zip(ax_list, metric_names):
+        for ax_, m in zip(ax_list, metric_names, strict=False):
             vals = samples[m]
             valid = vals[~np.isnan(vals)]
             if len(valid) == 0:

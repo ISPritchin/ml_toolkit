@@ -49,7 +49,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import (
+from ml_toolkit.transformers._windowing import (
     EPS,
     compute_window_mean,
     fill_window_sorted,
@@ -144,17 +144,24 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     pm, pmed, gm, bc, bd, bcv, cs = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(pm[j]);  suffixes.append(f'peak_mean_w{w}')
-        arrays.append(pmed[j]); suffixes.append(f'peak_med_w{w}')
-        arrays.append(gm[j]);  suffixes.append(f'gap_mean_w{w}')
-        arrays.append(bc[j]);  suffixes.append(f'burst_count_w{w}')
-        arrays.append(bd[j]);  suffixes.append(f'burst_dur_w{w}')
-        arrays.append(bcv[j]); suffixes.append(f'burst_cv_w{w}')
-        arrays.append(cs[j]);  suffixes.append(f'calm_share_w{w}')
+        arrays.append(pm[j])
+        suffixes.append(f'peak_mean_w{w}')
+        arrays.append(pmed[j])
+        suffixes.append(f'peak_med_w{w}')
+        arrays.append(gm[j])
+        suffixes.append(f'gap_mean_w{w}')
+        arrays.append(bc[j])
+        suffixes.append(f'burst_count_w{w}')
+        arrays.append(bd[j])
+        suffixes.append(f'burst_dur_w{w}')
+        arrays.append(bcv[j])
+        suffixes.append(f'burst_cv_w{w}')
+        arrays.append(cs[j])
+        suffixes.append(f'calm_share_w{w}')
     return arrays, suffixes

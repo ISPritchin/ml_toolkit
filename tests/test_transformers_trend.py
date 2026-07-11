@@ -47,7 +47,7 @@ def test_slope_short_history_uses_available_rows():
 
 def test_slope_multiple_windows_independent():
     values = list(range(24))
-    arrays, suffixes = _run('slope', values, {'windows': [6, 12, 24]})
+    arrays, _suffixes = _run('slope', values, {'windows': [6, 12, 24]})
     assert len(arrays) == 3
     assert all(a[-1] > 0.9 for a in arrays)
 
@@ -196,7 +196,7 @@ def test_preset_minimum_loads_and_runs():
     for name, params in preset.items():
         mod = TRANSFORMERS[name]
         arrays, suffixes = mod.compute(values, pos, params or {})
-        for arr, suffix in zip(arrays, suffixes):
+        for arr, suffix in zip(arrays, suffixes, strict=False):
             col = f'{name}__{suffix}' if suffix else name
             results[col] = arr
 

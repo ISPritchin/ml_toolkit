@@ -1,6 +1,7 @@
-"""Проверяет, что ModelExplainer (permutation importance, explain_row) работает на
-КАЖДОМ пресете из ml_toolkit.presets.classification.high_pr_auc — не только на
-"простых" пресетах с одной сырой моделью внутри, но и на ансамблях/обёртках, где
+"""Проверяет, что ModelExplainer работает на каждом пресете high_pr_auc.
+
+permutation importance и explain_row — не только на "простых" пресетах с одной
+сырой моделью внутри, но и на ансамблях/обёртках, где
 self._model — sentinel/tuple, а model_name_ не определяется как известный
 tree/linear алгоритм. permutation — единственный метод, не зависящий от внутренней
 структуры модели (работает через predict_proba/predict как чёрный ящик), поэтому

@@ -36,7 +36,8 @@ if __name__ == '__main__':
     y_pred = y_true + rng.normal(0, 1.5, 250)
     ax.scatter(y_true, y_pred, alpha=0.35, s=14, color='#4E79A7', zorder=2)
     add_bisector(ax, color='crimson', lw=1.5, label='y = x (идеал)')
-    ax.set_xlabel('Факт', fontsize=9);  ax.set_ylabel('Предсказание', fontsize=9)
+    ax.set_xlabel('Факт', fontsize=9)
+    ax.set_ylabel('Предсказание', fontsize=9)
     ax.legend(fontsize=8)
     ax.set_title('add_bisector', fontsize=10, fontweight='bold')
     hide_spines(ax)
@@ -79,7 +80,8 @@ if __name__ == '__main__':
     for label, x1, x2, c in locs:
         fill_region(ax, x1, x2, label=label, color=c, alpha=0.18,
                     label_loc=label, fontsize=7.5)
-    ax.set_xlim(0, 1);  ax.set_ylim(0, 1)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
     ax.set_title('fill_region — все 9 позиций label_loc', fontsize=9, fontweight='bold')
     hide_spines(ax)
 
@@ -91,7 +93,7 @@ if __name__ == '__main__':
     months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн']
     values = [1_200_000, 4_500_000, 2_300_000, 8_100_000, 5_600_000, 12_400_000]
     bars = ax.bar(months, values, color=PALETTES['muted'][:6])
-    for bar, v in zip(bars, values):
+    for bar, v in zip(bars, values, strict=False):
         ax.text(bar.get_x() + bar.get_width() / 2, v + 200_000,
                 number_to_number_with_suffix(v), ha='center', va='bottom', fontsize=8)
     modify_ticks(ax, axis='y')
@@ -107,7 +109,8 @@ if __name__ == '__main__':
     ax.plot(quarters, conversion, 'o-',  lw=1.8, color='#4E79A7', label='Конверсия')
     ax.plot(quarters, churn,      's--', lw=1.4, color='#E15759', label='Отток')
     modify_ticks_percent(ax, axis='y')
-    ax.legend(fontsize=8);  ax.set_ylim(0, 0.45)
+    ax.legend(fontsize=8)
+    ax.set_ylim(0, 0.45)
     ax.set_title('modify_ticks_percent', fontsize=10, fontweight='bold')
     hide_spines(ax)
 
@@ -125,7 +128,7 @@ if __name__ == '__main__':
 
     # ══ ROW 2: apply_style ═══════════════════════════════════════════════════════
 
-    def _waves(ax):
+    def _waves(ax: plt.Axes) -> None:
         x = np.linspace(0, 2 * np.pi, 120)
         for k in range(5):
             ax.plot(x, np.sin(x + k * 0.6) * (1 - k * 0.12), lw=1.6)
@@ -167,14 +170,16 @@ if __name__ == '__main__':
                 bbox_to_anchor=(0.05, 0, 1, 1), bbox_transform=ax.transAxes)
     for a in (ax_l, ax_r):
         a.plot(x, y, color='steelblue', lw=1.8)
-        a.set_xticks([]);  a.set_yticks([])
+        a.set_xticks([])
+        a.set_yticks([])
     ax_l.set_title('до', fontsize=9, color='gray')
     hide_spines(ax_r, ('top', 'right', 'bottom', 'left'))
     ax_r.set_title('hide_spines\n(top,right,bottom,left)', fontsize=8, color='gray')
     ax.annotate('', xy=(0.52, 0.5), xytext=(0.42, 0.5),
                 xycoords='axes fraction', textcoords='axes fraction',
                 arrowprops=dict(arrowstyle='->', color='gray', lw=1.5))
-    ax.set_visible(True);  ax.axis('off')
+    ax.set_visible(True)
+    ax.axis('off')
     ax.set_title('hide_spines — до / после', fontsize=10, fontweight='bold')
 
 
@@ -184,7 +189,8 @@ if __name__ == '__main__':
         for col, c in enumerate(colors):
             ax.barh(row, 1, left=col, color=c, height=0.72, edgecolor='white', lw=1.5)
         ax.text(-0.2, row, name, ha='right', va='center', fontsize=9.5)
-    ax.set_xlim(-1.8, 7);  ax.set_ylim(-0.6, len(PALETTES) - 0.4)
+    ax.set_xlim(-1.8, 7)
+    ax.set_ylim(-0.6, len(PALETTES) - 0.4)
     ax.axis('off')
     ax.set_title('PALETTES', fontsize=10, fontweight='bold')
 

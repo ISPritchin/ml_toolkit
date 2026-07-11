@@ -10,8 +10,8 @@ import pytest
 
 pytest.importorskip('imodels')
 
-from ml_toolkit.models._rulefit import RuleFitClassifier, RuleFitRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._rulefit import RuleFitClassifier, RuleFitRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'max_rules': 50, 'tree_size': 3, 'random_state': 42}
 

@@ -1,5 +1,6 @@
-"""Тесты для InterpretableNeuralRegressor/InterpretableNeuralClassifier
-(ml_toolkit/models/_interpretable_neural.py): GAMINET/NAM.
+"""Тесты для InterpretableNeuralRegressor/InterpretableNeuralClassifier (GAMINET/NAM).
+
+ml_toolkit/models/_interpretable_neural.py.
 
 PyTorch не входит в обязательные зависимости проекта — весь модуль пропускается
 через importorskip, если он не установлен.
@@ -11,11 +12,11 @@ import pytest
 
 pytest.importorskip('torch')
 
-from ml_toolkit.models._interpretable_neural import (  # noqa: E402
+from ml_toolkit.models._interpretable_neural import (
     InterpretableNeuralClassifier,
     InterpretableNeuralRegressor,
 )
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 REG_PARAMS = {'hidden_dim': 16, 'n_layers': 1, 'lr': 1e-2, 'n_epochs': 30, 'n_interactions': 0}
 CLS_PARAMS = {'C': 1.0}
@@ -52,8 +53,9 @@ class TestInterpretableNeuralClassifier:
         assert_valid_proba(model, X_valid)
 
     def test_explicit_params_do_not_crash_on_max_iter_class_weight(self, classification_data):
-        """Regression test: LogisticRegression(**self.params, max_iter=2000, class_weight='balanced')
-        падал с TypeError, если self.params уже содержал max_iter/class_weight.
+        """Regression test: падал с TypeError, если self.params уже содержал max_iter/class_weight.
+
+        LogisticRegression(**self.params, max_iter=2000, class_weight='balanced').
         """
         X_train, y_train, X_valid, y_valid = classification_data
         params = {'C': 2.0, 'max_iter': 500, 'class_weight': None}

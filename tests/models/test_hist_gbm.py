@@ -70,9 +70,10 @@ class TestHistGBMClassifier:
 
 class TestHistGBMCatFeatures:
     def test_categorical_feature_via_indices_explicit_params(self, classification_data_with_cat):
-        """Регрессия бага: HistGradientBoostingClassifier(**self.params) в explicit-params
-        ветке не получал вычисленный extra (categorical_features) вовсе — cat_features
-        молча теряли нативную categorical-обработку HistGBM.
+        """Регрессия бага: explicit-params ветка не получала вычисленный extra (categorical_features) вовсе.
+
+        HistGradientBoostingClassifier(**self.params) — cat_features молча теряли
+        нативную categorical-обработку HistGBM.
         """
         X_train, y_train, X_valid, y_valid = classification_data_with_cat
         model = HistGBMClassifier(params=FAST_PARAMS)

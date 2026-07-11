@@ -16,7 +16,7 @@ fit/tune/predict реализованы в _CustomLossClassifierMulticlassBase �
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -25,6 +25,11 @@ from ml_toolkit.presets.classification.multiclass_imbalance._custom_loss_base im
     _CustomLossClassifierMulticlassBase,
     _MulticlassLossSpec,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
+    import optuna
+    from optuna.pruners import BasePruner
 
 
 class EqualizationLossClassifier(_CustomLossClassifierMulticlassBase):
@@ -85,10 +90,10 @@ class EqualizationLossClassifier(_CustomLossClassifierMulticlassBase):
         seesaw_q: float = 2.0,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -110,7 +115,7 @@ class EqualizationLossClassifier(_CustomLossClassifierMulticlassBase):
         self.seesaw_q = seesaw_q
 
     def _make_loss(
-        self, loss_params: dict[str, float], *, tr_pool: Any, arch_params: dict, n_classes: int
+        self, loss_params: dict[str, float], *, tr_pool: Pool, arch_params: dict, n_classes: int
     ) -> _EqualizationLoss:
         y_tr = np.asarray(tr_pool.get_label()).astype(int)
         class_counts = np.bincount(y_tr, minlength=n_classes)

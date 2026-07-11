@@ -1,5 +1,5 @@
-"""Тесты для KnowledgeDistillationPreset
-(ml_toolkit/presets/classification/high_pr_auc/knowledge_distillation.py)."""
+"""Тесты для KnowledgeDistillationPreset (ml_toolkit/presets/classification/high_pr_auc/knowledge_distillation.py).
+"""
 
 from __future__ import annotations
 
@@ -30,8 +30,9 @@ class TestKnowledgeDistillationPreset:
         assert 0.0 <= model.student_score_ <= 1.0
 
     def test_student_is_single_small_model_not_ensemble(self, binary_data):
-        """Ключевое свойство дистилляции: студент — одна CatBoost-модель, а не
-        весь ансамбль учителя (иначе теряется весь смысл — "один быстрый скорер").
+        """Ключевое свойство дистилляции: студент — одна CatBoost-модель, а не весь ансамбль учителя.
+
+        Иначе теряется весь смысл — "один быстрый скорер".
         """
         X_train, y_train, X_valid, y_valid = binary_data
         model = KnowledgeDistillationPreset(teacher_preset=_teacher(), student_params=BASE_PARAMS)

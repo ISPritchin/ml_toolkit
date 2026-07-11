@@ -12,8 +12,8 @@ import pytest
 
 pytest.importorskip('skgarden')
 
-from ml_toolkit.models._mondrian import MondrianForestClassifier, MondrianForestRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._mondrian import MondrianForestClassifier, MondrianForestRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'n_estimators': 10, 'max_depth': 5, 'random_state': 42}
 

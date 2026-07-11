@@ -1,5 +1,4 @@
 # ml_toolkit/feature_selection/genetic.py
-# ruff: noqa: N806
 
 from collections.abc import Callable
 import logging

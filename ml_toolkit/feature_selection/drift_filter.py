@@ -177,7 +177,7 @@ class AdversarialDriftFilter:
         cb_max_depth: int = 4,
         cb_learning_rate: float = 0.05,
         random_seed: int = 42,
-    ):
+    ) -> None:
         self.target_auc = target_auc
         self.max_features_to_drop = max_features_to_drop
         self.remove_per_step = remove_per_step

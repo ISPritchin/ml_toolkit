@@ -11,8 +11,8 @@ import pytest
 pytest.importorskip('torch')
 pytest.importorskip('tabm')
 
-from ml_toolkit.models._tabm import TabMClassifier, TabMRegressor  # noqa: E402
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba  # noqa: E402
+from ml_toolkit.models._tabm import TabMClassifier, TabMRegressor
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_PARAMS = {'k': 8, 'd_block': 32, 'n_blocks': 1, 'dropout': 0.0, 'lr': 1e-3, 'weight_decay': 1e-4}
 FAST_SETTINGS = {'n_epochs_final': 15, 'patience': 3, 'n_epochs_per_trial': 8}

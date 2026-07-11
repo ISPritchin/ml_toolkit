@@ -21,16 +21,21 @@ quantile_loss), а не MAE — иначе отбор trial не соответ�
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from ml_toolkit.models._utils import quantile_loss
 from ml_toolkit.presets.regression._custom_loss_base import (
+    _CalcDersRangeLoss,
     _CustomLossRegressorBase,
     _LossSpec,
 )
 from ml_toolkit.presets.regression._losses import QuantileHuberLoss
+
+if TYPE_CHECKING:
+    from catboost import Pool
+    from optuna.pruners import BasePruner
 
 
 class QuantileHuberRegressor(_CustomLossRegressorBase):
@@ -76,7 +81,7 @@ class QuantileHuberRegressor(_CustomLossRegressorBase):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -98,7 +103,7 @@ class QuantileHuberRegressor(_CustomLossRegressorBase):
         self.quantile = quantile
         self.kappa = kappa
 
-    def _build_loss(self, loss_params: dict[str, float], *, tr_pool: Any) -> Any:
+    def _build_loss(self, loss_params: dict[str, float], *, tr_pool: Pool) -> _CalcDersRangeLoss:
         return QuantileHuberLoss(quantile=self.quantile, kappa=loss_params['kappa'])
 
     def _trial_score(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:

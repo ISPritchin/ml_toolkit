@@ -11,12 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_calibrator
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -24,6 +25,9 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +116,7 @@ class HardNegativeMiner(BasePreset):
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(params=base_params, n_optuna_trials=n_optuna_trials)
         self.optuna_timeout = optuna_timeout
         self.param_space = param_space
@@ -131,7 +135,9 @@ class HardNegativeMiner(BasePreset):
 
     # ── Optuna (раунд 0) ────────────────────────────────────────────────────
 
-    def _fit_round0_optuna(self, tr_pool, va_pool, y_va):
+    def _fit_round0_optuna(
+        self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray,
+    ) -> tuple[CatBoostClassifier, dict[str, Any]]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -142,7 +148,7 @@ class HardNegativeMiner(BasePreset):
         def objective(trial: optuna.Trial) -> float:
             custom = self.param_space(trial) if self.param_space is not None else {}
 
-            def val(key: str, suggest: Callable[[], Any]) -> Any:
+            def val(key: str, suggest: Callable[[], float]) -> float:
                 return custom[key] if key in custom else suggest()
 
             params = {
@@ -204,10 +210,10 @@ class HardNegativeMiner(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> HardNegativeMiner:

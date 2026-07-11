@@ -23,18 +23,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.regression._base import BasePreset
 from ml_toolkit.presets.regression._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostRegressor
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +138,12 @@ class _QuantileTransform:
         return self._qt.inverse_transform(yt.reshape(-1, 1)).ravel()
 
 
-def _build_transform(name: str, n_train: int) -> Any:
+_Transform = (
+    _IdentityTransform | _Log1pTransform | _BoxCoxTransform | _YeoJohnsonTransform | _QuantileTransform
+)
+
+
+def _build_transform(name: str, n_train: int) -> _Transform:
     if name == 'identity':
         return _IdentityTransform()
     if name == 'log1p':
@@ -149,7 +158,7 @@ def _build_transform(name: str, n_train: int) -> Any:
 
 
 def _valid_transforms(transforms: list[str], y: np.ndarray) -> list[str]:
-    """Отфильтровывает трансформы, несовместимые с диапазоном y_train (иначе
+    """Отфильтровывает трансформы, несовместимые с диапазоном y_train (иначе.
 
     Optuna рано или поздно выберет box-cox/log1p на данных с y <= 0/-1 и trial
     упадёт с исключением scipy/numpy на середине поиска; в прямом режиме
@@ -247,7 +256,7 @@ class TargetTransformOptunaRegressor(BasePreset):
         X_valid: pd.DataFrame, y_va: np.ndarray,
         feats: list[str], transform_name: str, arch_params: dict,
         callbacks: list | None = None,
-    ) -> tuple[Any, Any, np.ndarray]:
+    ) -> tuple[CatBoostRegressor, _Transform, np.ndarray]:
         from catboost import CatBoostRegressor, Pool
 
         transform = _build_transform(transform_name, len(y_tr))
@@ -269,7 +278,14 @@ class TargetTransformOptunaRegressor(BasePreset):
         pred_va_orig = transform.inverse_transform(pred_va_t)
         return model, transform, pred_va_orig
 
-    def _tune(self, X_train, y_tr, X_valid, y_va, feats) -> tuple[Any, Any, dict]:
+    def _tune(
+        self,
+        X_train: pd.DataFrame,
+        y_tr: np.ndarray,
+        X_valid: pd.DataFrame,
+        y_va: np.ndarray,
+        feats: list[str],
+    ) -> tuple[CatBoostRegressor, _Transform, dict]:
         import optuna
 
         _optuna_prev_verbosity = optuna.logging.get_verbosity()
@@ -298,7 +314,7 @@ class TargetTransformOptunaRegressor(BasePreset):
                 _, _, pred_va_orig = self._fit_one(
                     X_train, y_tr, X_valid, y_va, feats, transform_name, arch_p, callbacks=[pruning_cb],
                 )
-            except Exception as err:  # noqa: BLE001 — трансформ может не сойтись на конкретном сэмпле
+            except Exception as err:
                 raise optuna.TrialPruned(f'transform={transform_name} failed: {err}') from err
             pruning_cb.check_pruned()
             return float(mean_absolute_error(y_va, pred_va_orig))
@@ -322,10 +338,10 @@ class TargetTransformOptunaRegressor(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> TargetTransformOptunaRegressor:

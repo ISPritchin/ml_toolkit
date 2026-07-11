@@ -29,7 +29,6 @@ X_valid, X_test) одинаково.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -201,7 +200,7 @@ class FeatureSelectionPipeline:
         # Adversarial model params
         cb_iterations: int = 300,
         cb_max_depth: int = 4,
-    ):
+    ) -> None:
         self.max_null_rate = max_null_rate
         self.min_variance = min_variance
         self.max_quasi_constant_rate = max_quasi_constant_rate
@@ -340,9 +339,9 @@ class FeatureSelectionPipeline:
     def fit(
         self,
         X_train: pd.DataFrame,
-        y_train: Any,
+        y_train: pd.Series | np.ndarray,
         X_valid: pd.DataFrame,
-        y_valid: Any = None,
+        y_valid: pd.Series | np.ndarray | None = None,
         selected_features: list[str] | None = None,
     ) -> FeatureSelectionPipeline:
         """Обучить пайплайн на X_train/y_train с учётом X_valid.
@@ -409,9 +408,9 @@ class FeatureSelectionPipeline:
     def fit_transform(
         self,
         X_train: pd.DataFrame,
-        y_train: Any,
+        y_train: pd.Series | np.ndarray,
         X_valid: pd.DataFrame,
-        y_valid: Any = None,
+        y_valid: pd.Series | np.ndarray | None = None,
     ) -> pd.DataFrame:
         """fit() + transform(X_train)."""
         return self.fit(X_train, y_train, X_valid, y_valid).transform(X_train)

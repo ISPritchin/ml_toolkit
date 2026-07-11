@@ -1,5 +1,7 @@
-"""EqualizationLoss: Seesaw Loss (Wang et al., 2021) + EQLv2-style (Tan et al., 2021)
-момент-сглаживание в одном мультиклассовом лоссе для CatBoost.
+"""EqualizationLoss: Seesaw Loss + EQLv2-style момент-сглаживание для CatBoost.
+
+Seesaw Loss (Wang et al., 2021) + EQLv2-style (Tan et al., 2021) в одном
+мультиклассовом лоссе.
 
 Мультиклассовый softmax CE подавляется головными классами: градиент от
 частого негативного класса j доминирует над редким истинным классом y просто
@@ -29,6 +31,8 @@ running pos/neg gradient statistics.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -52,7 +56,7 @@ class EqualizationLoss:
 
     def __init__(
         self,
-        class_counts,
+        class_counts: Sequence[float],
         lambda_: float = 0.9,
         seesaw_p: float = 0.8,
         seesaw_q: float = 2.0,
@@ -71,7 +75,9 @@ class EqualizationLoss:
         self.seesaw_q = seesaw_q
         self._avg_p: np.ndarray | None = None
 
-    def calc_ders_multi(self, approx, target, weight):
+    def calc_ders_multi(
+        self, approx: Sequence[float], target: float, weight: float
+    ) -> tuple[list[float], list[list[float]]]:
         eps = 1e-7
         z = np.asarray(approx, dtype=np.float64)
         y = int(target)

@@ -1,5 +1,6 @@
-"""BalancedSoftmaxLoss (Ren et al., 2020) для CatBoost — training-time аналог
-пост-хок logit adjustment (см. LogitAdjustmentClassifier/005): вместо сдвига
+"""BalancedSoftmaxLoss (Ren et al., 2020) для CatBoost.
+
+Training-time аналог пост-хок logit adjustment (см. LogitAdjustmentClassifier/005): вместо сдвига
 логитов ПОСЛЕ обучения обычной модели, сдвиг на log(class_prior) встроен в
 сам softmax CE во время обучения.
 
@@ -12,6 +13,8 @@ z'_j = z_j + tau*log(n_j/N), где n_j — частота класса j в tra
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -29,7 +32,7 @@ class BalancedSoftmaxLoss:
 
     """
 
-    def __init__(self, class_counts, tau: float = 1.0) -> None:
+    def __init__(self, class_counts: Sequence[float], tau: float = 1.0) -> None:
         counts = np.asarray(class_counts, dtype=np.float64)
         if counts.ndim != 1 or counts.shape[0] < 2:
             raise ValueError('class_counts должен быть 1D массивом длины >= 2 (n_classes)')
@@ -40,7 +43,9 @@ class BalancedSoftmaxLoss:
         self.tau = tau
         self._log_prior = tau * np.log(counts / counts.sum())
 
-    def calc_ders_multi(self, approx, target, weight):
+    def calc_ders_multi(
+        self, approx: Sequence[float], target: float, weight: float
+    ) -> tuple[list[float], list[list[float]]]:
         z = np.asarray(approx, dtype=np.float64)
         y = int(target)
         n = self.n_classes

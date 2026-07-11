@@ -66,7 +66,7 @@ def compute(values: np.ndarray, position: np.ndarray, params: dict):
     arrays = []
     suffixes = []
     for alpha in alphas:
-        tag = f'a{int(round(alpha * 100)):02d}'
+        tag = f'a{round(alpha * 100):02d}'
         ev, ed = _kernel(values, position, alpha)
         arrays.extend([ev, ed])
         suffixes.extend([tag, f'diff_{tag}'])

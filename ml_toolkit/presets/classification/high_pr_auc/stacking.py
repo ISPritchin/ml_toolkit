@@ -26,12 +26,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_calibrator
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -39,6 +40,9 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +155,7 @@ class SubsampleStacking(BasePreset):
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
-    ):
+    ) -> None:
         if not 0.0 < subsample_rate < 1.0:
             raise ValueError(f'subsample_rate должен быть в (0, 1), получено {subsample_rate}')
         if n_folds < 2:
@@ -195,7 +199,7 @@ class SubsampleStacking(BasePreset):
 
         # BCE — гладкий выпуклый surrogate; прямой PR-AUC кусочно-постоянен
         # по весам, и градиентный L-BFGS-B на нём не сдвигается со старта.
-        def neg_log_likelihood(raw_w):
+        def neg_log_likelihood(raw_w: np.ndarray) -> float:
             w = np.exp(raw_w) / np.exp(raw_w).sum()   # softmax → сумма = 1
             blend = np.clip(X_meta @ w, eps, 1.0 - eps)
             return -float(np.mean(y * np.log(blend) + (1.0 - y) * np.log(1.0 - blend)))
@@ -233,7 +237,7 @@ class SubsampleStacking(BasePreset):
     # ── Optuna (общая часть архитектуры) ─────────────────────────────────────
 
     def _tune_shared_params(
-        self, X_tr_feats: pd.DataFrame, y_tr: np.ndarray, va_pool_full: Any, y_va: np.ndarray,
+        self, X_tr_feats: pd.DataFrame, y_tr: np.ndarray, va_pool_full: Pool, y_va: np.ndarray,
     ) -> dict[str, Any]:
         from catboost import CatBoostClassifier, Pool
         import optuna
@@ -295,10 +299,10 @@ class SubsampleStacking(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> SubsampleStacking:

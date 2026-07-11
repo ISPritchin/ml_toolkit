@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
 
@@ -112,10 +113,10 @@ class LambdaRankClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> LambdaRankClassifier:
@@ -153,7 +154,7 @@ class LambdaRankClassifier(BasePreset):
         # eval_at early stopping и internal metric ориентируются на top-5 объектов
         # изо всей train-выборки — почти бессмысленный сигнал при сотнях/тысячах
         # позитивов, расходящийся с map_train_/map_valid_ (честный sklearn AP).
-        params['eval_at'] = self.eval_at if self.eval_at else [len(y_tr)]
+        params['eval_at'] = self.eval_at or [len(y_tr)]
         if self.truncation_level is not None:
             params['lambdarank_truncation_level'] = self.truncation_level
 

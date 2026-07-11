@@ -47,5 +47,5 @@ class TestEqualizationLoss:
         assert not np.allclose(avg_after_first, loss._avg_p)
 
     def test_rejects_invalid_counts(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='длины >= 2'):
             EqualizationLoss([5])

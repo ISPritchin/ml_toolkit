@@ -46,7 +46,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import (
+from ml_toolkit.transformers._windowing import (
     EPS,
     compute_window_mean_and_std,
     compute_window_sorted_buffer,
@@ -90,18 +90,21 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             out_p90_p10[j, row_idx] = safe_ratio(p90, p10)
             win_sum = compute_window_sum(product_values, row_idx, ws)
             if abs(win_sum) > EPS:
-                upper_sum = 0.0; lower_sum = 0.0
+                upper_sum = 0.0
+                lower_sum = 0.0
                 for offset in range(ws):
                     v = product_values[row_idx - ws + 1 + offset]
-                    if v > p75: upper_sum += v
-                    elif v < p25: lower_sum += v
+                    if v > p75:
+                        upper_sum += v
+                    elif v < p25:
+                        lower_sum += v
                 out_upper[j, row_idx] = safe_ratio(upper_sum, win_sum)
                 out_lower[j, row_idx] = safe_ratio(lower_sum, win_sum)
     return out_kurt, out_p75_p25, out_p90_p10, out_upper, out_lower
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}"""
+    """params: {"windows": [6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out_kurt, out_p75p25, out_p90p10, out_upper, out_lower = _kernel(values, position, windows)
     arrays = []

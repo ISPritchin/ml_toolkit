@@ -1,6 +1,8 @@
 """Форматирование числовых значений и тиков осей matplotlib."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -28,7 +30,7 @@ def number_to_number_with_suffix(
     return f'{sign}{abs_val:.0f}'
 
 
-def modify_ticks(ax: plt.Axes, axis: str = 'y', func=None) -> None:
+def modify_ticks(ax: plt.Axes, axis: str = 'y', func: Callable[[float], str] | None = None) -> None:
     """Форматирует тики оси с суффиксами (K/M/B)."""
     _fn = func if func is not None else number_to_number_with_suffix
     formatter = mticker.FuncFormatter(lambda x, _: _fn(x))
@@ -56,6 +58,8 @@ def modify_xticks_for_date_axis(
     """Форматирует ось X как даты с автоматическим выбором локатора.
 
     Args:
+        ax:   Axes для настройки.
+        rotation: угол поворота подписей тиков в градусах.
         fmt:  strftime-строка или 'auto' — ConciseDateFormatter (убирает повторяющийся год).
         lang: 'ru' — русские названия месяцев без зависимости от системного locale;
               год показывается только при первом появлении и смене.
@@ -67,7 +71,7 @@ def modify_xticks_for_date_axis(
     if lang == 'ru':
         _state: dict = {'prev_year': None}
 
-        def _ru_fmt(x, pos):
+        def _ru_fmt(x: float, pos: int | None) -> str:
             dt = mdates.num2date(x)
             m = _RU_MONTHS[dt.month - 1]
             if dt.year != _state['prev_year']:

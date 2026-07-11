@@ -28,13 +28,17 @@ fit/tune/predict реализованы в _CustomLossClassifierBase — это�
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ml_toolkit.losses import AsymmetricLoss as _AsymmetricLoss
 from ml_toolkit.presets.classification.high_pr_auc._custom_loss_base import (
     _CustomLossClassifierBase,
     _LossSpec,
 )
+
+if TYPE_CHECKING:
+    import optuna
+    from optuna.pruners import BasePruner
 
 
 class AsymmetricLossClassifier(_CustomLossClassifierBase):
@@ -96,10 +100,10 @@ class AsymmetricLossClassifier(_CustomLossClassifierBase):
         prob_margin: float = 0.05,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,

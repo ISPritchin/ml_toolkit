@@ -239,7 +239,7 @@ def test_generate_feature_groups_empty_preset_dict_is_passthrough(tmp_path):
 def test_generate_feature_groups_empty_spec_raises(tmp_path):
     df = _two_product_df('entity_id')
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='feature_spec пуст'):
         generate_feature_groups(
             df,
             entity_column_name='entity_id',
@@ -253,7 +253,7 @@ def test_generate_feature_groups_missing_preset_raises(tmp_path):
     df = _two_product_df('entity_id')
 
     # Автоматического пресета по умолчанию нет - None вторым элементом запрещён.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='пресет обязателен'):
         generate_feature_groups(
             df,
             entity_column_name='entity_id',
@@ -266,7 +266,7 @@ def test_generate_feature_groups_missing_preset_raises(tmp_path):
 def test_generate_feature_groups_unknown_column_raises(tmp_path):
     df = _two_product_df('entity_id')
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='отсутствующие в df'):
         generate_feature_groups(
             df,
             entity_column_name='entity_id',
@@ -279,7 +279,7 @@ def test_generate_feature_groups_unknown_column_raises(tmp_path):
 def test_generate_feature_groups_unknown_transformer_name_raises(tmp_path):
     df = _two_product_df('entity_id')
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='Неизвестный трансформер'):
         generate_feature_groups(
             df,
             entity_column_name='entity_id',
@@ -356,7 +356,7 @@ def test_generate_feature_groups_accepts_named_preset_from_disk(tmp_path):
 def test_generate_feature_groups_conflicting_presets_for_same_column_raises(tmp_path):
     df = _two_product_df('entity_id')
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='разными параметрами'):
         generate_feature_groups(
             df,
             entity_column_name='entity_id',

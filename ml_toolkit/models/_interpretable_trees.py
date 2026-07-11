@@ -14,7 +14,7 @@ Locally Linear Forest: RandomForest proximity weights + локальная Ridge
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import optuna
@@ -33,6 +33,10 @@ from ml_toolkit.models._utils import (
     resolve_timeout,
     set_optuna_verbosity,
 )
+
+if TYPE_CHECKING:
+    import torch
+    from torch import nn
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +70,10 @@ class _SoftDecisionTree:
         self.lr = lr
         self.n_epochs = n_epochs
         self.patience = patience
-        self._net: Any = None
+        self._net: nn.Module | None = None
         self._is_cls = False
 
-    def _build_net(self, n_features: int, is_cls: bool) -> Any:
+    def _build_net(self, n_features: int, is_cls: bool) -> nn.Module:
         from torch import nn
 
         depth = self.depth
@@ -85,7 +89,7 @@ class _SoftDecisionTree:
                 )
                 self._is_cls = is_cls
 
-            def _path_probs(self, x: Any) -> Any:
+            def _path_probs(self, x: torch.Tensor) -> torch.Tensor:
                 import torch
                 batch = x.shape[0]
                 probs = torch.ones(batch, 1, device=x.device)
@@ -98,7 +102,7 @@ class _SoftDecisionTree:
                     probs = torch.cat([probs * left, probs * right], dim=1)
                 return probs
 
-            def forward(self, x: Any) -> Any:
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
                 path_probs = self._path_probs(x)
                 out = (path_probs @ self.leaf_vals).squeeze(-1)
                 if self._is_cls:

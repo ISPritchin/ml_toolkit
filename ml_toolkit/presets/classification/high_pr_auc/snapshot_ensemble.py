@@ -19,12 +19,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_calibrator
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -32,6 +33,10 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +114,7 @@ class SnapshotEnsembleClassifier(BasePreset):
         snapshot_fracs: list[float] | None = None,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         optuna_pruner: str | object | None = 'none',
@@ -141,7 +146,7 @@ class SnapshotEnsembleClassifier(BasePreset):
 
     # ── Optuna ──────────────────────────────────────────────────────────────
 
-    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -178,10 +183,10 @@ class SnapshotEnsembleClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> SnapshotEnsembleClassifier:
@@ -206,7 +211,7 @@ class SnapshotEnsembleClassifier(BasePreset):
         self._model.fit(tr_pool, eval_set=va_pool, verbose=False)
 
         total_trees = self._model.tree_count_
-        self.tree_counts_ = sorted({max(1, int(round(f * total_trees))) for f in self.snapshot_fracs})
+        self.tree_counts_ = sorted({max(1, round(f * total_trees)) for f in self.snapshot_fracs})
         logger.info('[Snapshot] total_trees=%d  snapshot_fracs=%s  tree_counts=%s',
                     total_trees, self.snapshot_fracs, self.tree_counts_)
 
@@ -215,7 +220,7 @@ class SnapshotEnsembleClassifier(BasePreset):
             for nt in self.tree_counts_
         ]
         self.snapshot_scores_ = [float(average_precision_score(y_va, s)) for s in va_snaps]
-        for nt, ap in zip(self.tree_counts_, self.snapshot_scores_):
+        for nt, ap in zip(self.tree_counts_, self.snapshot_scores_, strict=False):
             logger.info('[Snapshot] ntree_end=%d  val PR-AUC=%.4f', nt, ap)
 
         raw_va = np.mean(va_snaps, axis=0)

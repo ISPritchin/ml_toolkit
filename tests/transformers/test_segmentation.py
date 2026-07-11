@@ -86,7 +86,7 @@ def test_all_triggers_whole_series_is_gap_after_threshold():
     values = np.zeros(5)
     position = compute_position_within_entity(np.zeros(5, dtype=np.int64))
     is_trigger = _trigger_zero_gap(values)
-    pos_seg, in_segment = _run_length_segment(is_trigger, position, gap_threshold=2)
+    _pos_seg, in_segment = _run_length_segment(is_trigger, position, gap_threshold=2)
     # idx0: run=1<2 -> in segment; idx1: run=2>=2 -> still in segment (threshold row);
     # idx2..4: in gap
     assert in_segment.tolist() == [True, True, False, False, False]
@@ -122,7 +122,7 @@ def test_exclude_leading_triggers_all_zero_entity_never_starts():
     values = np.zeros(5)
     position = compute_position_within_entity(np.zeros(5, dtype=np.int64))
     is_trigger = _trigger_zero_gap(values)
-    pos_seg, in_segment = _run_length_segment(
+    _pos_seg, in_segment = _run_length_segment(
         is_trigger, position, gap_threshold=2, exclude_leading_triggers=True
     )
     assert in_segment.tolist() == [False] * 5
@@ -134,7 +134,7 @@ def test_exclude_leading_triggers_mid_series_gap_still_uses_grace_period():
     values = np.array([0, 0, 5, 6, 0, 0, 0, 7], dtype=np.float64)
     position = compute_position_within_entity(np.zeros(8, dtype=np.int64))
     is_trigger = _trigger_zero_gap(values)
-    pos_seg, in_segment = _run_length_segment(
+    _pos_seg, in_segment = _run_length_segment(
         is_trigger, position, gap_threshold=2, exclude_leading_triggers=True
     )
     # idx0-1: ведущие нули - исключены целиком (не grace period).
@@ -164,7 +164,7 @@ def test_compute_segment_position_zero_gap_excludes_leading_zeros():
     # exclude_leading_triggers - вызывающему коду не нужно об этом заботиться.
     values = np.array([0, 0, 40, 50, 60], dtype=np.float64)
     position = compute_position_within_entity(np.zeros(5, dtype=np.int64))
-    pos_seg, in_segment = compute_segment_position(
+    _pos_seg, in_segment = compute_segment_position(
         values, position, 'zero_gap', {'gap_threshold': 2}
     )
     assert in_segment.tolist() == [False, False, True, True, True]
@@ -177,7 +177,7 @@ def test_compute_segment_position_relative_gap_keeps_grace_period_for_early_trig
     # безусловно.
     values = np.array([10, 1, 1, 10, 10, 10], dtype=np.float64)
     position = compute_position_within_entity(np.zeros(6, dtype=np.int64))
-    pos_seg, in_segment = compute_segment_position(
+    _pos_seg, in_segment = compute_segment_position(
         values, position, 'relative_gap',
         {'gap_threshold': 2, 'reference_window': 3, 'relative_threshold': 0.5},
     )
@@ -200,7 +200,7 @@ def test_trigger_relative_gap_detects_drop():
 def test_compute_segment_position_zero_gap_matches_worked_example():
     values = np.array([1, 2, 3, 4, 5, 0, 0, 0, 0, 0, 0, 4, 3, 5, 2], dtype=np.float64)
     position = compute_position_within_entity(np.zeros(len(values), dtype=np.int64))
-    pos_seg, in_segment = compute_segment_position(
+    _pos_seg, in_segment = compute_segment_position(
         values, position, 'zero_gap', {'gap_threshold': 2}
     )
     assert in_segment.tolist() == [True] * 7 + [False] * 4 + [True] * 4

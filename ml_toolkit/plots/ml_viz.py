@@ -20,7 +20,15 @@ def add_threshold_band(
     """Полоса вокруг классификационного порога с precision/recall.
 
     Args:
+        ax:         Axes для отрисовки.
+        threshold:  значение порога.
+        precision:  precision при этом пороге (для подписи).
+        recall:     recall при этом пороге (для подписи).
+        color:      цвет линии/полосы/подписи.
+        lw:         толщина линии порога.
+        alpha:      прозрачность закрашенной полосы.
         band_width: ширина закрашенной полосы ±; None — только линия.
+        fontsize:   размер шрифта подписи.
         axis:       'x' (threshold по оси X) | 'y'.
 
     """
@@ -62,9 +70,13 @@ def add_confusion_quadrant_labels(
     """Текстовые метки TP/FP/TN/FN в четырёх квадрантах scatter.
 
     Args:
+        ax:          Axes со scatter-графиком.
         threshold_x: граница по X (авто — середина xlim).
         threshold_y: граница по Y (авто — середина ylim).
         labels:      {quadrant: text}; quadrant ∈ {'TL','TR','BL','BR'}.
+        fontsize:    размер шрифта меток.
+        color:       цвет разделительных линий и меток.
+        alpha:       прозрачность меток.
 
     """
     xl, yl = ax.get_xlim(), ax.get_ylim()

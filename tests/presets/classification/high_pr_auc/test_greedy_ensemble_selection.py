@@ -1,4 +1,4 @@
-"""Тесты для GreedyForwardEnsembleSelection
+"""Тесты для GreedyForwardEnsembleSelection.
 
 (ml_toolkit/presets/classification/high_pr_auc/greedy_ensemble_selection.py).
 """
@@ -37,5 +37,5 @@ class TestGreedyForwardEnsembleSelection:
         X_train, y_train, X_valid, y_valid = binary_data
         m = MultiSeedBlend(n_seeds=2, base_params=BASE_PARAMS)
         m.fit(X_train, y_train, X_valid, y_valid)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='model_library должна содержать'):
             GreedyForwardEnsembleSelection(model_library=[m])

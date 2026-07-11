@@ -20,13 +20,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from ml_toolkit.losses import FocalLoss as _FocalLoss
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -34,6 +35,9 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +54,7 @@ def _optimize_weights(probas: list[np.ndarray], y_val: np.ndarray, random_seed: 
     def objective(trial: optuna.Trial) -> float:
         raw = np.array([trial.suggest_float(f'w{i}', 0.0, 1.0) for i in range(n)])
         w = raw / (raw.sum() + 1e-9)
-        blend = sum(wi * pi for wi, pi in zip(w, probas))
+        blend = sum(wi * pi for wi, pi in zip(w, probas, strict=False))
         return float(average_precision_score(y_val, blend))
 
     study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=random_seed))
@@ -96,13 +100,13 @@ def _oof_weighted_blend(
         logger.warning('[BoostedEnsemble] OOF для weighted-blend невозможен (мало примеров класса) '
                         '— веса и оценка подобраны на одних и тех же данных, скор оптимистичен')
         w = _optimize_weights(probas, y_val, random_seed=random_seed)
-        return sum(wi * p for wi, p in zip(w, probas))
+        return sum(wi * p for wi, p in zip(w, probas, strict=False))
 
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_seed)
     oof = np.zeros(len(y_val))
     for tr_idx, te_idx in skf.split(np.zeros(len(y_val)), y_val):
         w = _optimize_weights([p[tr_idx] for p in probas], y_val[tr_idx], random_seed=random_seed)
-        oof[te_idx] = sum(wi * p[te_idx] for wi, p in zip(w, probas))
+        oof[te_idx] = sum(wi * p[te_idx] for wi, p in zip(w, probas, strict=False))
     return oof
 
 
@@ -130,7 +134,7 @@ def _oof_power_blend(
     return oof
 
 
-def _get_proba(model, pool) -> np.ndarray:
+def _get_proba(model: CatBoostClassifier, pool: Pool) -> np.ndarray:
     """predict_proba с fallback на sigmoid(raw) для кастомных лоссов."""
     from catboost import CatBoostError
 
@@ -242,7 +246,7 @@ class BoostedEnsemble(BasePreset):
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.loss_configs = loss_configs  # None → ленивый дефолт в fit()
         self.averaging = averaging
@@ -260,7 +264,7 @@ class BoostedEnsemble(BasePreset):
         self._power_alpha: float = 1.0
         self._rank_refs_: list[np.ndarray] = []
 
-    def _tune_base_params(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune_base_params(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -309,10 +313,10 @@ class BoostedEnsemble(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> BoostedEnsemble:
@@ -381,7 +385,7 @@ class BoostedEnsemble(BasePreset):
 
         if self.averaging == 'rank':
             return np.mean(
-                [rank_transform(p, ref) for p, ref in zip(probas, self._rank_refs_)],
+                [rank_transform(p, ref) for p, ref in zip(probas, self._rank_refs_, strict=False)],
                 axis=0,
             )
 
@@ -395,7 +399,7 @@ class BoostedEnsemble(BasePreset):
                 logger.info('[BoostedEnsemble] Оптимальные веса: %s', np.round(self._weights, 3))
                 return oof_pred
             w = self._weights if self._weights is not None else np.ones(len(probas)) / len(probas)
-            return sum(wi * pi for wi, pi in zip(w, probas))
+            return sum(wi * pi for wi, pi in zip(w, probas, strict=False))
 
         if self.averaging == 'power':
             if fit_blend and y_val is not None:

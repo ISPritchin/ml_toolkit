@@ -38,8 +38,9 @@ class TestXGBoostRegressorExplicitParams:
 
 class TestXGBoostRegressorBaseline:
     def test_predict_adds_baseline_back(self, regression_data):
-        """XGBoost residual learning: обучается на (y - baseline), predict() прибавляет
-        baseline обратно вручную — тот же контракт, что у LightGBMRegressor.
+        """XGBoost residual learning: обучается на (y - baseline), predict() прибавляет baseline обратно вручную.
+
+        Тот же контракт, что у LightGBMRegressor.
         """
         rng = np.random.default_rng(5)
         X_train, y_train, X_valid, y_valid = regression_data
@@ -94,8 +95,10 @@ class TestXGBoostRegressorCustomMetric:
 
 class TestXGBoostRegressorCatFeatures:
     def test_categorical_feature_enables_native_support(self, regression_data):
-        """До фикса: explicit params + cat_features падал в XGBoost, т.к. enable_categorical
-        не форсировался вне Optuna-ветки, а _prep() уже выставляет dtype='category'.
+        """До фикса: explicit params + cat_features падал в XGBoost.
+
+        enable_categorical не форсировался вне Optuna-ветки, а _prep() уже
+        выставляет dtype='category'.
         """
         X_train, y_train, X_valid, y_valid = regression_data
         X_train = X_train.copy()
@@ -187,9 +190,9 @@ class TestXGBoostMulticlass:
         assert np.all((proba >= 0) & (proba <= 1))
 
     def test_explicit_params_infers_multiclass_without_objective(self, multiclass_data):
-        """XGBoost сам определяет multi:softprob по количеству классов в y, если
-        objective не задан явно — как и LightGBM, адаптер это не форсирует в
-        explicit-params ветке.
+        """XGBoost сам определяет multi:softprob по количеству классов в y, если objective не задан явно.
+
+        Как и LightGBM, адаптер это не форсирует в explicit-params ветке.
         """
         X_train, y_train, X_valid, y_valid = multiclass_data
         model = XGBoostClassifier(params=FAST_XGB)

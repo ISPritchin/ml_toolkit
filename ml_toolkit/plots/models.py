@@ -21,9 +21,9 @@ try:
     )
 except ModuleNotFoundError:
     # utils зависит от опциональных пакетов; заглушки для корректного импорта модуля
-    def modify_ticks(ax, **kw): pass  # type: ignore[misc]
-    def modify_ticks_percent(ax, **kw): pass  # type: ignore[misc]
-    def modify_xticks_for_date_axis(ax, **kw): pass  # type: ignore[misc]
+    def modify_ticks(ax: plt.Axes, **kw) -> None: pass  # type: ignore[misc]
+    def modify_ticks_percent(ax: plt.Axes, **kw) -> None: pass  # type: ignore[misc]
+    def modify_xticks_for_date_axis(ax: plt.Axes, **kw) -> None: pass  # type: ignore[misc]
     def number_to_number_with_suffix(*a, **kw): return str(a[0]) if a else ''  # type: ignore[misc]
 
 
@@ -41,7 +41,7 @@ def show_mask_selection_plot(
     График позволяет получить понимание, сколько подходящих клиентов находится в каждом из месяцев.
 
     Args:
-        df (pl.DataFrame): датафрейм
+        monthly_df (pl.DataFrame): датафрейм
         ts_column_name (str): имя колонки с датой
         target_column_name (str): имя колонки с целевой переменной
         mask_column_name (str): имя колонки с маской
@@ -131,7 +131,7 @@ def get_error_distribution_plot(
             pl.col('error').is_between(min_error, max_error),
             pl.col('confidence').is_between(min_confidence, max_confidence)
         )
-        import seaborn as sns  # noqa: PLC0415
+        import seaborn as sns
         sns.histplot(
             subset,
             x='error',
@@ -176,6 +176,7 @@ def get_different_quantiles(
 
     Args:
         predicts (dict[str, pl.DataFrame]): словарь с прогнозами моделей
+        quantiles (list[int], optional): квантили ошибки для отображения. Defaults to (0.05, 0.25, 0.5, 0.75, 0.95).
         min_error (float, optional): минимальная ошибка при отборе в данных. Defaults to 0.
         max_error (float, optional): максимальная ошибка при отборе данных. Defaults to 10.
         min_confidence (float, optional): минимальная уверенность в прогнозе при отборе данных. Defaults to 0.5.
@@ -312,7 +313,7 @@ def get_sample_plot(
             // 60 / 60 / 24 / 7
         )
 
-        from ml_toolkit.feature_extraction.weekly import (  # noqa: PLC0415
+        from ml_toolkit.feature_extraction.weekly import (
             add_records_for_absent_data,
             select_data_for_last_weeks,
         )
@@ -372,7 +373,7 @@ def get_cls_proba_calibration(
     save_path: Path | None = None,
     show: bool=  True
 ) -> None:
-    """Выводит график калибровки классификатора
+    """Выводит график калибровки классификатора.
 
     Args:
         predicts (dict[str, pl.DataFrame]): словарь с прогнозами моделей

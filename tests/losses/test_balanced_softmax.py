@@ -35,5 +35,5 @@ class TestBalancedSoftmaxLoss:
                 assert abs(numeric - der1[k]) < 1e-3
 
     def test_rejects_invalid_counts(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='должны быть положительными'):
             BalancedSoftmaxLoss([0, 10, 10])

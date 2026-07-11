@@ -39,8 +39,9 @@ class TestBoostedEnsemble:
             model.fit(X_train, y_train, X_valid, y_valid)
 
     def test_default_loss_configs_include_focal_loss(self, binary_data):
-        """Дефолт (loss_configs=None) — 4 конфига (2 Logloss + 2 FocalLoss); FocalLoss
-        не поддерживает predict_proba нативно, проверяем что sigmoid-fallback работает.
+        """Дефолт (loss_configs=None) — 4 конфига (2 Logloss + 2 FocalLoss).
+
+        FocalLoss не поддерживает predict_proba нативно, проверяем что sigmoid-fallback работает.
         """
         X_train, y_train, X_valid, y_valid = binary_data
         model = BoostedEnsemble(averaging='rank', base_params=FAST_BASE_PARAMS)

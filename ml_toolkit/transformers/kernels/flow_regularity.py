@@ -46,7 +46,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, resolve_window_size
 
 FEATURE = 'flow_regularity'
 
@@ -124,8 +124,10 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             # cadence_shift: средний промежуток в последней половине окна vs по всему окну
             if ws >= 6:
                 ws_half_r = resolve_window_size(pos, ws // 2)
-                n_gaps_r = 0; m_gap_r = 0.0
-                in_b = False; c_gap = 0
+                n_gaps_r = 0
+                m_gap_r = 0.0
+                in_b = False
+                c_gap = 0
                 for offset in range(ws_half_r):
                     abs_idx = row_idx - ws_half_r + 1 + offset
                     act = product_values[abs_idx] != 0.0
@@ -158,16 +160,22 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     gm, gs, gcv, im, cs, alcv = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(gm[j]);   suffixes.append(f'gap_mean_w{w}')
-        arrays.append(gs[j]);   suffixes.append(f'gap_std_w{w}')
-        arrays.append(gcv[j]);  suffixes.append(f'gap_cv_w{w}')
-        arrays.append(im[j]);   suffixes.append(f'is_monthly_w{w}')
-        arrays.append(cs[j]);   suffixes.append(f'cadence_shift_w{w}')
-        arrays.append(alcv[j]); suffixes.append(f'active_len_cv_w{w}')
+        arrays.append(gm[j])
+        suffixes.append(f'gap_mean_w{w}')
+        arrays.append(gs[j])
+        suffixes.append(f'gap_std_w{w}')
+        arrays.append(gcv[j])
+        suffixes.append(f'gap_cv_w{w}')
+        arrays.append(im[j])
+        suffixes.append(f'is_monthly_w{w}')
+        arrays.append(cs[j])
+        suffixes.append(f'cadence_shift_w{w}')
+        arrays.append(alcv[j])
+        suffixes.append(f'active_len_cv_w{w}')
     return arrays, suffixes

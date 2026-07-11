@@ -42,6 +42,7 @@ def apply_style(
     """Применяет предустановленный стиль к осям.
 
     Args:
+        ax:      Axes для настройки.
         style:   'clean'        — без верхней/правой рамки, светлый фон.
                  'minimal'      — только левая ось, без сетки.
                  'dark'         — тёмный фон.
@@ -50,7 +51,7 @@ def apply_style(
         grid:    показать сетку.
 
     """
-    from cycler import cycler  # noqa: PLC0415
+    from cycler import cycler
 
     if style == 'clean':
         hide_spines(ax, ('top', 'right'))

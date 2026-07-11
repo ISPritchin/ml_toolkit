@@ -1,4 +1,4 @@
-"""Тесты для AdversarialValidationWeighting
+"""Тесты для AdversarialValidationWeighting.
 
 (ml_toolkit/presets/classification/high_pr_auc/adversarial_weighting.py).
 """
@@ -44,5 +44,5 @@ class TestAdversarialValidationWeighting:
         assert model.weights_.std() > 0.05
 
     def test_rejects_invalid_clip_weights(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='clip_weights должен быть'):
             AdversarialValidationWeighting(clip_weights=(2.0, 1.0))

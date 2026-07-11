@@ -27,18 +27,23 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +126,7 @@ class SelfTrainingBooster(BasePreset):
         max_pseudo_ratio: float = 2.0,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         optuna_pruner: str | object | None = 'none',
@@ -157,7 +162,7 @@ class SelfTrainingBooster(BasePreset):
         X_va: pd.DataFrame,
         y_va: np.ndarray,
         params: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier, Pool
 
         p = {**(params or self.base_params or _DEFAULT_PARAMS), 'random_seed': self.random_seed}
@@ -167,7 +172,7 @@ class SelfTrainingBooster(BasePreset):
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
         return model
 
-    def _predict(self, model: Any, X: pd.DataFrame) -> np.ndarray:
+    def _predict(self, model: CatBoostClassifier, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
 
         pool = Pool(X, cat_features=self.cat_features_)
@@ -215,10 +220,10 @@ class SelfTrainingBooster(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> SelfTrainingBooster:

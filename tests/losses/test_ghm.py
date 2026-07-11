@@ -15,7 +15,7 @@ class TestGHMLoss:
         f = rng.normal(size=100) * 2
         y = (rng.random(100) < 0.3).astype(np.float64)
         loss = GHMLoss(bins=10, momentum=0.0)
-        der1, der2 = zip(*loss.calc_ders_range(f, y, None))
+        der1, der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
         der1, der2 = np.array(der1), np.array(der2)
         for i in rng.choice(100, size=15, replace=False):
             numeric = numeric_der1_binary(GHMLoss(bins=10, momentum=0.0), f, y, i)
@@ -36,7 +36,7 @@ class TestGHMLoss:
         assert not np.allclose(acc_after_first, loss._acc_counts)
 
     def test_rejects_invalid_params(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='bins должен быть'):
             GHMLoss(bins=0)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='momentum должен быть'):
             GHMLoss(momentum=1.0)

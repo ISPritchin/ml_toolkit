@@ -1,5 +1,5 @@
-"""Тесты для WeightedBaggingByRecency
-(ml_toolkit/presets/classification/high_pr_auc/weighted_bagging_recency.py)."""
+"""Тесты для WeightedBaggingByRecency (ml_toolkit/presets/classification/high_pr_auc/weighted_bagging_recency.py).
+"""
 
 from __future__ import annotations
 
@@ -71,8 +71,9 @@ class TestWeightedBaggingByRecency:
                 )
 
     def test_tuning_sample_independent_from_first_estimator(self, binary_data):
-        """Регрессионный тест на паттерн из EasyEnsembleClassifier: подвыборка
-        тюнинга (rng0) не должна совпадать с подвыборкой estimator'а #0.
+        """Регрессионный тест на паттерн из EasyEnsembleClassifier.
+
+        Подвыборка тюнинга (rng0) не должна совпадать с подвыборкой estimator'а #0.
         """
         X_train, y_train, X_valid, y_valid = binary_data
         ts_key = _monthly_ts_key(len(X_train))
@@ -84,7 +85,7 @@ class TestWeightedBaggingByRecency:
         n_train = len(X_train)
         periods = compute_periods(ts_key.reset_index(drop=True), model.period_unit)
         weights = _recency_weights(periods, model.halflife_periods)
-        n_sample = max(1, int(round(model.sample_frac * n_train)))
+        n_sample = max(1, round(model.sample_frac * n_train))
 
         tune_seq, est0_seq = np.random.SeedSequence(model.random_seed).spawn(model.n_estimators + 1)[:2]
         tune_idx = np.random.default_rng(tune_seq).choice(n_train, size=n_sample, replace=True, p=weights)

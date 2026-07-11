@@ -38,7 +38,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import fit_linear_trend_slope, resolve_window_size
+from ml_toolkit.transformers._windowing import fit_linear_trend_slope, resolve_window_size
 
 FEATURE = 'log_slope'
 
@@ -57,7 +57,7 @@ def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, windows:
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12, 24]}"""
+    """params: {"windows": [6, 12, 24]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     # log1p считается один раз на колонку (векторно), а не в каждом окне заново
     log_values = np.log1p(np.abs(values))

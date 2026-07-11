@@ -42,10 +42,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import (
-    compute_window_sum,
-    resolve_window_size,
-)
+from ml_toolkit.transformers._windowing import compute_window_sum, resolve_window_size
 
 FEATURE = 'cusum'
 
@@ -76,7 +73,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     out_pos, out_neg = _kernel(values, position, windows)
     arrays = []

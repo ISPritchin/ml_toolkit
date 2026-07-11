@@ -35,12 +35,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
@@ -48,6 +49,11 @@ from ml_toolkit.presets.classification._optuna_utils import (
     make_pruner,
 )
 from ml_toolkit.presets.classification._time_utils import compute_periods
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier
+    from lightgbm import LGBMClassifier
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +168,14 @@ class TimeAwareValidationClassifier(BasePreset):
 
     # ── Обучение одной модели ────────────────────────────────────────────────
 
-    def _fit_one_lgb(self, X_tr, y_tr, X_va, y_va, params: dict[str, Any] | None = None) -> Any:
+    def _fit_one_lgb(
+        self,
+        X_tr: pd.DataFrame,
+        y_tr: np.ndarray,
+        X_va: pd.DataFrame,
+        y_va: np.ndarray,
+        params: dict[str, Any] | None = None,
+    ) -> LGBMClassifier:
         import lightgbm as lgb
 
         p = {**(params or self.base_params or _DEFAULT_LGB_PARAMS), 'random_state': self.random_seed}
@@ -174,7 +187,14 @@ class TimeAwareValidationClassifier(BasePreset):
         )
         return model
 
-    def _fit_one_cbt(self, X_tr, y_tr, X_va, y_va, params: dict[str, Any] | None = None) -> Any:
+    def _fit_one_cbt(
+        self,
+        X_tr: pd.DataFrame,
+        y_tr: np.ndarray,
+        X_va: pd.DataFrame,
+        y_va: np.ndarray,
+        params: dict[str, Any] | None = None,
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier, Pool
 
         p = {**(params or self.base_params or _DEFAULT_CBT_PARAMS), 'random_seed': self.random_seed}
@@ -184,7 +204,7 @@ class TimeAwareValidationClassifier(BasePreset):
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
         return model
 
-    def _predict_one(self, model: Any, X: pd.DataFrame) -> np.ndarray:
+    def _predict_one(self, model: CatBoostClassifier | LGBMClassifier, X: pd.DataFrame) -> np.ndarray:
         if self.base == 'lightgbm':
             return model.predict_proba(X)[:, 1]
         from catboost import Pool
@@ -192,7 +212,9 @@ class TimeAwareValidationClassifier(BasePreset):
 
     # ── Optuna (один раз, на последнем окне) ─────────────────────────────────
 
-    def _tune_cbt(self, X_tr, y_tr, X_va, y_va) -> dict[str, Any]:
+    def _tune_cbt(
+        self, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray,
+    ) -> dict[str, Any]:
         from catboost import CatBoostClassifier, Pool
         import optuna
 
@@ -232,7 +254,9 @@ class TimeAwareValidationClassifier(BasePreset):
         optuna.logging.set_verbosity(_optuna_prev_verbosity)
         return dict(study.best_trial.user_attrs['cb_params'])
 
-    def _tune_lgb(self, X_tr, y_tr, X_va, y_va) -> dict[str, Any]:
+    def _tune_lgb(
+        self, X_tr: pd.DataFrame, y_tr: np.ndarray, X_va: pd.DataFrame, y_va: np.ndarray,
+    ) -> dict[str, Any]:
         import lightgbm as lgb
         import optuna
 
@@ -301,9 +325,9 @@ class TimeAwareValidationClassifier(BasePreset):
 
     def fit(
         self,
-        X: Any,
-        y: Any,
-        ts_key: Any,
+        X: XInput,
+        y: YInput,
+        ts_key: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> TimeAwareValidationClassifier:

@@ -18,15 +18,20 @@ relative-метрике на валидации (не по MAE, как в ост
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from ml_toolkit.presets.regression._custom_loss_base import (
+    _CalcDersRangeLoss,
     _CustomLossRegressorBase,
     _LossSpec,
 )
 from ml_toolkit.presets.regression._losses import RelativeErrorLoss
+
+if TYPE_CHECKING:
+    from catboost import Pool
+    from optuna.pruners import BasePruner
 
 
 def _relative_score(y_true: np.ndarray, y_pred: np.ndarray, metric: str, floor: float) -> float:
@@ -83,7 +88,7 @@ class RelativeErrorRegressor(_CustomLossRegressorBase):
         param_space: Callable[[Any], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
@@ -105,7 +110,7 @@ class RelativeErrorRegressor(_CustomLossRegressorBase):
         self.metric = metric
         self.denom_floor = denom_floor
 
-    def _build_loss(self, loss_params: dict[str, float], *, tr_pool: Any) -> Any:
+    def _build_loss(self, loss_params: dict[str, float], *, tr_pool: Pool) -> _CalcDersRangeLoss:
         # loss_params игнорируется — metric/denom_floor не тюнятся Optuna, у
         # лосса нет записи в _loss_spec.param_bounds (см. докстринг класса).
         loss = RelativeErrorLoss(metric=self.metric, denom_floor=self.denom_floor)

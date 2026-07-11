@@ -1,5 +1,6 @@
-"""PrecisionAtKClassifier: Optuna оптимизирует гиперпараметры CatBoost под precision@K,
-где K — доля наблюдений (например, 0.10 = топ 10% выборки).
+"""PrecisionAtKClassifier: Optuna оптимизирует гиперпараметры CatBoost под precision@K.
+
+K — доля наблюдений (например, 0.10 = топ 10% выборки).
 
 Дополнительно тюнирует scale_pos_weight и majority_fraction совместно с архитектурными
 параметрами, что нужно для задач с сильным дисбалансом классов и фиксированным cutoff.
@@ -9,18 +10,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_calibrator, precision_at_k
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +88,7 @@ class PrecisionAtKClassifier(BasePreset):
         self,
         k_fraction: float = 0.10,
         n_optuna_trials: int = 50,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         optuna_pruner: str | object | None = 'none',
@@ -91,7 +96,7 @@ class PrecisionAtKClassifier(BasePreset):
         random_seed: int = 42,
         cat_features: list[str] | None = None,
         selected_features: list[str] | None = None,
-    ):
+    ) -> None:
         if not 0.0 < k_fraction <= 1.0:
             raise ValueError(f'k_fraction должен быть в (0, 1], получено {k_fraction}')
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
@@ -108,10 +113,10 @@ class PrecisionAtKClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> PrecisionAtKClassifier:
@@ -140,7 +145,7 @@ class PrecisionAtKClassifier(BasePreset):
 
         va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
 
-        for cls, cnt in zip(classes, counts):
+        for cls, cnt in zip(classes, counts, strict=False):
             logger.info('[P@K] Класс %s: %d (%.1f%%)', cls, cnt, cnt / len(y_tr) * 100)
         logger.info('[P@K] k_fraction=%.3f → топ %d наблюдений val',
                     self.k_fraction, max(1, int(len(y_va) * self.k_fraction)))
@@ -148,7 +153,7 @@ class PrecisionAtKClassifier(BasePreset):
         def objective(trial: optuna.Trial) -> float:
             custom = self.param_space(trial) if self.param_space is not None else {}
 
-            def val(key: str, suggest: Callable[[], Any]) -> Any:
+            def val(key: str, suggest: Callable[[], int | float]) -> int | float:
                 return custom[key] if key in custom else suggest()
 
             majority_fraction = val('majority_fraction',

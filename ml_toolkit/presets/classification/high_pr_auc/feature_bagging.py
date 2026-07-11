@@ -15,12 +15,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_rank_reference, rank_transform
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
@@ -28,6 +29,10 @@ from ml_toolkit.presets.classification._optuna_utils import (
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
+    import optuna
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +110,7 @@ class FeatureBaggingEnsemble(BasePreset):
         feature_frac: float = 0.6,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_timeout: int | None = None,
         optuna_verbose: bool = False,
         optuna_pruner: str | object | None = 'none',
@@ -133,7 +138,7 @@ class FeatureBaggingEnsemble(BasePreset):
         self.ensemble_score_: float = 0.0
         self._rank_refs_: list[np.ndarray] = []
 
-    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -176,10 +181,10 @@ class FeatureBaggingEnsemble(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> FeatureBaggingEnsemble:
@@ -192,7 +197,7 @@ class FeatureBaggingEnsemble(BasePreset):
 
         y_tr = y_train.values
         y_va = y_valid.values
-        n_sub = max(1, int(round(self.feature_frac * len(feats))))
+        n_sub = max(1, round(self.feature_frac * len(feats)))
 
         # Общий SeedSequence.spawn — как в EasyEnsembleClassifier: даёт статистически
         # независимые генераторы под тюнинг и под каждый estimator из одного random_seed.
@@ -256,7 +261,7 @@ class FeatureBaggingEnsemble(BasePreset):
         self._rank_refs_ = [fit_rank_reference(s) for s in tr_raw_scores]
 
         va_ensemble = np.stack(
-            [rank_transform(s, ref) for s, ref in zip(va_raw_scores, self._rank_refs_)],
+            [rank_transform(s, ref) for s, ref in zip(va_raw_scores, self._rank_refs_, strict=False)],
             axis=1,
         ).mean(axis=1)
         self.ensemble_score_ = float(average_precision_score(y_va, va_ensemble))
@@ -265,7 +270,7 @@ class FeatureBaggingEnsemble(BasePreset):
 
         self.valid_pred_ = va_ensemble
         self.train_pred_ = np.stack(
-            [rank_transform(s, ref) for s, ref in zip(tr_raw_scores, self._rank_refs_)],
+            [rank_transform(s, ref) for s, ref in zip(tr_raw_scores, self._rank_refs_, strict=False)],
             axis=1,
         ).mean(axis=1)
 
@@ -280,7 +285,7 @@ class FeatureBaggingEnsemble(BasePreset):
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
         rank_matrix = []
-        for model, subset, ref in zip(self.estimators_, self.feature_subsets_, self._rank_refs_):
+        for model, subset, ref in zip(self.estimators_, self.feature_subsets_, self._rank_refs_, strict=False):
             cat_sub = [c for c in self.cat_features_ if c in subset]
             pool = Pool(X[subset], cat_features=cat_sub)
             rank_matrix.append(rank_transform(model.predict_proba(pool)[:, 1], ref))

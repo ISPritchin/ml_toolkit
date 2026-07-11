@@ -48,7 +48,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
 
 FEATURE = 'regime_change'
 
@@ -115,7 +115,8 @@ def _kernel(
 
             # regime asymmetry: mean_last3 / mean_first3
             n3 = min(3, ws)
-            s_first = 0.0; s_last = 0.0
+            s_first = 0.0
+            s_last = 0.0
             for i in range(n3):
                 s_first += product_values[row_idx - ws + 1 + i]
                 s_last += product_values[row_idx - n3 + 1 + i]
@@ -133,17 +134,23 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12], "shift_threshold": 2.0 (опционально, в сигмах)}"""
+    """params: {"windows": [12], "shift_threshold": 2.0 (опционально, в сигмах)}."""
     windows = np.array(params['windows'], dtype=np.int64)
     shift_threshold = float(params.get('shift_threshold', 2.0))
     mag, spos, flag, lve, asym, rlen = _kernel(values, position, windows, shift_threshold)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(mag[j]);   suffixes.append(f'magnitude_w{w}')
-        arrays.append(spos[j]);  suffixes.append(f'split_pos_w{w}')
-        arrays.append(flag[j]);  suffixes.append(f'flag_w{w}')
-        arrays.append(lve[j]);   suffixes.append(f'late_vs_early_w{w}')
-        arrays.append(asym[j]);  suffixes.append(f'asymmetry_w{w}')
-    arrays.append(rlen); suffixes.append('current_regime_len')
+        arrays.append(mag[j])
+        suffixes.append(f'magnitude_w{w}')
+        arrays.append(spos[j])
+        suffixes.append(f'split_pos_w{w}')
+        arrays.append(flag[j])
+        suffixes.append(f'flag_w{w}')
+        arrays.append(lve[j])
+        suffixes.append(f'late_vs_early_w{w}')
+        arrays.append(asym[j])
+        suffixes.append(f'asymmetry_w{w}')
+    arrays.append(rlen)
+    suffixes.append('current_regime_len')
     return arrays, suffixes

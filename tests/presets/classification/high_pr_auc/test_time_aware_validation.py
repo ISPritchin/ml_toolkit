@@ -1,5 +1,5 @@
-"""Тесты для TimeAwareValidationClassifier
-(ml_toolkit/presets/classification/high_pr_auc/time_aware_validation.py)."""
+"""Тесты для TimeAwareValidationClassifier (ml_toolkit/presets/classification/high_pr_auc/time_aware_validation.py).
+"""
 
 from __future__ import annotations
 

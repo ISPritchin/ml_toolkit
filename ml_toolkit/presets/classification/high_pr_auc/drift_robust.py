@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -32,12 +32,16 @@ from ml_toolkit.feature_selection.drift_filter import (
     AdversarialDriftFilter,
     compute_psi,
 )
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     catboost_arch_space,
     make_pruner,
 )
+
+if TYPE_CHECKING:
+    from catboost import Pool
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +116,7 @@ class DriftRobustClassifier(BasePreset):
     def __init__(
         self,
         target_auc: float = 0.55,
-        base_preset: Any = None,
+        base_preset: BasePreset | None = None,
         base_params: dict[str, Any] | None = None,
         n_optuna_trials: int = 0,
         param_space: Callable[[Any], dict[str, Any]] | None = None,
@@ -140,7 +144,7 @@ class DriftRobustClassifier(BasePreset):
         self.psi_report_: pd.DataFrame | None = None
         self._drift_filter: AdversarialDriftFilter | None = None
 
-    def _tune(self, tr_pool: Any, va_pool: Any, y_va: np.ndarray) -> dict[str, Any]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, y_va: np.ndarray) -> dict[str, Any]:
         from catboost import CatBoostClassifier
         import optuna
 
@@ -178,10 +182,10 @@ class DriftRobustClassifier(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> DriftRobustClassifier:

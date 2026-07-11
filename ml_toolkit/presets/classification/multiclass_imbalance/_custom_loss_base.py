@@ -27,20 +27,35 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score
 from sklearn.preprocessing import LabelEncoder
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.presets.classification._base import BasePreset
 from ml_toolkit.presets.classification._optuna_utils import (
     CatBoostPruningCallback,
     make_pruner,
 )
 
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier, Pool
+    import optuna
+    from optuna.pruners import BasePruner
+
 logger = logging.getLogger(__name__)
+
+
+class _CalcDersMultiLoss(Protocol):
+    """Duck-типизированный интерфейс мультиклассовых лоссов ml_toolkit.losses."""
+
+    def calc_ders_multi(
+        self, approx: list[float], target: float, weight: float,
+    ) -> tuple[list[float], list[list[float]]]: ...
+
 
 _EVAL_METRIC = 'TotalF1:average=Macro'
 
@@ -92,9 +107,9 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         random_seed: int,
         cat_features: list[str] | None,
         selected_features: list[str] | None,
-        param_space: Callable[[Any], dict[str, Any]] | None = None,
+        param_space: Callable[[optuna.Trial], dict[str, Any]] | None = None,
         optuna_verbose: bool = False,
-        optuna_pruner: str | Any | None = 'none',
+        optuna_pruner: str | BasePruner | None = 'none',
     ) -> None:
         super().__init__(params=None, n_optuna_trials=n_optuna_trials)
         self.loss_params = dict(loss_params)
@@ -109,9 +124,9 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         self._label_encoder: LabelEncoder | None = None
 
     def _make_loss(
-        self, loss_params: dict[str, float], *, tr_pool: Any, arch_params: dict, n_classes: int
-    ) -> Any:
-        """Строит объект лосса. Большинству лоссов нужна class_counts из train —
+        self, loss_params: dict[str, float], *, tr_pool: Pool, arch_params: dict, n_classes: int
+    ) -> _CalcDersMultiLoss:
+        """Строит объект лосса. Большинству лоссов нужна class_counts из train —.
 
         подклассы переопределяют этот метод (по образцу LDAMClassifier/
         InfluenceBalancedLossClassifier в binary-модуле).
@@ -120,13 +135,13 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
 
     def _fit_model(
         self,
-        tr_pool: Any,
-        va_pool: Any,
+        tr_pool: Pool,
+        va_pool: Pool,
         arch_params: dict,
         loss_params: dict[str, float],
         n_classes: int,
         callbacks: list | None = None,
-    ) -> Any:
+    ) -> CatBoostClassifier:
         from catboost import CatBoostClassifier
 
         model = CatBoostClassifier(
@@ -138,7 +153,7 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         model.fit(tr_pool, eval_set=va_pool, verbose=False, callbacks=callbacks)
         return model
 
-    def _tune(self, tr_pool: Any, va_pool: Any, n_classes: int) -> tuple[Any, dict]:
+    def _tune(self, tr_pool: Pool, va_pool: Pool, n_classes: int) -> tuple[CatBoostClassifier, dict]:
         import optuna
 
         _optuna_prev_verbosity = optuna.logging.get_verbosity()
@@ -160,7 +175,7 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
                 for k in loss_keys
             }
 
-            def arch_val(key: str, suggest: Callable[[], Any]) -> Any:
+            def arch_val(key: str, suggest: Callable[[], int | float]) -> int | float:
                 return custom[key] if key in custom else suggest()
 
             arch_p = {
@@ -224,10 +239,10 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> _CustomLossClassifierMulticlassBase:
@@ -281,8 +296,8 @@ class _CustomLossClassifierMulticlassBase(BasePreset):
         pool = Pool(X[self.selected_features_], cat_features=self.cat_features_)
         return self._model.predict_proba(pool)
 
-    def predict(self, X: Any) -> np.ndarray:  # type: ignore[override]
-        """Мультиклассовое предсказание по argmax — в отличие от BasePreset.predict,
+    def predict(self, X: XInput) -> np.ndarray:  # type: ignore[override]
+        """Мультиклассовое предсказание по argmax — в отличие от BasePreset.predict,.
 
         порог здесь неприменим (не бинарная классификация).
         """

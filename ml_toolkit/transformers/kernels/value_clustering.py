@@ -47,7 +47,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import (
+from ml_toolkit.transformers._windowing import (
     EPS,
     compute_window_sum,
     fill_window_sorted,
@@ -98,11 +98,13 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             out_conc[j, row_idx] = safe_ratio(top3_sum, bot3_sum)
 
             # active months + max for density
-            v_max = 0.0; active = 0
+            v_max = 0.0
+            active = 0
             for offset in range(ws):
                 vv = product_values[row_idx - ws + 1 + offset]
                 v_max = max(v_max, vv)
-                if vv != 0.0: active += 1
+                if vv != 0.0:
+                    active += 1
             out_density[j, row_idx] = safe_ratio(total, active * v_max)
 
             # herfindahl: Σ(share²)
@@ -116,16 +118,22 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     t1, t3, b3, conc, dens, herf = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(t1[j]);   suffixes.append(f'top1_share_w{w}')
-        arrays.append(t3[j]);   suffixes.append(f'top3_share_w{w}')
-        arrays.append(b3[j]);   suffixes.append(f'bot3_share_w{w}')
-        arrays.append(conc[j]); suffixes.append(f'concentration_w{w}')
-        arrays.append(dens[j]); suffixes.append(f'density_w{w}')
-        arrays.append(herf[j]); suffixes.append(f'herfindahl_w{w}')
+        arrays.append(t1[j])
+        suffixes.append(f'top1_share_w{w}')
+        arrays.append(t3[j])
+        suffixes.append(f'top3_share_w{w}')
+        arrays.append(b3[j])
+        suffixes.append(f'bot3_share_w{w}')
+        arrays.append(conc[j])
+        suffixes.append(f'concentration_w{w}')
+        arrays.append(dens[j])
+        suffixes.append(f'density_w{w}')
+        arrays.append(herf[j])
+        suffixes.append(f'herfindahl_w{w}')
     return arrays, suffixes

@@ -49,7 +49,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
 
 FEATURE = 'window_volatility_ratios'
 
@@ -92,7 +92,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {} (no params)"""
+    """params: {} (no params)."""
     cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf = _kernel(values, position)
     return (
         [cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf],

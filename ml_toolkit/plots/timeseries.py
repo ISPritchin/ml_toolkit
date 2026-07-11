@@ -18,10 +18,14 @@ def add_period_bands(
     """Набор именованных периодов как вертикальные заливки.
 
     Args:
+        ax:        Axes для отрисовки.
         periods:   список пар (x_start, x_end).
         labels:    подписи периодов; None — без подписей.
         colors:    один цвет для всех или список цветов.
+        alpha:     прозрачность заливки.
+        fontsize:  размер шрифта подписи.
         label_loc: 'top' | 'center' | 'bottom'.
+        rotation:  угол поворота подписи в градусах.
 
     """
     _default_colors = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F']
@@ -36,7 +40,7 @@ def add_period_bands(
     lbls = labels or [''] * n
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
 
-    for (x1, x2), label, color in zip(periods, lbls, clrs):
+    for (x1, x2), label, color in zip(periods, lbls, clrs, strict=False):
         ax.axvspan(x1, x2, color=color, alpha=alpha, linewidth=0)
         if label:
             xm = x1 + (x2 - x1) / 2
@@ -48,7 +52,7 @@ def add_period_bands(
 
 def add_forecast_region(
     ax: plt.Axes,
-    x_split,
+    x_split: float,
     label_actual: str = 'Факт',
     label_forecast: str = 'Прогноз',
     color: str = '#4E79A7',
@@ -58,7 +62,13 @@ def add_forecast_region(
     """Вертикальная черта + заливка правой части как «прогноз».
 
     Args:
-        x_split: значение x, начиная с которого идёт прогноз.
+        ax:             Axes для отрисовки.
+        x_split:        значение x, начиная с которого идёт прогноз.
+        label_actual:   подпись левее x_split (факт); '' — без подписи.
+        label_forecast: подпись правее x_split (прогноз); '' — без подписи.
+        color:          цвет линии, заливки и подписей.
+        alpha:          прозрачность заливки прогнозной области.
+        fontsize:       размер шрифта подписей.
 
     """
     ax.axvline(x_split, color=color, lw=1.2, linestyle='--', alpha=0.8)
@@ -87,8 +97,14 @@ def add_event_markers(
     """Маркеры именованных событий над осью X.
 
     Args:
-        events: {x_value: label_str} — значение оси X → название события.
-        y_frac: положение маркера в долях axes (>1 → над графиком).
+        ax:         Axes для отрисовки.
+        events:     {x_value: label_str} — значение оси X → название события.
+        y_frac:     положение маркера в долях axes (>1 → над графиком).
+        marker:     стиль маркера matplotlib.
+        markersize: размер маркера.
+        color:      цвет маркера и подписи.
+        fontsize:   размер шрифта подписи.
+        rotation:   угол поворота подписи в градусах.
 
     """
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)

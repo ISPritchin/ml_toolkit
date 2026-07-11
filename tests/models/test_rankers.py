@@ -1,5 +1,6 @@
-"""Тесты для ранжировщиков: CatBoostRanker, LightGBMRanker, XGBoostRanker
-(ml_toolkit/models/_catboost_ranker.py, _lightgbm_ranker.py, _xgboost_ranker.py).
+"""Тесты для ранжировщиков: CatBoostRanker, LightGBMRanker, XGBoostRanker.
+
+ml_toolkit/models/_catboost_ranker.py, _lightgbm_ranker.py, _xgboost_ranker.py.
 
 Все три адаптера решают бинарную классификацию через ranking objective (вся выборка —
 одна группа или несколько групп заданного размера); predict_proba() возвращает
@@ -190,8 +191,9 @@ class TestXGBoostRanker:
         assert_valid_proba(model, X_valid)
 
     def test_multiple_categorical_features(self, classification_data_multi_cat):
-        """XGBoostRanker не поддерживает category/object dtype нативно — _to_float() кодирует
-        любую object/category колонку в числовые коды (cat.codes) независимо от cat_features,
+        """XGBoostRanker не поддерживает category/object dtype нативно — _to_float() кодирует любую колонку.
+
+        Object/category колонку в числовые коды (cat.codes) независимо от cat_features,
         в отличие от XGBoostClassifier/Regressor (enable_categorical=True). Тест фиксирует
         текущее поведение: обучение и предсказание работают, а не падают на нескольких
         категориальных признаках разной кардинальности.

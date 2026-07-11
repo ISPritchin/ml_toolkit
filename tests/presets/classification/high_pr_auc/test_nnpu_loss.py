@@ -19,5 +19,5 @@ class TestNNPUClassifier:
         assert_valid_proba(model, X_valid)
 
     def test_rejects_invalid_class_prior(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='class_prior должен быть'):
             NNPUClassifier(class_prior=1.5)

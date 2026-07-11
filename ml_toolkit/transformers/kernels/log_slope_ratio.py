@@ -38,7 +38,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import fit_linear_trend_slope, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import fit_linear_trend_slope, resolve_window_size, safe_ratio
 
 FEATURE = 'log_slope_ratio'
 
@@ -60,7 +60,7 @@ def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, pairs: n
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"pairs": [[6, 12]]}"""
+    """params: {"pairs": [[6, 12]]}."""
     pairs = np.array(params['pairs'], dtype=np.int64)
     # log1p считается один раз на колонку, без буфера на каждое окно
     log_values = np.log1p(np.abs(values))

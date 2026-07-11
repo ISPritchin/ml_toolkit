@@ -23,9 +23,9 @@ class TestEasyEnsembleClassifier:
         assert len(model.estimator_scores_) == 5
 
     def test_estimators_are_diverse(self, binary_data):
-        """Каждый estimator обучен на своём подсэмпле негативов (свой seed rng) +
-        своём random_seed модели — предсказания разных estimator'ов на одном X
-        не должны совпадать между собой.
+        """Каждый estimator обучен на своём подсэмпле негативов и своём random_seed модели.
+
+        Предсказания разных estimator'ов на одном X не должны совпадать между собой.
         """
         X_train, y_train, X_valid, y_valid = binary_data
         model = EasyEnsembleClassifier(n_estimators=5, neg_ratio=5, base_params=BASE_PARAMS)
@@ -58,8 +58,9 @@ class TestEasyEnsembleClassifier:
                 assert samples[i] != samples[j], f'negative subsamples {i} and {j} are identical'
 
     def test_tuning_subsample_independent_from_first_estimator(self, binary_data):
-        """Регрессионный тест: подвыборка негативов для тюнинга (rng0) и для
-        estimator #0 не должны совпадать. До фикса default_rng(seed) и
+        """Регрессионный тест: подвыборка негативов для тюнинга (rng0) и для estimator #0 не должны совпадать.
+
+        До фикса default_rng(seed) и
         default_rng(seed + 0) были одним и тем же генератором — с одинаковой
         последовательностью вызовов (choice, затем shuffle) подвыборка estimator'а
         #0 побитово совпадала с той, на которой Optuna искала архитектуру, и первый
@@ -84,8 +85,9 @@ class TestEasyEnsembleClassifier:
         assert tune_sample != est0_sample
 
     def test_optuna_params_flow_to_final_estimators(self, binary_data, monkeypatch):
-        """Архитектура, выбранная Optuna (best trial), должна долететь до финальных
-        estimator'ов как есть — кроме random_seed, который намеренно переопределяется
+        """Архитектура, выбранная Optuna (best trial), должна долететь до финальных estimator'ов как есть.
+
+        Кроме random_seed, который намеренно переопределяется
         per-estimator (см. best_params_['base_params'] в easy_ensemble.py fit()).
         """
         X_train, y_train, X_valid, y_valid = binary_data

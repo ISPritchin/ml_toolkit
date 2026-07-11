@@ -20,6 +20,8 @@ TverskyLoss/DiceLoss в этом пакете (см. их докстринги).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -39,7 +41,9 @@ class LogitNormLoss:
             raise ValueError(f'temperature должна быть положительной, получено {temperature}')
         self.temperature = temperature
 
-    def calc_ders_multi(self, approx, target, weight):
+    def calc_ders_multi(
+        self, approx: Sequence[float], target: float, weight: float
+    ) -> tuple[list[float], list[list[float]]]:
         eps = 1e-7
         z = np.asarray(approx, dtype=np.float64)
         y = int(target)

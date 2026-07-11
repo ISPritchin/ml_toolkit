@@ -1,4 +1,4 @@
-"""Тесты RelativeErrorRegressor (ml_toolkit/presets/regression/relative_error.py)
+"""Тесты RelativeErrorRegressor (ml_toolkit/presets/regression/relative_error.py).
 
 и корректности градиента RelativeErrorLoss (ml_toolkit/presets/regression/_losses.py).
 """
@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from sklearn.metrics import mean_absolute_error
 
 from ml_toolkit.presets.regression import RelativeErrorRegressor
 from ml_toolkit.presets.regression._losses import RelativeErrorLoss
@@ -37,7 +36,7 @@ def test_gradient_matches_numeric_finite_difference(metric):
     loss = RelativeErrorLoss(metric=metric, denom_floor=floor)
     if metric == 'wape':
         loss.global_denom = max(float(np.mean(np.abs(y))), floor)
-    der1, der2 = zip(*loss.calc_ders_range(f, y, None))
+    der1, _der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
     der1 = np.array(der1)
 
     eps = 1e-4
@@ -65,7 +64,7 @@ def test_weights_scale_derivatives():
 
 
 def test_invalid_metric_raises():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='metric должен быть'):
         RelativeErrorLoss(metric='bogus')
 
 
@@ -86,14 +85,14 @@ def test_fit_predict_each_metric(regression_data, metric):
 
 
 def test_constructor_rejects_invalid_metric():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='metric должен быть'):
         RelativeErrorRegressor(metric='bogus')
 
 
 # ── 3. Обучение на WAPE даёт сравнимый с MAE-бейзлайном WAPE ────────────────
 
 def test_wape_training_converges_close_to_mae_baseline_on_wape(regression_data):
-    """Кастомный Python-лосс использует leaf_estimation_method='Newton' (дефолт
+    """Кастомный Python-лосс использует leaf_estimation_method='Newton' (дефолт.
 
     CatBoost для произвольных лоссов), тогда как встроенный 'MAE' — быстро
     сходящийся 'Exact' (медианная оценка листа) — при равном числе итераций
@@ -102,7 +101,8 @@ def test_wape_training_converges_close_to_mae_baseline_on_wape(regression_data):
     недообучение Newton-версии, а не признак сломанного лосса).
     """
     X_train, y_train, X_valid, y_valid = regression_data
-    from catboost import CatBoostRegressor as _RawCB, Pool
+    from catboost import CatBoostRegressor as _RawCB
+    from catboost import Pool
 
     params = {'iterations': 300, 'verbose': 0, 'random_seed': 42}
     baseline = _RawCB(loss_function='MAE', **params)

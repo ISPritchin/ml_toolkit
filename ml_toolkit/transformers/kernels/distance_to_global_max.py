@@ -36,7 +36,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import safe_ratio
+from ml_toolkit.transformers._windowing import safe_ratio
 
 FEATURE = 'distance_to_global_max'
 

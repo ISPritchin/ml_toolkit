@@ -21,14 +21,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
+from ml_toolkit.models._base import XInput, YInput
 from ml_toolkit.models._utils import fit_calibrator, prep_cat_features
 from ml_toolkit.presets.classification._base import BasePreset
+
+if TYPE_CHECKING:
+    from catboost import CatBoostClassifier
+    from lightgbm import LGBMClassifier
+    import optuna
+    from sklearn.pipeline import Pipeline
+    from xgboost import XGBClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -156,17 +164,21 @@ class HeterogeneousStacking(BasePreset):
 
     # ── Члены зоопарка ────────────────────────────────────────────────────────
 
-    def _fit_catboost(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
+    def _fit_catboost(
+        self, X: pd.DataFrame, y: np.ndarray, X_num: None, seed: int, params: dict[str, Any] | None = None,
+    ):
         from catboost import CatBoostClassifier, Pool
         m = CatBoostClassifier(**{**(params or _CBT_PARAMS), 'random_seed': seed})
         m.fit(Pool(X, y, cat_features=self.cat_features_), verbose=False)
         return m
 
-    def _predict_catboost(self, m, X, X_num):
+    def _predict_catboost(self, m: CatBoostClassifier, X: pd.DataFrame, X_num: None):
         from catboost import Pool
         return m.predict_proba(Pool(X, cat_features=self.cat_features_))[:, 1]
 
-    def _fit_lightgbm(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
+    def _fit_lightgbm(
+        self, X: pd.DataFrame, y: np.ndarray, X_num: None, seed: int, params: dict[str, Any] | None = None,
+    ):
         import lightgbm as lgb
         m = lgb.LGBMClassifier(**{**(params or _LGB_PARAMS), 'random_state': seed})
         cat_idx = [c for c in self.cat_features_ if c in X.columns]
@@ -174,17 +186,19 @@ class HeterogeneousStacking(BasePreset):
         m.fit(Xp, y, categorical_feature=cat_idx or 'auto')
         return m
 
-    def _predict_lightgbm(self, m, X, X_num):
+    def _predict_lightgbm(self, m: LGBMClassifier, X: pd.DataFrame, X_num: None):
         Xp = prep_cat_features(X, list(X.columns), self.cat_features_)
         return m.predict_proba(Xp)[:, 1]
 
-    def _fit_xgboost(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
+    def _fit_xgboost(
+        self, X: pd.DataFrame, y: np.ndarray, X_num: None, seed: int, params: dict[str, Any] | None = None,
+    ):
         import xgboost as xgb
         m = xgb.XGBClassifier(**{**(params or _XGB_PARAMS), 'random_state': seed, 'enable_categorical': True})
         Xp = prep_cat_features(X, list(X.columns), self.cat_features_)
         return m.fit(Xp, y)
 
-    def _predict_xgboost(self, m, X, X_num):
+    def _predict_xgboost(self, m: XGBClassifier, X: pd.DataFrame, X_num: None):
         Xp = prep_cat_features(X, list(X.columns), self.cat_features_)
         return m.predict_proba(Xp)[:, 1]
 
@@ -211,12 +225,14 @@ class HeterogeneousStacking(BasePreset):
         pre = ColumnTransformer(transformers)
         return Pipeline([('pre', pre), ('clf', LogisticRegression(max_iter=2000, C=C))])
 
-    def _fit_logistic(self, X, y, X_num, seed, params: dict[str, Any] | None = None):
+    def _fit_logistic(
+        self, X: pd.DataFrame, y: np.ndarray, X_num: None, seed: int, params: dict[str, Any] | None = None,
+    ):
         pipe = self._build_linear_pipeline(C=(params or {}).get('C', 1.0))
         pipe.fit(X, y)
         return pipe
 
-    def _predict_logistic(self, m, X, X_num):
+    def _predict_logistic(self, m: Pipeline, X: pd.DataFrame, X_num: None):
         return m.predict_proba(X)[:, 1]
 
     _FIT_DISPATCH = {
@@ -228,15 +244,22 @@ class HeterogeneousStacking(BasePreset):
         'xgboost': '_predict_xgboost', 'logistic': '_predict_logistic',
     }
 
-    def _fit_member(self, name: str, X, y, seed: int, params: dict[str, Any] | None = None):
+    def _fit_member(
+        self, name: str, X: pd.DataFrame, y: np.ndarray, seed: int, params: dict[str, Any] | None = None,
+    ):
         return getattr(self, self._FIT_DISPATCH[name])(X, y, None, seed, params)
 
-    def _predict_member(self, name: str, model: Any, X) -> np.ndarray:
+    def _predict_member(
+        self,
+        name: str,
+        model: CatBoostClassifier | LGBMClassifier | XGBClassifier | Pipeline,
+        X: pd.DataFrame,
+    ) -> np.ndarray:
         return getattr(self, self._PREDICT_DISPATCH[name])(model, X, None)
 
     # ── Optuna (по семейству алгоритмов) ─────────────────────────────────────
 
-    def _suggest_member_params(self, name: str, trial: Any) -> dict[str, Any]:
+    def _suggest_member_params(self, name: str, trial: optuna.Trial) -> dict[str, Any]:
         if self.param_space is not None:
             search = self.param_space(name, trial)
         elif name == 'catboost':
@@ -300,19 +323,19 @@ class HeterogeneousStacking(BasePreset):
 
     # ── Мета-модели (то же семейство, что в SubsampleStacking) ──────────────
 
-    def _fit_meta_logistic(self, X_meta, y_meta):
+    def _fit_meta_logistic(self, X_meta: np.ndarray, y_meta: np.ndarray):
         from sklearn.linear_model import LogisticRegression
         m = LogisticRegression(C=1.0, max_iter=2000, solver='lbfgs', random_state=self.random_seed)
         m.fit(X_meta, y_meta)
         return m
 
-    def _fit_meta_weighted(self, X_meta, y_meta):
+    def _fit_meta_weighted(self, X_meta: np.ndarray, y_meta: np.ndarray):
         from scipy.optimize import minimize
         n = X_meta.shape[1]
         y = y_meta.astype(float)
         eps = 1e-7
 
-        def neg_log_likelihood(raw_w):
+        def neg_log_likelihood(raw_w: np.ndarray) -> float:
             w = np.exp(raw_w) / np.exp(raw_w).sum()
             blend = np.clip(X_meta @ w, eps, 1.0 - eps)
             return -float(np.mean(y * np.log(blend) + (1.0 - y) * np.log(1.0 - blend)))
@@ -320,10 +343,10 @@ class HeterogeneousStacking(BasePreset):
         res = minimize(neg_log_likelihood, np.zeros(n), method='L-BFGS-B',
                        options={'maxiter': 500, 'ftol': 1e-12})
         weights = np.exp(res.x) / np.exp(res.x).sum()
-        logger.info('[HeteroStacking] Мета-веса (BCE): %s', dict(zip(self.zoo_used_, np.round(weights, 3))))
+        logger.info('[HeteroStacking] Мета-веса (BCE): %s', dict(zip(self.zoo_used_, np.round(weights, 3), strict=False)))
         return weights
 
-    def _fit_meta_catboost(self, X_meta, y_meta):
+    def _fit_meta_catboost(self, X_meta: np.ndarray, y_meta: np.ndarray):
         from catboost import CatBoostClassifier, Pool
         params = {'iterations': 200, 'max_depth': 3, 'learning_rate': 0.05,
                   'loss_function': 'Logloss', 'eval_metric': 'PRAUC',
@@ -332,7 +355,7 @@ class HeterogeneousStacking(BasePreset):
         m.fit(Pool(X_meta, y_meta))
         return m
 
-    def _meta_predict(self, X_meta):
+    def _meta_predict(self, X_meta: np.ndarray):
         if self.meta == 'logistic':
             return self.meta_model_.predict_proba(X_meta)[:, 1]
         if self.meta == 'weighted':
@@ -344,10 +367,10 @@ class HeterogeneousStacking(BasePreset):
 
     def fit(
         self,
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any,
-        y_valid: Any,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput,
+        y_valid: YInput,
         selected_features: list[str] | None = None,
         cat_features: list[str] | None = None,
     ) -> HeterogeneousStacking:

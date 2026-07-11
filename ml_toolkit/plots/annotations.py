@@ -16,9 +16,12 @@ def annotate_bars(
     """Подписать значения на всех барах axes.
 
     Args:
+        ax:        Axes с барами.
         fmt:       строка форматирования ('{:.1%}' для процентов и т.п.).
         threshold: не подписывать бары с abs(height) < threshold.
+        fontsize:  размер шрифта подписи.
         padding:   отступ от вершины бара в points.
+        color:     цвет текста подписи.
 
     """
     for patch in ax.patches:

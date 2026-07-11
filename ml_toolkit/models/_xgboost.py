@@ -1,4 +1,3 @@
-# ruff: noqa: N806
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -47,8 +46,7 @@ def _default_xgb_param_space(trial: optuna.Trial) -> dict[str, Any]:
 # ── Классы (новый API) ────────────────────────────────────────────────────────
 
 class XGBoostRegressor(BaseModel):
-    """XGBRegressor с нативными категориями, residual learning и Optuna-тюнингом
-    (`reg:absoluteerror`/MAE).
+    """XGBRegressor с нативными категориями, residual learning и Optuna-тюнингом (`reg:absoluteerror`/MAE).
 
     ``params=None`` запускает Optuna (`X_valid`/`y_valid` обязательны, иначе
     `ValueError`); ``params={...}`` — прямое обучение без тюнинга. В обеих
@@ -210,9 +208,11 @@ class XGBoostRegressor(BaseModel):
 
 
 class XGBoostClassifier(BaseModel):
-    """XGBClassifier: бинарный и мультикласс в одном классе (тот же контракт, что у
-    `CatBoostClassifier`/`LightGBMClassifier`) — определяется автоматически по
-    числу уникальных значений `y_train` (`self.n_classes_`).
+    """XGBClassifier: бинарный и мультикласс в одном классе.
+
+    Тот же контракт, что у `CatBoostClassifier`/`LightGBMClassifier` —
+    определяется автоматически по числу уникальных значений `y_train`
+    (`self.n_classes_`).
 
     ``params=None`` запускает Optuna (`X_valid`/`y_valid` обязательны); ``params={...}``
     — прямое обучение без тюнинга (в этой ветке `objective`/`num_class` для

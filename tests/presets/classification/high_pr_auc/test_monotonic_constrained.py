@@ -1,5 +1,5 @@
-"""Тесты для MonotonicConstrainedClassifier
-(ml_toolkit/presets/classification/high_pr_auc/monotonic_constrained.py)."""
+"""Тесты для MonotonicConstrainedClassifier (ml_toolkit/presets/classification/high_pr_auc/monotonic_constrained.py).
+"""
 
 from __future__ import annotations
 

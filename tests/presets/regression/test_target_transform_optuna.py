@@ -16,7 +16,6 @@ from ml_toolkit.presets.regression import TargetTransformOptunaRegressor
 from ml_toolkit.presets.regression.target_transform_optuna import ALL_TRANSFORMS
 from tests.presets.regression.conftest import BASE_PARAMS
 
-
 # ── 1. Прямой режим: каждый трансформ по отдельности, положительный таргет ──
 
 @pytest.mark.parametrize('transform', list(ALL_TRANSFORMS))

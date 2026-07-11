@@ -50,7 +50,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'nonlinearity'
 
@@ -74,12 +74,16 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
             # метод третей
             third = ws // 3
             if third >= 1:
-                q1 = 0.0; q2 = 0.0; q3 = 0.0
+                q1 = 0.0
+                q2 = 0.0
+                q3 = 0.0
                 for i in range(third):
                     q1 += product_values[row_idx - ws + 1 + i]
                     q2 += product_values[row_idx - ws + 1 + third + i]
                     q3 += product_values[row_idx - ws + 1 + 2 * third + i]
-                q1 /= third; q2 /= third; q3 /= third
+                q1 /= third
+                q2 /= third
+                q3 /= third
                 quad = safe_ratio(q1 - 2.0 * q2 + q3, mean)
                 out_quad_proxy[j, row_idx] = quad
                 out_convexity_sign[j, row_idx] = 1.0 if quad > 0.0 else (-1.0 if quad < 0.0 else 0.0)
@@ -95,7 +99,8 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
                                   + product_values[abs_idx - 2])
                 mean_accel = accel_sum / n_accels
                 out_mean_accel[j, row_idx] = mean_accel
-                var_a = 0.0; concave_count = 0
+                var_a = 0.0
+                concave_count = 0
                 for i in range(n_accels):
                     abs_idx = row_idx - ws + 1 + i + 2
                     a = (product_values[abs_idx]
@@ -111,15 +116,20 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}"""
+    """params: {"windows": [6, 12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     qp, cs, ma, as_, fc = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(qp[j]); suffixes.append(f'quad_proxy_w{w}')
-        arrays.append(cs[j]); suffixes.append(f'convexity_sign_w{w}')
-        arrays.append(ma[j]); suffixes.append(f'mean_accel_w{w}')
-        arrays.append(as_[j]); suffixes.append(f'accel_std_w{w}')
-        arrays.append(fc[j]); suffixes.append(f'frac_concave_w{w}')
+        arrays.append(qp[j])
+        suffixes.append(f'quad_proxy_w{w}')
+        arrays.append(cs[j])
+        suffixes.append(f'convexity_sign_w{w}')
+        arrays.append(ma[j])
+        suffixes.append(f'mean_accel_w{w}')
+        arrays.append(as_[j])
+        suffixes.append(f'accel_std_w{w}')
+        arrays.append(fc[j])
+        suffixes.append(f'frac_concave_w{w}')
     return arrays, suffixes

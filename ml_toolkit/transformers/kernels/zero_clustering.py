@@ -45,7 +45,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import resolve_window_size, safe_ratio
 
 FEATURE = 'zero_clustering'
 
@@ -122,16 +122,22 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}"""
+    """params: {"windows": [12]}."""
     windows = np.array(params['windows'], dtype=np.int64)
     mrun, rcnt, rvl, lzr, fb, zaa = _kernel(values, position, windows)
     arrays = []
     suffixes = []
     for j, w in enumerate(params['windows']):
-        arrays.append(mrun[j]); suffixes.append(f'max_zero_run_w{w}')
-        arrays.append(rcnt[j]); suffixes.append(f'zero_run_count_w{w}')
-        arrays.append(rvl[j]);  suffixes.append(f'recent_vs_long_w{w}')
-        arrays.append(lzr[j]);  suffixes.append(f'last_zero_rec_w{w}')
-        arrays.append(fb[j]);   suffixes.append(f'front_back_w{w}')
-    arrays.append(zaa); suffixes.append('zero_after_active')
+        arrays.append(mrun[j])
+        suffixes.append(f'max_zero_run_w{w}')
+        arrays.append(rcnt[j])
+        suffixes.append(f'zero_run_count_w{w}')
+        arrays.append(rvl[j])
+        suffixes.append(f'recent_vs_long_w{w}')
+        arrays.append(lzr[j])
+        suffixes.append(f'last_zero_rec_w{w}')
+        arrays.append(fb[j])
+        suffixes.append(f'front_back_w{w}')
+    arrays.append(zaa)
+    suffixes.append('zero_after_active')
     return arrays, suffixes

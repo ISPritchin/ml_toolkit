@@ -19,7 +19,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from copy import deepcopy
 import logging
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING
 
 import numpy as np
 import optuna
@@ -38,6 +39,9 @@ from ml_toolkit.models._utils import (
     resolve_timeout,
     set_optuna_verbosity,
 )
+
+if TYPE_CHECKING:
+    from tabm import TabM
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +117,7 @@ class _Preprocessor:
 # ─── training loop ─────────────────────────────────────────────────────────────
 
 def _make_model(
-    tabm: Any,
+    tabm: ModuleType,
     n_num: int,
     cat_cardinalities: list[int],
     d_out: int,
@@ -122,7 +126,7 @@ def _make_model(
     n_blocks: int,
     dropout: float,
     device: torch.device,
-) -> Any:
+) -> TabM:
     """Создаёт и переносит на `device` экземпляр TabM-модели с заданной архитектурой."""
     model = tabm.TabM.make(
         n_num_features=n_num,
@@ -137,7 +141,7 @@ def _make_model(
     return model.to(device)
 
 
-def _forward(model: Any, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+def _forward(model: TabM, batch: dict[str, torch.Tensor]) -> torch.Tensor:
     """Выполняет forward-pass TabM; возвращает тензор формы (B, k, d_out)."""
     return model(
         batch.get('x_num'),
@@ -146,11 +150,11 @@ def _forward(model: Any, batch: dict[str, torch.Tensor]) -> torch.Tensor:
 
 
 def _train_epoch(
-    model: Any,
+    model: TabM,
     data: dict[str, torch.Tensor],
     y: torch.Tensor,
     optimizer: torch.optim.Optimizer,
-    loss_fn: Any,
+    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
     batch_size: int,
 ) -> None:
     """Выполняет одну эпоху обучения TabM с mini-batch SGD и gradient clipping (norm=1.0).
@@ -181,7 +185,7 @@ def _train_epoch(
 
 
 @torch.inference_mode()
-def _predict_raw(model: Any, data: dict[str, torch.Tensor], batch_size: int = 8192) -> np.ndarray:
+def _predict_raw(model: TabM, data: dict[str, torch.Tensor], batch_size: int = 8192) -> np.ndarray:
     """Returns (N, k) raw predictions."""
     model.eval()
     n = len(next(iter(data.values())))
@@ -201,7 +205,7 @@ def _avg_pred(raw: np.ndarray, task_type: str) -> np.ndarray:
 
 
 def _run_training(
-    tabm: Any,
+    tabm: ModuleType,
     n_num: int,
     cat_cardinalities: list[int],
     d_out: int,
@@ -226,7 +230,7 @@ def _run_training(
     metric_fn: Callable | None = None,
     direction: str | None = None,
     trial: optuna.Trial | None = None,
-) -> tuple[Any, float]:
+) -> tuple[TabM, float]:
     """Train one TabM model, return (best_model, best_val_score)."""
     model = _make_model(tabm, n_num, cat_cardinalities, d_out, k, d_block, n_blocks, dropout, device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)

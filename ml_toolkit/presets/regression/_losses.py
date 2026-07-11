@@ -24,7 +24,9 @@ class LogCoshLoss:
     переход гладкий и не требует подбора порога, в отличие от Huber.
     """
 
-    def calc_ders_range(self, predictions, targets, weights) -> list[tuple[float, float]]:
+    def calc_ders_range(
+        self, predictions: list[float], targets: list[float], weights: list[float] | None,
+    ) -> list[tuple[float, float]]:
         f = np.asarray(predictions, dtype=np.float64)
         y = np.asarray(targets, dtype=np.float64)
         r = f - y
@@ -37,7 +39,7 @@ class LogCoshLoss:
             w = np.asarray(weights, dtype=np.float64)
             der1 = der1 * w
             der2 = der2 * w
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))
 
 
 class AsymmetricMSELoss:
@@ -53,7 +55,9 @@ class AsymmetricMSELoss:
         self.over_cost = over_cost
         self.under_cost = under_cost
 
-    def calc_ders_range(self, predictions, targets, weights) -> list[tuple[float, float]]:
+    def calc_ders_range(
+        self, predictions: list[float], targets: list[float], weights: list[float] | None,
+    ) -> list[tuple[float, float]]:
         f = np.asarray(predictions, dtype=np.float64)
         y = np.asarray(targets, dtype=np.float64)
         r = f - y
@@ -66,7 +70,7 @@ class AsymmetricMSELoss:
             w = np.asarray(weights, dtype=np.float64)
             der1 = der1 * w
             der2 = der2 * w
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))
 
 
 class QuantileHuberLoss:
@@ -85,7 +89,9 @@ class QuantileHuberLoss:
         self.quantile = quantile
         self.kappa = kappa
 
-    def calc_ders_range(self, predictions, targets, weights) -> list[tuple[float, float]]:
+    def calc_ders_range(
+        self, predictions: list[float], targets: list[float], weights: list[float] | None,
+    ) -> list[tuple[float, float]]:
         f = np.asarray(predictions, dtype=np.float64)
         y = np.asarray(targets, dtype=np.float64)
         r = y - f
@@ -105,7 +111,7 @@ class QuantileHuberLoss:
             w = np.asarray(weights, dtype=np.float64)
             der1 = der1 * w
             der2 = der2 * w
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))
 
 
 class RelativeErrorLoss:
@@ -131,7 +137,9 @@ class RelativeErrorLoss:
         self.denom_floor = denom_floor
         self.global_denom: float | None = None  # для wape — проставляется извне перед fit
 
-    def calc_ders_range(self, predictions, targets, weights) -> list[tuple[float, float]]:
+    def calc_ders_range(
+        self, predictions: list[float], targets: list[float], weights: list[float] | None,
+    ) -> list[tuple[float, float]]:
         f = np.asarray(predictions, dtype=np.float64)
         y = np.asarray(targets, dtype=np.float64)
         r = f - y
@@ -156,4 +164,4 @@ class RelativeErrorLoss:
             w = np.asarray(weights, dtype=np.float64)
             der1 = der1 * w
             der2 = der2 * w
-        return list(zip(der1.tolist(), der2.tolist()))
+        return list(zip(der1.tolist(), der2.tolist(), strict=False))

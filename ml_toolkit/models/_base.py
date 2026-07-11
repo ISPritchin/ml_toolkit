@@ -8,9 +8,15 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import polars as pl
+
+# Сырые входы fit()/predict() до коэрсии в pandas — DataFrame/Series может
+# приехать из pandas или polars (оба — обязательные зависимости пакета).
+XInput = pd.DataFrame | pl.DataFrame
+YInput = pd.Series | pl.Series | np.ndarray
 
 
-def _to_pandas(df: Any) -> pd.DataFrame:
+def _to_pandas(df: XInput) -> pd.DataFrame:
     """Конвертирует Polars DataFrame в pandas, pandas возвращает как есть."""
     if isinstance(df, pd.DataFrame):
         return df
@@ -23,7 +29,7 @@ def _to_pandas(df: Any) -> pd.DataFrame:
     )
 
 
-def _to_numpy(series: Any) -> np.ndarray:
+def _to_numpy(series: YInput) -> np.ndarray:
     """Конвертирует pandas Series, Polars Series или ndarray в numpy."""
     if isinstance(series, np.ndarray):
         return series
@@ -56,7 +62,9 @@ class BaseModel(ABC):
         n_optuna_trials: int = 50,
         model_settings: dict[str, Any] | None = None,
     ) -> None:
-        """Args:
+        """Инициализирует модель с указанными гиперпараметрами.
+
+        Args:
         params: Гиперпараметры модели. Если None — запускается Optuna.
         n_optuna_trials: Число trials Optuna (игнорируется если params задан).
         model_settings: Доп. настройки: baseline_col, reg_metric, cls_metric и т.п.
@@ -96,12 +104,12 @@ class BaseModel(ABC):
 
         """
 
-    def predict(self, X: Any) -> np.ndarray:
+    def predict(self, X: XInput) -> np.ndarray:
         """Предсказывает значения для X (регрессия). Принимает pandas или polars DataFrame."""
         self._check_fitted()
         return self._predict_impl(_to_pandas(X))
 
-    def predict_proba(self, X: Any) -> np.ndarray:
+    def predict_proba(self, X: XInput) -> np.ndarray:
         """Предсказывает вероятности класса 1 для X (классификация). Принимает pandas или polars DataFrame."""
         self._check_fitted()
         return self._predict_proba_impl(_to_pandas(X))
@@ -125,10 +133,10 @@ class BaseModel(ABC):
 
     @staticmethod
     def _coerce_inputs(
-        X_train: Any,
-        y_train: Any,
-        X_valid: Any | None,
-        y_valid: Any | None,
+        X_train: XInput,
+        y_train: YInput,
+        X_valid: XInput | None,
+        y_valid: YInput | None,
     ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame | None, pd.Series | None]:
         """Конвертирует Polars/numpy входы в pandas перед обучением."""
         X_tr = _to_pandas(X_train)

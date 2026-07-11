@@ -38,7 +38,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'roughness_ratio'
 
@@ -71,7 +71,7 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, pair
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"pairs": [[6, 12]]}"""
+    """params: {"pairs": [[6, 12]]}."""
     pairs = np.array(params['pairs'], dtype=np.int64)
     out = _kernel(values, position, pairs)
     p = params['pairs']

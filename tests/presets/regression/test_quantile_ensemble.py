@@ -8,18 +8,17 @@ import pytest
 from ml_toolkit.presets.regression import QuantileEnsembleRegressor
 from tests.presets.regression.conftest import BASE_PARAMS
 
-
 # ── 1. Валидация конструктора ───────────────────────────────────────────────
 
 def test_constructor_rejects_duplicate_quantiles():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='дубликаты'):
         QuantileEnsembleRegressor(quantiles=[0.5, 0.5])
 
 
 def test_constructor_rejects_out_of_range_quantiles():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='должен быть в'):
         QuantileEnsembleRegressor(quantiles=[0.0, 0.5])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='должен быть в'):
         QuantileEnsembleRegressor(quantiles=[0.5, 1.0])
 
 
@@ -66,7 +65,7 @@ def test_non_crossing_enforces_row_monotonic(regression_data):
 
 
 def test_non_crossing_false_can_still_cross(regression_data):
-    """Без коррекции независимые модели не обязаны быть монотонными — проверяем,
+    """Без коррекции независимые модели не обязаны быть монотонными — проверяем,.
 
     что non_crossing=False действительно пропускает "сырые" (несортированные)
     предсказания, а не тайно сортирует их так же, как non_crossing=True.

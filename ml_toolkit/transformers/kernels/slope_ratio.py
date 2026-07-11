@@ -39,7 +39,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import fit_linear_trend_slope, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import fit_linear_trend_slope, resolve_window_size, safe_ratio
 
 FEATURE = 'slope_ratio'
 
@@ -66,8 +66,7 @@ def _kernel(
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """Args:
-    params: {"pairs": [[6, 12], [12, 24]]}
+    """params: {"pairs": [[6, 12], [12, 24]]}.
 
     """
     pairs = params['pairs']

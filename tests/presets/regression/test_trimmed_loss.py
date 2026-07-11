@@ -23,14 +23,14 @@ def outlier_regression_data(regression_data):
 # ── 1. Валидация конструктора ───────────────────────────────────────────────
 
 def test_constructor_rejects_invalid_trim_frac():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='trim_frac должен быть'):
         TrimmedLossRegressor(trim_frac=0.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='trim_frac должен быть'):
         TrimmedLossRegressor(trim_frac=0.5)
 
 
 def test_constructor_rejects_invalid_n_rounds():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='n_rounds должен быть'):
         TrimmedLossRegressor(n_rounds=0)
 
 
@@ -63,7 +63,8 @@ def test_trimming_beats_single_shot_on_outliers(outlier_regression_data):
     X_train, y_train, X_valid, y_valid = outlier_regression_data
     params = {'iterations': 100, 'verbose': 0, 'random_seed': 42}
 
-    from catboost import CatBoostRegressor as _RawCB, Pool
+    from catboost import CatBoostRegressor as _RawCB
+    from catboost import Pool
     baseline = _RawCB(loss_function='RMSE', **params)
     baseline.fit(Pool(X_train, y_train), eval_set=Pool(X_valid, y_valid), verbose=False)
     baseline_mae = mean_absolute_error(y_valid, baseline.predict(X_valid))
@@ -86,7 +87,8 @@ def test_single_round_matches_plain_catboost(regression_data):
     model = TrimmedLossRegressor(trim_frac=0.1, n_rounds=1, base_params=BASE_PARAMS)
     model.fit(X_train, y_train, X_valid, y_valid)
 
-    from catboost import CatBoostRegressor as _RawCB, Pool
+    from catboost import CatBoostRegressor as _RawCB
+    from catboost import Pool
     baseline = _RawCB(loss_function='RMSE', **{**BASE_PARAMS, 'eval_metric': 'RMSE'})
     baseline.fit(Pool(X_train, y_train), eval_set=Pool(X_valid, y_valid), verbose=False)
 

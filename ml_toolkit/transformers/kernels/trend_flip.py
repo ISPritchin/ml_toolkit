@@ -48,7 +48,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from .._windowing import EPS, fit_linear_trend_slope, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, fit_linear_trend_slope, resolve_window_size
 
 FEATURE = 'trend_flip'
 
