@@ -152,10 +152,7 @@ model_settings = {
 | `linear` (регрессия) | Добавляется к числовым признакам | бейзлайн не добавляется |
 | Остальные | Игнорируется | — |
 
-Для `catboost`/`lightgbm`/`xgboost` `baseline_col` работает и внутри самого Optuna-тюнинга
-(`params=None`): каждый trial оценивается на предсказаниях с уже прибавленным baseline
-(и уже применённым `postprocess_fn`, если задан) — гиперпараметры подбираются под финальную,
-а не промежуточную метрику.
+Для `catboost`/`lightgbm`/`xgboost` `baseline_col` работает и внутри самого Optuna-тюнинга (`params=None`): каждый trial оценивается на предсказаниях с уже прибавленным baseline (и уже применённым `postprocess_fn`, если задан) — гиперпараметры подбираются под финальную, а не промежуточную метрику.
 
 Конкретное имя столбца (например, `'fee_nds_amount'`) и логика его автоматического выбора — забота вызывающего бизнес-пайплайна (например `auto_kkp_classification`), а не `ml_toolkit`.
 
@@ -163,8 +160,7 @@ model_settings = {
 
 ## Своё пространство поиска Optuna (`param_space`)
 
-По умолчанию `catboost`/`lightgbm`/`xgboost` (регрессоры и классификаторы) тюнят фиксированный
-набор гиперпараметров, зашитый в адаптере. `param_space` подменяет его целиком.
+По умолчанию `catboost`/`lightgbm`/`xgboost` (регрессоры и классификаторы) тюнят фиксированный набор гиперпараметров, зашитый в адаптере. `param_space` подменяет его целиком.
 
 ```python
 def my_space(trial):
@@ -177,25 +173,16 @@ model_settings = {'name': 'catboost', 'param_space': my_space}
 ```
 
 Правила:
-- Сигнатура: `Callable[[optuna.Trial], dict]`. Возвращать нужно только тюнируемые параметры —
-  служебные ключи (`loss_function`/`objective`, `eval_metric`, `verbose`, `random_seed`/`random_state`,
-  `early_stopping_rounds`, `enable_categorical`) подставляются адаптером автоматически и имеют приоритет
-  над одноимёнными ключами из `param_space`.
-- Для `lightgbm` `param_space` может (но не обязан) вернуть `'boosting_type'` — если не передан,
-  используется `'gbdt'`.
+- Сигнатура: `Callable[[optuna.Trial], dict]`. Возвращать нужно только тюнируемые параметры — служебные ключи (`loss_function`/`objective`, `eval_metric`, `verbose`, `random_seed`/`random_state`, `early_stopping_rounds`, `enable_categorical`) подставляются адаптером автоматически и имеют приоритет над одноимёнными ключами из `param_space`.
+- Для `lightgbm` `param_space` может (но не обязан) вернуть `'boosting_type'` — если не передан, используется `'gbdt'`.
 - Не применяется к рангерам (`*_ranker`) и остальным моделям — только `catboost`, `lightgbm`, `xgboost`.
-- Работает независимо от `undersample_majority` — сэмплирование (если включено) применяется до
-  обучения, `param_space` только определяет тюнируемые гиперпараметры.
+- Работает независимо от `undersample_majority` — сэмплирование (если включено) применяется до обучения, `param_space` только определяет тюнируемые гиперпараметры.
 
 ---
 
 ## Урезание мажоритарного класса внутри Optuna (`undersample_majority`)
 
-Классификаторы `catboost`/`lightgbm`/`xgboost` умеют урезать классы внутри Optuna-тюнинга
-(бинарный случай — `majority_fraction`, мультикласс, все три адаптера, — `balance_fraction`).
-Финальная модель всегда обучается на том же сэмпле, что и лучший trial (не на полных данных) —
-иначе гиперпараметры оценивались бы на одном объёме данных, а обучение шло бы на другом.
-По умолчанию отключено — Optuna тюнит гиперпараметры на полных данных.
+Классификаторы `catboost`/`lightgbm`/`xgboost` умеют урезать классы внутри Optuna-тюнинга (бинарный случай — `majority_fraction`, мультикласс, все три адаптера, — `balance_fraction`). Финальная модель всегда обучается на том же сэмпле, что и лучший trial (не на полных данных) — иначе гиперпараметры оценивались бы на одном объёме данных, а обучение шло бы на другом. По умолчанию отключено — Optuna тюнит гиперпараметры на полных данных.
 
 ```python
 model_settings = {'name': 'catboost', 'undersample_majority': True}   # включить сэмплирование в Optuna-триалах
@@ -211,11 +198,7 @@ model_settings = {'name': 'catboost', 'undersample_majority': True}   # вклю
 
 ## Ограничение времени тюнинга и прунинг (`optuna_timeout` / `optuna_pruner` / `optuna_verbose`)
 
-Все адаптеры, использующие Optuna (`catboost`, `lightgbm`, `xgboost` — включая `*_ranker`-варианты
-— `tabm`, а также все sklearn-подобные адаптеры без staged-обучения: `random_forest`, `extra_trees`,
-`hist_gbm`, `quantile_forest`, `oblique_forest`, `mondrian`, `decision_tree`, `linear_tree`, `ebm`,
-`pygam`, `mars`, `rulefit`, `figs`, `skope_rules`, `brl`, `ripper`, `soft_decision_tree`,
-`locally_linear_forest`, `gaminet`, линейные модели) читают эти ключи из `model_settings`.
+Все адаптеры, использующие Optuna (`catboost`, `lightgbm`, `xgboost` — включая `*_ranker`-варианты — `tabm`, а также все sklearn-подобные адаптеры без staged-обучения: `random_forest`, `extra_trees`, `hist_gbm`, `quantile_forest`, `oblique_forest`, `mondrian`, `decision_tree`, `linear_tree`, `ebm`, `pygam`, `mars`, `rulefit`, `figs`, `skope_rules`, `brl`, `ripper`, `soft_decision_tree`, `locally_linear_forest`, `gaminet`, линейные модели) читают эти ключи из `model_settings`.
 
 ```python
 model_settings = {
@@ -228,18 +211,13 @@ model_settings = {
 
 ### `optuna_timeout`
 
-Секунды на весь `study.optimize(...)`. Останавливает тюнинг по первому из условий:
-`n_optuna_trials` trials или истечение `optuna_timeout` — текущий trial всегда доучивается до
-конца, обрезки посреди trial не бывает. `None` (по умолчанию) — только по числу trials.
+Секунды на весь `study.optimize(...)`. Останавливает тюнинг по первому из условий: `n_optuna_trials` trials или истечение `optuna_timeout` — текущий trial всегда доучивается до конца, обрезки посреди trial не бывает. `None` (по умолчанию) — только по числу trials.
 
 ### `optuna_pruner`
 
-`None` (по умолч.) → `MedianPruner()`. Строковые алиасы: `'median'`, `'hyperband'`,
-`'percentile'` (25-й перцентиль), `'successive_halving'`, `'none'` (отключает прунинг —
-`NopPruner`). Либо готовый экземпляр `optuna.pruners.BasePruner`.
+`None` (по умолч.) → `MedianPruner()`. Строковые алиасы: `'median'`, `'hyperband'`, `'percentile'` (25-й перцентиль), `'successive_halving'`, `'none'` (отключает прунинг — `NopPruner`). Либо готовый экземпляр `optuna.pruners.BasePruner`.
 
-Прунер реально отсекает бесперспективные trials только там, где есть промежуточные отчёты о
-качестве по ходу обучения одного trial:
+Прунер реально отсекает бесперспективные trials только там, где есть промежуточные отчёты о качестве по ходу обучения одного trial:
 
 | Адаптер | Прунинг по | Метрика отчёта |
 |---------|-------------|----------------|
@@ -252,8 +230,7 @@ model_settings = {
 
 ### `optuna_verbose`
 
-`False` (по умолч.) — форсирует `optuna.logging.WARNING` на время `fit()` (глушит INFO-логи по
-каждому trial). `True` — не трогает текущий уровень логирования Optuna.
+`False` (по умолч.) — форсирует `optuna.logging.WARNING` на время `fit()` (глушит INFO-логи по каждому trial). `True` — не трогает текущий уровень логирования Optuna.
 
 ---
 
