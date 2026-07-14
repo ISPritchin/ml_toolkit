@@ -1,0 +1,382 @@
+"""Интерпретируемые древесные модели: Soft Decision Tree и Locally Linear Forest.
+
+Soft Decision Tree (Irsoy et al. 2012): дифференцируемое дерево с мягкими разбиениями.
+Вместо жёстких порогов — сигмоиды; предсказание = взвешенная сумма значений листьев.
+Обучается через backpropagation (требует PyTorch — опциональная зависимость, не входит в
+pyproject.toml; `pip install torch`).
+
+Locally Linear Forest: RandomForest proximity weights + локальная Ridge регрессия.
+Для каждой точки инференса: ближайшие соседи по RF-proximity → взвешенная Ridge.
+Регрессия только: Ridge не работает для бинарных таргетов, а без локальной Ridge-модели
+"locally_linear_forest" для классификации был лишь тонкой обёрткой вокруг plain
+RandomForestClassifier с урезанным пространством Optuna — дублировал
+ml_toolkit.models.RandomForestClassifier, не добавляя ничего своего, и был убран из
+InterpretableTreeClassifier.
+
+Поддерживаемые имена (model_settings['name']):
+    InterpretableTreeRegressor:  'soft_decision_tree', 'locally_linear_forest'
+    InterpretableTreeClassifier: 'soft_decision_tree'
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+import numpy as np
+import optuna
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import Ridge
+
+from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._tabular._interpretable._common import fit_impute_scale, numeric_features
+from ml_toolkit.models._utils import (
+    CLS_METRICS,
+    REG_METRICS,
+    fit_calibrator,
+    make_study,
+    resolve_metric_fn,
+    resolve_timeout,
+    set_optuna_verbosity,
+)
+
+if TYPE_CHECKING:
+    import torch
+    from torch import nn
+
+logger = logging.getLogger(__name__)
+
+_MAX_LLF_TRAIN_ROWS = 2000
+
+
+# ── Soft Decision Tree ────────────────────────────────────────────────────────
+
+class _SoftDecisionTree:
+    """Soft Decision Tree с дифференцируемыми разбиениями (PyTorch)."""
+
+    def __init__(self, depth: int = 4, lr: float = 0.01, n_epochs: int = 200, patience: int = 20) -> None:
+        self.depth = depth
+        self.lr = lr
+        self.n_epochs = n_epochs
+        self.patience = patience
+        self._net: nn.Module | None = None
+        self._is_cls = False
+
+    def _build_net(self, n_features: int, is_cls: bool) -> nn.Module:
+        from torch import nn
+
+        depth = self.depth
+        n_inner = 2**depth - 1
+        n_leaves = 2**depth
+
+        class _SDT(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.inner_w = nn.Linear(n_features, n_inner)
+                self.leaf_vals = nn.Parameter(
+                    __import__('torch').randn(n_leaves, 1) * 0.1
+                )
+                self._is_cls = is_cls
+
+            def _path_probs(self, x: torch.Tensor) -> torch.Tensor:
+                import torch
+                batch = x.shape[0]
+                probs = torch.ones(batch, 1, device=x.device)
+                inner = torch.sigmoid(self.inner_w(x))
+                for level in range(depth):
+                    n_nodes = 2**level
+                    offset = n_nodes - 1
+                    left = inner[:, offset:offset + n_nodes]
+                    right = 1.0 - left
+                    probs = torch.cat([probs * left, probs * right], dim=1)
+                return probs
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                path_probs = self._path_probs(x)
+                out = (path_probs @ self.leaf_vals).squeeze(-1)
+                if self._is_cls:
+                    return __import__('torch').sigmoid(out)
+                return out
+
+        return _SDT()
+
+    def fit(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, is_cls: bool = False) -> None:
+        import torch
+        from torch import nn, optim
+
+        self._is_cls = is_cls
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        net = self._build_net(X.shape[1], is_cls).to(device)
+        opt = optim.Adam(net.parameters(), lr=self.lr)
+
+        X_t = torch.tensor(X, dtype=torch.float32, device=device)
+        y_t = torch.tensor(y, dtype=torch.float32, device=device)
+        X_v = torch.tensor(X_val, dtype=torch.float32, device=device)
+        y_v = torch.tensor(y_val, dtype=torch.float32, device=device)
+
+        if is_cls:
+            # class_weight='balanced' эквивалент: n_samples / (n_classes * n_samples_class)
+            n_pos = float(y_t.sum().item())
+            n_neg = float(y_t.numel()) - n_pos
+            w_pos = (n_pos + n_neg) / (2.0 * max(n_pos, 1.0))
+            w_neg = (n_pos + n_neg) / (2.0 * max(n_neg, 1.0))
+            sample_weight = torch.where(y_t == 1, torch.as_tensor(w_pos, device=device), torch.as_tensor(w_neg, device=device))
+            train_loss_fn = lambda pred, target: nn.functional.binary_cross_entropy(pred, target, weight=sample_weight)
+            val_loss_fn = nn.BCELoss()  # без весов — для честного сравнения на early stopping
+        else:
+            train_loss_fn = val_loss_fn = nn.L1Loss()
+        best_val, best_state, no_improve = float('inf'), None, 0
+
+        for _ in range(self.n_epochs):
+            net.train()
+            opt.zero_grad()
+            train_loss_fn(net(X_t), y_t).backward()
+            opt.step()
+            net.eval()
+            with torch.no_grad():
+                val_loss = val_loss_fn(net(X_v), y_v).item()
+            if val_loss < best_val - 1e-7:
+                best_val, best_state, no_improve = val_loss, {k: v.clone() for k, v in net.state_dict().items()}, 0
+            else:
+                no_improve += 1
+                if no_improve >= self.patience:
+                    break
+
+        if best_state is not None:
+            net.load_state_dict(best_state)
+        self._net = net
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        import torch
+        device = next(self._net.parameters()).device
+        with torch.no_grad():
+            return self._net(torch.tensor(X, dtype=torch.float32, device=device)).cpu().numpy()
+
+
+# ── Locally Linear Forest ─────────────────────────────────────────────────────
+
+class _LocallyLinearForest:
+    """RF proximity weights + локальная Ridge регрессия для каждой точки инференса."""
+
+    def __init__(
+        self, n_estimators: int = 100, max_depth: int | None = None,
+        n_neighbors: int = 100, ridge_alpha: float = 1.0, random_state: int = 42,
+    ) -> None:
+        self.rf = RandomForestRegressor(
+            n_estimators=n_estimators, max_depth=max_depth,
+            random_state=random_state, n_jobs=-1,
+        )
+        self.n_neighbors = n_neighbors
+        self.ridge_alpha = ridge_alpha
+        self._X_tr: np.ndarray | None = None
+        self._y_tr: np.ndarray | None = None
+        self._leaves_tr: np.ndarray | None = None
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> _LocallyLinearForest:
+        if len(X) > _MAX_LLF_TRAIN_ROWS:
+            rng = np.random.default_rng(42)
+            idx = rng.choice(len(X), size=_MAX_LLF_TRAIN_ROWS, replace=False)
+            X, y = X[idx], y[idx]
+        self.rf.fit(X, y)
+        self._X_tr = X
+        self._y_tr = y
+        self._leaves_tr = self.rf.apply(X)
+        return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        leaves_pred = self.rf.apply(X)
+        preds = np.zeros(len(X))
+        for i, leaves in enumerate(leaves_pred):
+            proximity = (self._leaves_tr == leaves).mean(axis=1)
+            top_idx = np.argsort(proximity)[-self.n_neighbors:]
+            weights = proximity[top_idx]
+            if weights.sum() < 1e-10:
+                preds[i] = self.rf.predict(X[i:i + 1])[0]
+                continue
+            weights = weights / weights.sum()
+            ridge = Ridge(alpha=self.ridge_alpha)
+            ridge.fit(self._X_tr[top_idx], self._y_tr[top_idx], sample_weight=weights)
+            preds[i] = ridge.predict(X[i:i + 1])[0]
+        return preds
+
+
+# ── Классы (новый API) ────────────────────────────────────────────────────────
+
+class InterpretableTreeRegressor(BaseModel):
+    """SoftDecisionTree или LocallyLinearForest для регрессии с подбором через Optuna.
+
+    Dispatch по model_settings['name']: 'soft_decision_tree' | 'locally_linear_forest'.
+    Категориальные признаки исключаются. Хранит _imputer, _scaler, _num_feats_.
+    params=None → Optuna; params=dict → прямое обучение без тюнинга.
+    """
+
+    def fit(
+        self,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        X_valid: pd.DataFrame | None = None,
+        y_valid: pd.Series | None = None,
+        selected_features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> InterpretableTreeRegressor:
+        X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
+        self.selected_features_ = self._resolve_features(X_train, selected_features)
+        self.cat_features_ = list(cat_features or [])
+        ms = self.model_settings
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
+        name = ms.get('name', 'soft_decision_tree')
+
+        self._num_feats_ = numeric_features(self.selected_features_, self.cat_features_)
+        logger.info('[%s Reg] features=%d', name.upper(), len(self._num_feats_))
+
+        X_tr, X_va, self._imputer, self._scaler = fit_impute_scale(X_train, X_valid, self._num_feats_)
+        y_tr = y_train.to_numpy(dtype=float)
+        y_va = y_valid.to_numpy(dtype=float) if y_valid is not None else None
+
+        metric_fn, direction = resolve_metric_fn(ms, 'reg_metric', REG_METRICS['mae'][0], 'minimize', REG_METRICS)
+
+        if name == 'soft_decision_tree':
+            if self.params is not None:
+                fitted = _SoftDecisionTree(**self.params)
+                fitted.fit(X_tr, y_tr, X_va if X_va is not None else X_tr, y_va if y_va is not None else y_tr)
+                self.best_params_ = self.params
+            else:
+                if X_va is None:
+                    raise ValueError('X_valid обязателен при params=None (режим Optuna)')
+
+                def objective(trial: optuna.Trial) -> float:
+                    sdt = _SoftDecisionTree(
+                        depth=trial.suggest_int('depth', 2, 6),
+                        lr=trial.suggest_float('lr', 1e-3, 0.1, log=True),
+                        n_epochs=trial.suggest_int('n_epochs', 100, 500, step=100),
+                    )
+                    sdt.fit(X_tr, y_tr, X_va, y_va, is_cls=False)
+                    return metric_fn(y_va, sdt.predict(X_va))
+
+                study = make_study(direction, ms)
+                study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
+                self.best_params_ = study.best_params
+                logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
+                fitted = _SoftDecisionTree(**self.best_params_)
+                fitted.fit(X_tr, y_tr, X_va, y_va, is_cls=False)
+
+        elif self.params is not None:
+            fitted = _LocallyLinearForest(**self.params)
+            fitted.fit(X_tr, y_tr)
+            self.best_params_ = self.params
+        else:
+            if X_va is None:
+                raise ValueError('X_valid обязателен при params=None (режим Optuna)')
+
+            def objective(trial: optuna.Trial) -> float:  # type: ignore[misc]
+                llf = _LocallyLinearForest(
+                    n_estimators=trial.suggest_int('n_estimators', 50, 300, step=50),
+                    max_depth=trial.suggest_int('max_depth', 3, 15),
+                    n_neighbors=trial.suggest_int('n_neighbors', 20, 200, step=20),
+                    ridge_alpha=trial.suggest_float('ridge_alpha', 0.01, 100.0, log=True),
+                )
+                llf.fit(X_tr, y_tr)
+                return metric_fn(y_va, llf.predict(X_va))
+
+            study = make_study(direction, ms)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
+            self.best_params_ = study.best_params
+            logger.info('[%s Reg] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
+            fitted = _LocallyLinearForest(**self.best_params_)
+            fitted.fit(X_tr, y_tr)
+
+        self._model = fitted
+        self.train_pred_ = self._model.predict(X_tr)
+        if X_va is not None:
+            self.valid_pred_ = self._model.predict(X_va)
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
+        return self
+
+    def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
+        X_t = self._scaler.transform(self._imputer.transform(X[self._num_feats_].to_numpy(dtype=float)))
+        return np.asarray(self._model.predict(X_t))
+
+
+class InterpretableTreeClassifier(BaseModel):
+    """SoftDecisionTree для классификации.
+
+    Единственное поддерживаемое имя: 'soft_decision_tree' ('locally_linear_forest' для
+    классификации не имел собственной локально-линейной логики — Ridge не работает для
+    бинарных таргетов, поэтому он был лишь тонкой обёрткой вокруг plain
+    RandomForestClassifier с урезанным пространством Optuna, дублируя
+    ml_toolkit.models.RandomForestClassifier без какой-либо добавленной ценности; убран).
+    Категориальные признаки исключаются. Вероятности калибруются изотонической регрессией.
+    params=None → Optuna; params=dict → прямое обучение без тюнинга.
+    """
+
+    def fit(
+        self,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        X_valid: pd.DataFrame | None = None,
+        y_valid: pd.Series | None = None,
+        selected_features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> InterpretableTreeClassifier:
+        X_train, y_train, X_valid, y_valid = self._coerce_inputs(X_train, y_train, X_valid, y_valid)
+        self.selected_features_ = self._resolve_features(X_train, selected_features)
+        self.cat_features_ = list(cat_features or [])
+        ms = self.model_settings
+        _optuna_prev_verbosity = set_optuna_verbosity(ms)
+        name = ms.get('name', 'soft_decision_tree')
+        if name != 'soft_decision_tree':
+            raise ValueError(
+                f"Unknown InterpretableTreeClassifier name: {name!r}. Only 'soft_decision_tree' "
+                "is supported for classification — 'locally_linear_forest' was removed (it had "
+                "no genuine locally-linear behavior here, just wrapped plain RandomForestClassifier; "
+                "use ml_toolkit.models.RandomForestClassifier directly instead)."
+            )
+
+        self._num_feats_ = numeric_features(self.selected_features_, self.cat_features_)
+        logger.info('[%s Cls] features=%d', name.upper(), len(self._num_feats_))
+
+        X_tr, X_va, self._imputer, self._scaler = fit_impute_scale(X_train, X_valid, self._num_feats_)
+        y_tr = y_train.to_numpy(dtype=int)
+        y_va = y_valid.to_numpy(dtype=int) if y_valid is not None else None
+
+        metric_fn, direction = resolve_metric_fn(ms, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS)
+
+        if self.params is not None:
+            fitted = _SoftDecisionTree(**self.params)
+            fitted.fit(X_tr, y_tr.astype(float), X_va if X_va is not None else X_tr,
+                       y_va.astype(float) if y_va is not None else y_tr.astype(float), is_cls=True)
+            self.best_params_ = self.params
+        else:
+            if X_va is None:
+                raise ValueError('X_valid обязателен при params=None (режим Optuna)')
+
+            def objective(trial: optuna.Trial) -> float:
+                sdt = _SoftDecisionTree(
+                    depth=trial.suggest_int('depth', 2, 6),
+                    lr=trial.suggest_float('lr', 1e-3, 0.1, log=True),
+                    n_epochs=trial.suggest_int('n_epochs', 100, 500, step=100),
+                )
+                sdt.fit(X_tr, y_tr.astype(float), X_va, y_va.astype(float), is_cls=True)
+                return metric_fn(y_va, np.clip(sdt.predict(X_va), 0.0, 1.0))
+
+            study = make_study(direction, ms)
+            study.optimize(objective, n_trials=max(1, self.n_optuna_trials), timeout=resolve_timeout(ms), show_progress_bar=False)
+            self.best_params_ = study.best_params
+            logger.info('[%s Cls] Best score=%.4f params=%s', name.upper(), study.best_value, self.best_params_)
+            fitted = _SoftDecisionTree(**self.best_params_)
+            fitted.fit(X_tr, y_tr.astype(float), X_va, y_va.astype(float), is_cls=True)
+
+        self._model = fitted
+        self.train_pred_ = np.clip(self._model.predict(X_tr), 0.0, 1.0)
+        if X_va is not None:
+            self.valid_pred_ = np.clip(self._model.predict(X_va), 0.0, 1.0)
+            self.calibrator_ = fit_calibrator(self.valid_pred_, y_valid.to_numpy(dtype=int))
+        optuna.logging.set_verbosity(_optuna_prev_verbosity)
+        return self
+
+    def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
+        X_t = self._scaler.transform(self._imputer.transform(X[self._num_feats_].to_numpy(dtype=float)))
+        raw = np.clip(self._model.predict(X_t), 0.0, 1.0)
+        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+

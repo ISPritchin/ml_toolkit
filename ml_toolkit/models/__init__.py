@@ -51,65 +51,65 @@ from ml_toolkit.model_evaluation import (
     recall_at_k,
 )
 from ml_toolkit.models._base import BaseModel
-from ml_toolkit.models._catboost_ranker import CatBoostRanker
-from ml_toolkit.models._lightgbm import LightGBMClassifier, LightGBMRegressor
-from ml_toolkit.models._lightgbm_ranker import LightGBMRanker
-from ml_toolkit.models._xgboost_ranker import XGBoostRanker
+from ml_toolkit.models._tabular._boosting._catboost_ranker import CatBoostRanker
+from ml_toolkit.models._tabular._boosting._lightgbm import LightGBMClassifier, LightGBMRegressor
+from ml_toolkit.models._tabular._boosting._lightgbm_ranker import LightGBMRanker
+from ml_toolkit.models._tabular._boosting._xgboost_ranker import XGBoostRanker
 
 # Все остальные классы моделей — lazy imports через __getattr__.
 # Это позволяет импортировать ml_toolkit.models без установки optuna/torch/catboost и т.д.
 # Класс загружается только при первом обращении к нему.
 _LAZY_CLASSES: dict[str, tuple[str, str]] = {
     # CatBoost
-    'CatBoostRegressor':             ('ml_toolkit.models._catboost',             'CatBoostRegressor'),
-    'CatBoostClassifier':            ('ml_toolkit.models._catboost',             'CatBoostClassifier'),
+    'CatBoostRegressor':             ('ml_toolkit.models._tabular._boosting._catboost',      'CatBoostRegressor'),
+    'CatBoostClassifier':            ('ml_toolkit.models._tabular._boosting._catboost',      'CatBoostClassifier'),
     # XGBoost
-    'XGBoostRegressor':              ('ml_toolkit.models._xgboost',              'XGBoostRegressor'),
-    'XGBoostClassifier':             ('ml_toolkit.models._xgboost',              'XGBoostClassifier'),
+    'XGBoostRegressor':              ('ml_toolkit.models._tabular._boosting._xgboost',       'XGBoostRegressor'),
+    'XGBoostClassifier':             ('ml_toolkit.models._tabular._boosting._xgboost',       'XGBoostClassifier'),
     # sklearn Trees
-    'DecisionTreeRegressor':         ('ml_toolkit.models._decision_tree',        'DecisionTreeRegressor'),
-    'DecisionTreeClassifier':        ('ml_toolkit.models._decision_tree',        'DecisionTreeClassifier'),
-    'RandomForestRegressor':         ('ml_toolkit.models._forest',               'RandomForestRegressor'),
-    'RandomForestClassifier':        ('ml_toolkit.models._forest',               'RandomForestClassifier'),
-    'ExtraTreesRegressor':           ('ml_toolkit.models._forest',               'ExtraTreesRegressor'),
-    'ExtraTreesClassifier':          ('ml_toolkit.models._forest',               'ExtraTreesClassifier'),
-    'HistGBMRegressor':              ('ml_toolkit.models._hist_gbm',             'HistGBMRegressor'),
-    'HistGBMClassifier':             ('ml_toolkit.models._hist_gbm',             'HistGBMClassifier'),
+    'DecisionTreeRegressor':         ('ml_toolkit.models._tabular._forests._decision_tree',  'DecisionTreeRegressor'),
+    'DecisionTreeClassifier':        ('ml_toolkit.models._tabular._forests._decision_tree',  'DecisionTreeClassifier'),
+    'RandomForestRegressor':         ('ml_toolkit.models._tabular._forests._forest',         'RandomForestRegressor'),
+    'RandomForestClassifier':        ('ml_toolkit.models._tabular._forests._forest',         'RandomForestClassifier'),
+    'ExtraTreesRegressor':           ('ml_toolkit.models._tabular._forests._forest',         'ExtraTreesRegressor'),
+    'ExtraTreesClassifier':          ('ml_toolkit.models._tabular._forests._forest',         'ExtraTreesClassifier'),
+    'HistGBMRegressor':              ('ml_toolkit.models._tabular._forests._hist_gbm',       'HistGBMRegressor'),
+    'HistGBMClassifier':             ('ml_toolkit.models._tabular._forests._hist_gbm',       'HistGBMClassifier'),
     # Специализированные леса
-    'QuantileForestRegressor':       ('ml_toolkit.models._quantile_forest',      'QuantileForestRegressor'),
-    'QuantileForestClassifier':      ('ml_toolkit.models._quantile_forest',      'QuantileForestClassifier'),
-    'ObliqueForestRegressor':        ('ml_toolkit.models._oblique_forest',       'ObliqueForestRegressor'),
-    'ObliqueForestClassifier':       ('ml_toolkit.models._oblique_forest',       'ObliqueForestClassifier'),
-    'MondrianForestRegressor':       ('ml_toolkit.models._mondrian',             'MondrianForestRegressor'),
-    'MondrianForestClassifier':      ('ml_toolkit.models._mondrian',             'MondrianForestClassifier'),
+    'QuantileForestRegressor':       ('ml_toolkit.models._tabular._forests._quantile_forest', 'QuantileForestRegressor'),
+    'QuantileForestClassifier':      ('ml_toolkit.models._tabular._forests._quantile_forest', 'QuantileForestClassifier'),
+    'ObliqueForestRegressor':        ('ml_toolkit.models._tabular._forests._oblique_forest',  'ObliqueForestRegressor'),
+    'ObliqueForestClassifier':       ('ml_toolkit.models._tabular._forests._oblique_forest',  'ObliqueForestClassifier'),
+    'MondrianForestRegressor':       ('ml_toolkit.models._tabular._forests._mondrian',        'MondrianForestRegressor'),
+    'MondrianForestClassifier':      ('ml_toolkit.models._tabular._forests._mondrian',        'MondrianForestClassifier'),
     # Линейные
-    'LinearRegressor':               ('ml_toolkit.models._linear',               'LinearRegressor'),
-    'LinearClassifier':              ('ml_toolkit.models._linear',               'LinearClassifier'),
+    'LinearRegressor':               ('ml_toolkit.models._tabular._interpretable._linear',               'LinearRegressor'),
+    'LinearClassifier':              ('ml_toolkit.models._tabular._interpretable._linear',               'LinearClassifier'),
     # EBM / GAM
-    'EBMRegressor':                  ('ml_toolkit.models._ebm',                  'EBMRegressor'),
-    'EBMClassifier':                 ('ml_toolkit.models._ebm',                  'EBMClassifier'),
-    'PyGAMRegressor':                ('ml_toolkit.models._gam',                  'PyGAMRegressor'),
-    'PyGAMClassifier':               ('ml_toolkit.models._gam',                  'PyGAMClassifier'),
-    'MARSRegressor':                 ('ml_toolkit.models._mars',                 'MARSRegressor'),
-    'MARSClassifier':                ('ml_toolkit.models._mars',                 'MARSClassifier'),
+    'EBMRegressor':                  ('ml_toolkit.models._tabular._interpretable._ebm',                  'EBMRegressor'),
+    'EBMClassifier':                 ('ml_toolkit.models._tabular._interpretable._ebm',                  'EBMClassifier'),
+    'PyGAMRegressor':                ('ml_toolkit.models._tabular._interpretable._gam',                  'PyGAMRegressor'),
+    'PyGAMClassifier':               ('ml_toolkit.models._tabular._interpretable._gam',                  'PyGAMClassifier'),
+    'MARSRegressor':                 ('ml_toolkit.models._tabular._interpretable._mars',                 'MARSRegressor'),
+    'MARSClassifier':                ('ml_toolkit.models._tabular._interpretable._mars',                 'MARSClassifier'),
     # Rule-based
-    'RuleFitRegressor':              ('ml_toolkit.models._rulefit',              'RuleFitRegressor'),
-    'RuleFitClassifier':             ('ml_toolkit.models._rulefit',              'RuleFitClassifier'),
-    'IModelsRegressor':              ('ml_toolkit.models._imodels',              'IModelsRegressor'),
-    'IModelsClassifier':             ('ml_toolkit.models._imodels',              'IModelsClassifier'),
+    'RuleFitRegressor':              ('ml_toolkit.models._tabular._interpretable._rulefit',              'RuleFitRegressor'),
+    'RuleFitClassifier':             ('ml_toolkit.models._tabular._interpretable._rulefit',              'RuleFitClassifier'),
+    'IModelsRegressor':              ('ml_toolkit.models._tabular._interpretable._imodels',              'IModelsRegressor'),
+    'IModelsClassifier':             ('ml_toolkit.models._tabular._interpretable._imodels',              'IModelsClassifier'),
     # Интерпретируемые деревья
-    'LinearTreeRegressor':           ('ml_toolkit.models._linear_tree',          'LinearTreeRegressor'),
-    'LinearTreeClassifier':          ('ml_toolkit.models._linear_tree',          'LinearTreeClassifier'),
-    'InterpretableTreeRegressor':    ('ml_toolkit.models._interpretable_trees',  'InterpretableTreeRegressor'),
-    'InterpretableTreeClassifier':   ('ml_toolkit.models._interpretable_trees',  'InterpretableTreeClassifier'),
+    'LinearTreeRegressor':           ('ml_toolkit.models._tabular._interpretable._linear_tree',          'LinearTreeRegressor'),
+    'LinearTreeClassifier':          ('ml_toolkit.models._tabular._interpretable._linear_tree',          'LinearTreeClassifier'),
+    'InterpretableTreeRegressor':    ('ml_toolkit.models._tabular._interpretable._interpretable_trees',  'InterpretableTreeRegressor'),
+    'InterpretableTreeClassifier':   ('ml_toolkit.models._tabular._interpretable._interpretable_trees',  'InterpretableTreeClassifier'),
     # Интерпретируемые нейронные
-    'InterpretableNeuralRegressor':  ('ml_toolkit.models._interpretable_neural', 'InterpretableNeuralRegressor'),
-    'InterpretableNeuralClassifier': ('ml_toolkit.models._interpretable_neural', 'InterpretableNeuralClassifier'),
+    'InterpretableNeuralRegressor':  ('ml_toolkit.models._tabular._interpretable._interpretable_neural', 'InterpretableNeuralRegressor'),
+    'InterpretableNeuralClassifier': ('ml_toolkit.models._tabular._interpretable._interpretable_neural', 'InterpretableNeuralClassifier'),
     # AutoML
-    'LAMARegressor':                 ('ml_toolkit.models._lama',                 'LAMARegressor'),
-    'LAMAClassifier':                ('ml_toolkit.models._lama',                 'LAMAClassifier'),
-    'TabMRegressor':                 ('ml_toolkit.models._tabm',                 'TabMRegressor'),
-    'TabMClassifier':                ('ml_toolkit.models._tabm',                 'TabMClassifier'),
+    'LAMARegressor':                 ('ml_toolkit.models._tabular._automl._lama', 'LAMARegressor'),
+    'LAMAClassifier':                ('ml_toolkit.models._tabular._automl._lama', 'LAMAClassifier'),
+    'TabMRegressor':                 ('ml_toolkit.models._tabular._automl._tabm', 'TabMRegressor'),
+    'TabMClassifier':                ('ml_toolkit.models._tabular._automl._tabm', 'TabMClassifier'),
 }
 
 

@@ -372,6 +372,22 @@ def resolve_pruner(model_settings: dict[str, Any]) -> BasePruner:
     )
 
 
+def make_study(direction: str, model_settings: dict[str, Any] | None = None) -> optuna.Study:
+    """optuna.create_study с единым TPESampler(seed=42) и явным resolve_pruner().
+
+    Единая точка создания study для всех адаптеров — раньше каждый адаптер either
+    передавал pruner=resolve_pruner(ms), либо не передавал вовсе (последнее эквивалентно
+    pruner=None, на который Optuna сама подставляет MedianPruner() по умолчанию — то есть
+    поведенчески то же самое). Objective-функции без trial.report()/should_prune()
+    (sklearn-семейства) не используют прунер вообще, поэтому его наличие для них инертно.
+    """
+    import optuna
+    ms = model_settings or {}
+    return optuna.create_study(
+        direction=direction, sampler=optuna.samplers.TPESampler(seed=42), pruner=resolve_pruner(ms),
+    )
+
+
 def make_xgb_pruning_callback(trial: optuna.Trial) -> xgb.callback.TrainingCallback:
     """XGBoost TrainingCallback: trial.report()/should_prune() на каждой итерации бустинга.
 
