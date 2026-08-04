@@ -218,6 +218,18 @@ def _load_preset(preset: Path | str | dict | None) -> dict[str, dict]:
         `_load_preset` — секция `segments:` должна присутствовать в каждом
         пресете, который на неё ссылается.
 
+        Ещё один зарезервированный ключ внутри params любого трансформера —
+        `fill_nan` (число): заполняет NaN в уже посчитанных колонках этой пары
+        (product_col × transformer) этим значением. Не передаётся в
+        `module.compute()` (как и `segment`) — вычищается перед вызовом кернела.
+        Применяется к обоим источникам NaN — родным NaN кернела (если он их
+        производит) и NaN от сегментации (см. "Segmentation" в CLAUDE.md) —
+        после них обоих, перед записью в parquet. Настраивается независимо для
+        каждого трансформера (это локальный ключ его params, а не глобальная
+        опция вызова) — не каждый трансформер даёт NaN, но опция доступна всем
+        одинаково. Отсутствие ключа (None) — поведение по умолчанию, NaN
+        остаётся как есть.
+
     Returns:
         {feature_name: params_dict} для каждого трансформера в пресете (без
         ключа 'segments' — он вычерпан в резолв конкретных `segment` ссылок).
@@ -608,6 +620,7 @@ def _generate_candidate_features_to_parquets(
 
         for transformer_name, module, params in product_col_transformers[product_col]:
             segment_cfg = params.get('segment')
+            fill_nan_value = params.get('fill_nan')
 
             if segment_cfg is not None and transformer_name != 'segment_gap':
                 # Сегментированный трансформер: считаем альтернативную позицию
@@ -624,7 +637,7 @@ def _generate_candidate_features_to_parquets(
                     product_values, position_within_entity, strategy, segment_cfg,
                     external_mask=external_mask,
                 )
-                call_params = {k: v for k, v in params.items() if k != 'segment'}
+                call_params = {k: v for k, v in params.items() if k not in ('segment', 'fill_nan')}
                 arrays, suffixes = module.compute(product_values, seg_position, call_params)
                 arrays = [np.where(in_segment, np.asarray(arr, dtype=np.float64), np.nan) for arr in arrays]
             else:
@@ -632,7 +645,20 @@ def _generate_candidate_features_to_parquets(
                 # его собственная позиция раскрытия, а не подмена) и не должен
                 # зануляться NaN'ом — его единственная задача сказать, где
                 # разрывы, поэтому именно в разрывах ему нужно значение 1.0.
-                arrays, suffixes = module.compute(product_values, position_within_entity, params)
+                # 'segment' здесь НЕ вычищается: если transformer_name ==
+                # 'segment_gap', его собственный compute() читает params['segment']
+                # напрямую (см. kernels/segment_gap.py) — только fill_nan чужой ключ.
+                call_params = {k: v for k, v in params.items() if k != 'fill_nan'}
+                arrays, suffixes = module.compute(product_values, position_within_entity, call_params)
+
+            if fill_nan_value is not None:
+                # Применяется независимо для каждого трансформера (params —
+                # локальный словарь конкретной пары product_col×transformer),
+                # после всех источников NaN в этой паре: и родных NaN кернела
+                # (если он умеет их производить), и NaN от сегментации выше.
+                # segment_gap тоже проходит через эту ветку безвредно — его
+                # выход и так не содержит NaN.
+                arrays = [np.where(np.isnan(arr), fill_nan_value, arr) for arr in arrays]
 
             if segment_cfg is not None:
                 seg_fragment = segment_suffix_fragment(segment_cfg)

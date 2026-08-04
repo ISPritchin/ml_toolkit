@@ -2,13 +2,13 @@
 # Надстройка над discount_sensitivity_extended.yaml: добавляет практически все
 # оставшиеся тематические группы трансформеров (форма распределения, всплески,
 # концентрация, сезонность, нелинейность/память из tsfresh-catch22-набора) -
-# ~135 колонок на product-колонку (~1620 на 12 колонок).
+# 147 колонок на product-колонку (1764 на 12 колонок).
 #
 # ВАЖНО про стоимость на десятках миллионов строк: это НЕ пресет для рутинного
 # прогона на полном объёме. Многие добавленные трансформеры используют сортировку
 # окна (kurtosis_proxy, quantile_persistence, value_clustering, gini,
 # transition_matrix, change_quantiles, burstiness) и стоят ~5x дороже на строку,
-# чем "плоские" трансформеры базового пресета - число колонок (135 vs 20, в 6.75
+# чем "плоские" трансформеры базового пресета - число колонок (147 vs 32, в 4.6
 # раза) ЗАНИЖАЕТ реальную разницу в compute-времени. Используйте этот пресет для
 # разового офлайн feature discovery (на сэмпле или на подмножестве колонок), а не
 # как основной пайплайн - по его результатам сузите набор до extended/base для
@@ -18,6 +18,17 @@
 # активности/разрывов (recency/tenure/inactive_streak/activity_rate/zero_share/
 # active_run_count/burstiness/zero_clustering) - там разрыв и есть сигнал.
 # Сегментируем всё, что описывает динамику ЗНАЧЕНИЯ.
+#
+# fill_nan: та же конвенция сентинелов, что в discount_sensitivity.yaml (см. его
+# комментарий) - значение, заведомо невозможное для СОБСТВЕННОГО диапазона
+# трансформера: -1 (гарантированно неотрицательные величины), -2 (величины,
+# ограниченные корреляцией/долей), -99/-999 (нормированные, но не строго
+# ограниченные), -999999 (величины на сыром масштабе колонки). Тот же компромисс
+# с корреляционным фильтром применим при дальнейшей прогонке через
+# select_features/corr_threshold - см. discount_sensitivity.yaml. Здесь этот
+# компромисс ощутимее: почти все трансформеры этого пресета используют один и
+# тот же short_gap, а значит их fill_nan-значения совпадают на одних и тех же
+# gap-строках сразу у десятков кандидатов.
 
 segments:
   short_gap:
@@ -56,41 +67,66 @@ zero_clustering:
 # Уровень / тренд / волатильность значения
 # -----------------------------------------------------------------------------
 
+window_mean:
+  windows: [3, 6, 12]
+  segment: short_gap           # простой интерпретируемый уровень
+  fill_nan: -1
+
+window_median:
+  windows: [3, 6, 12]
+  segment: short_gap           # устойчивая к выбросам версия уровня
+  fill_nan: -1
+
+rolling_min_max:
+  windows: [3, 6, 12]
+  segment: short_gap           # диапазон разброса значения за период
+  fill_nan: -1
+
 log_level:
   windows: [3, 12]
   segment: short_gap
+  fill_nan: -1
 
 slope:
   windows: [3, 12]
   segment: short_gap
+  fill_nan: -999999
 
 accel:
   segment: short_gap
+  fill_nan: -999999
 
 growth_since_start:
   segment: short_gap
+  fill_nan: -2
 
 distance_to_global_max:
   segment: short_gap
+  fill_nan: -2
 
 cumulative_share:
   segment: short_gap
+  fill_nan: -1
 
 rolling_cv:
   windows: [3, 12]
   segment: short_gap
+  fill_nan: -1
 
 rolling_std:
   windows: [3, 12]
   segment: short_gap
+  fill_nan: -1
 
 zscore:
   windows: [12]
   segment: short_gap            # аномальность текущей точки относительно своего же окна
+  fill_nan: -999                 # теоретически неограничен, но практически не выходит за десятки σ
 
 max_drawdown:
   windows: [12]
   segment: short_gap            # насколько глубоко просел уровень от локального пика
+  fill_nan: -1                   # (peak-v)/|peak| в [0,1] всегда (значения неотрицательны)
 
 # -----------------------------------------------------------------------------
 # Память / качество тренда / структурные сдвиги / фаза жизненного цикла
@@ -98,28 +134,35 @@ max_drawdown:
 
 autocorr:
   segment: short_gap
+  fill_nan: -2
 
 trend_consistency:
   windows: [12]
   segment: short_gap
+  fill_nan: -999
 
 regime_change:
   windows: [12]
   segment: short_gap
+  fill_nan: -999
 
 lifecycle_phase:
   windows: [12]
   segment: short_gap
+  fill_nan: -999999
 
 extreme_events:
   windows: [12]
   segment: short_gap
+  fill_nan: -999
 
 window_volatility_ratios:
   segment: short_gap            # эволюция волатильности на нескольких масштабах сразу (3/6/12/24)
+  fill_nan: -999999              # vol_accel - разность std в единицах колонки, без универсальной границы
 
 cross_window_momentum:
   segment: short_gap            # "зум-спектр" ускорения на нескольких горизонтах сразу
+  fill_nan: -999                 # horizon_spread - логарифм отношения, не строго ограничен
 
 # -----------------------------------------------------------------------------
 # Форма распределения / концентрация / асимметрия - новое относительно extended
@@ -128,34 +171,42 @@ cross_window_momentum:
 gini:
   windows: [12]
   segment: short_gap            # неравномерность объёма внутри окна
+  fill_nan: -1                   # коэффициент Джини в [0,1] всегда
 
 kurtosis_proxy:
   windows: [12]
   segment: short_gap            # тяжёлые хвосты vs равномерное распределение
+  fill_nan: -999                 # kurt формально не ограничен снизу/сверху жёсткой границей
 
 value_clustering:
   windows: [12]
   segment: short_gap            # доля объёма в топ-1/топ-3 месяцах, индекс Херфиндаля
+  fill_nan: -1                   # все выходы неотрицательны (доли/индекс/отношение неотр. сумм)
 
 mean_deviation_shape:
   windows: [12]
   segment: short_gap            # чаще бывают крупные подъёмы или крупные провалы
+  fill_nan: -999999              # up_semi/down_semi - std-подобные величины в единицах колонки
 
 microstructure:
   windows: [12]
   segment: short_gap            # насколько типична текущая точка для этого ряда (predictability/surprise)
+  fill_nan: -999999              # cond_mean_w12 на сыром масштабе колонки
 
 quantile_persistence:
   windows: [12]
   segment: short_gap            # устойчиво ли значение держится в своей квантильной зоне
+  fill_nan: -999                 # q_stability = 1-CV(rank) формально не ограничена снизу
 
 growth_quality:
   windows: [12]
   segment: short_gap            # рост органичный (много мелких приростов) или разовый скачок
+  fill_nan: -1                   # все выходы неотрицательны (доли/Gini/счётчики)
 
 total_variation:
   windows: [12]
   segment: short_gap            # суммарный путь ряда - отличается от std тем, что копит ВСЕ движения
+  fill_nan: -1                   # TV и TV_norm неотрицательны независимо от масштаба колонки
 
 # -----------------------------------------------------------------------------
 # Сезонность / нелинейная память (tsfresh & catch22-инспирированные)
@@ -163,25 +214,31 @@ total_variation:
 
 seasonal_autocorr:
   segment: short_gap            # полугодовая/годовая периодичность
+  fill_nan: -2                   # lag6/lag12 - Pearson r в [-1,1]; остальные выходы неотр. - -2 ниже всех
 
 c3:
   lag_window_pairs:
     - [1, 12]
   segment: short_gap            # нелинейная, time-irreversible структура (см. supported_transformers.md)
+  fill_nan: -999                 # нормирован на std³, но формально не ограничен строгой рамкой
 
 change_quantiles:
   windows: [12]
   segment: short_gap            # волатильность приращений внутри "типичного" коридора значений
+  fill_nan: -1                   # mean(d)/std(d) по |приращениям| - всегда неотрицательны
 
 transition_matrix:
   windows: [12]
   segment: short_gap            # марковская "липкость" режима (низкий/средний/высокий уровень)
+  fill_nan: -1                   # stickiness/trans_entropy - вероятность/нормированная энтропия в [0,1]
 
 dfa:
   windows: [12]
   segment: short_gap            # устойчивость/персистентность динамики, робастная к тренду
+  fill_nan: -99                  # экспонента alpha практически в узком диапазоне (~[-1, 3])
 
 agg_autocorrelation:
   windows: [12]
   max_lag: 6
   segment: short_gap            # сводка автокорреляции по диапазону лагов, а не по фиксированным точкам
+  fill_nan: -2                   # все выходы производны от Pearson r в [-1,1]

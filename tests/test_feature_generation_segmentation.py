@@ -225,6 +225,68 @@ def test_correlation_filter_does_not_crash_on_nan_candidates(tmp_path):
     assert out.height == len(_WORKED_VALUES)
 
 
+def test_fill_nan_replaces_nan_in_segmented_gap_rows(tmp_path):
+    df = _single_entity_df()
+    preset = {
+        'segments': {'short_gap': {'strategy': 'zero_gap', 'gap_threshold': 2}},
+        'window_mean': {'windows': [3], 'segment': 'short_gap', 'fill_nan': -1.0},
+    }
+
+    accepted = generate_feature_groups(
+        df,
+        entity_column_name='entity_id',
+        ts_column_name='ts_key',
+        feature_spec=[('value', preset)],
+        out_path=tmp_path / 'out.parquet',
+    )
+
+    # fill_nan не меняет имя колонки - это не отдельный вариант сегментации.
+    col = 'value__window_mean__w3__seg-zerogap2'
+    assert accepted == [col]
+
+    got = pl.read_parquet(tmp_path / 'out.parquet')[col].to_numpy()
+    assert not np.isnan(got).any()
+    assert got[7:11].tolist() == pytest.approx([-1.0, -1.0, -1.0, -1.0])  # бывшие NaN-строки разрыва
+    assert got[0] == pytest.approx(1.0)  # прочие значения не тронуты
+
+
+def test_fill_nan_is_independent_per_transformer(tmp_path):
+    # Два трансформера на одну колонку - один со своим fill_nan, другой без.
+    df = _single_entity_df()
+    preset = {
+        'segments': {'short_gap': {'strategy': 'zero_gap', 'gap_threshold': 2}},
+        'window_mean': {'windows': [3], 'segment': 'short_gap', 'fill_nan': 0.0},
+        'window_median': {'windows': [3], 'segment': 'short_gap'},  # без fill_nan
+    }
+
+    generate_feature_groups(
+        df,
+        entity_column_name='entity_id',
+        ts_column_name='ts_key',
+        feature_spec=[('value', preset)],
+        out_path=tmp_path / 'out.parquet',
+    )
+
+    out = pl.read_parquet(tmp_path / 'out.parquet')
+    assert out['value__window_mean__w3__seg-zerogap2'].is_nan().sum() == 0
+    assert out['value__window_median__w3__seg-zerogap2'].is_nan().sum() > 0
+
+
+def test_fill_nan_conflicting_values_for_same_transformer_raises(tmp_path):
+    df = _single_entity_df()
+    preset_a = {'window_mean': {'windows': [3], 'fill_nan': 0.0}}
+    preset_b = {'window_mean': {'windows': [3], 'fill_nan': -1.0}}
+
+    with pytest.raises(ValueError, match='разными параметрами'):
+        generate_feature_groups(
+            df,
+            entity_column_name='entity_id',
+            ts_column_name='ts_key',
+            feature_spec=[('value', preset_a), ('value', preset_b)],
+            out_path=tmp_path / 'out.parquet',
+        )
+
+
 def test_minimum_with_segments_preset_from_disk(tmp_path):
     # Два entity по 10 записей: id=1 без разрывов (контроль), id=2 начинается
     # с нулей - ряд ещё не начался (zero_gap исключает ведущие нули целиком,
