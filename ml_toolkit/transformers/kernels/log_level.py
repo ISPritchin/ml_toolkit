@@ -38,6 +38,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size
 
 FEATURE = 'log_level'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # log1p(|mean|) >= 0 всегда — -1 недостижим
 
 
 @nb.njit(cache=True)

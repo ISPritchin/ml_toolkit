@@ -57,6 +57,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size, windowed_lag_pearson
 
 FEATURE = 'acf_characteristic_scale'
+FILL_NAN: dict[str | None, float] = {}  # выходы — лаг-индексы, назначаются только из float(lag)/float(n_valid), никогда из r — NaN не производит по конструкции
 
 _INV_E = 1.0 / np.e
 

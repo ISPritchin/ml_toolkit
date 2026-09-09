@@ -40,6 +40,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size, safe_ratio
 
 FEATURE = 'max_drawdown'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # (peak-v)/|peak| в [0,1] всегда — значения неотрицательны
 
 
 @nb.njit(cache=True)

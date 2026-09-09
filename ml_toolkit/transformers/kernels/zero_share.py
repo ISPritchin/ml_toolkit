@@ -41,6 +41,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'zero_share'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции
 
 
 @nb.njit(cache=True)

@@ -50,9 +50,16 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'nonlinearity'
+FILL_NAN: dict[str | None, float] = {
+    'quad_proxy': FILL_NAN_UNBOUNDED,  # safe_ratio, знак не доказан
+    'convexity_sign': -2.0,  # дискретный флаг {-1,0,1} — -2 недостижим
+    'mean_accel': FILL_NAN_UNBOUNDED,  # вторая разность, сырой масштаб колонки, без универсальной границы
+    'accel_std': -1.0,  # std >= 0 всегда
+    'frac_concave': -1.0,  # доля в [0,1] — -1 недостижим
+}
 
 
 @nb.njit(cache=True)

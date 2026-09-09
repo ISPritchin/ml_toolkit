@@ -49,9 +49,14 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, fit_linear_trend_slope, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, fit_linear_trend_slope, resolve_window_size, safe_ratio
 
 FEATURE = 'lifecycle_phase'
+# peak_age_share/post_peak_share/completeness/ramp_norm/is_new_peak/phase_flag —
+# структурно ограничены (доли/флаги) или идут через safe_ratio (знак не доказан).
+# post_peak_slope = OLS_slope * sign — сырой наклон в единицах колонки, произвольного
+# знака и масштаба. Единый сентинел безопасен для всех выходов сразу.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

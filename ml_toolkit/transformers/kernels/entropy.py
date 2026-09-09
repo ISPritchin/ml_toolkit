@@ -42,9 +42,13 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, compute_window_sum, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, compute_window_sum, resolve_window_size
 
 FEATURE = 'entropy'
+# "[0,1]" верно только при неотрицательных данных: win_sum суммирует ВСЕ значения окна
+# (не только v>0), при знакопеременных данных может быть сколь угодно близко к 0 на фоне
+# больших v[i]>0 — доля v[i]/win_sum взрывается, и H_norm не ограничен снизу.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

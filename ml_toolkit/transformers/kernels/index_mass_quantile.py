@@ -54,6 +54,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import EPS, resolve_window_size
 
 FEATURE = 'index_mass_quantile'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # доли окна в [0,1] — -1 недостижим
 
 
 @nb.njit(cache=True)

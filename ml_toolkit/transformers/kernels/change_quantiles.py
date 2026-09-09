@@ -61,6 +61,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import fill_window_sorted, resolve_window_size, sorted_quantile
 
 FEATURE = 'change_quantiles'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # mean(d)/std(d) по |приращениям| — всегда неотрицательны
 
 
 @nb.njit(cache=True)

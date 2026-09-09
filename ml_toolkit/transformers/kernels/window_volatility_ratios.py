@@ -49,9 +49,14 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_mean_and_std, resolve_window_size, safe_ratio
 
 FEATURE = 'window_volatility_ratios'
+# cv_ratio_*/short_excess/regime_flag идут через safe_ratio (short_excess знакопеременен:
+# cv3-cv12 может быть отрицательным). vol_accel = (std3-std6)-(std6-std12) — сырая
+# разность std в единицах колонки, произвольного знака и масштаба. Единый сентинел
+# безопасен для всех выходов сразу.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

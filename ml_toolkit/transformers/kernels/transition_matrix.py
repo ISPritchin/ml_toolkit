@@ -57,6 +57,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import fill_window_sorted, resolve_window_size, sorted_quantile
 
 FEATURE = 'transition_matrix'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # stickiness/trans_entropy — вероятность/нормированная энтропия в [0,1]
 
 
 @nb.njit(cache=True)

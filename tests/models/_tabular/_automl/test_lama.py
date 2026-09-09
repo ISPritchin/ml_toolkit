@@ -21,7 +21,7 @@ import pytest
 
 pytest.importorskip('lightautoml')
 
-from ml_toolkit.models._tabular._automl._lama import LAMAClassifier, LAMARegressor, _build_roles
+from ml_toolkit.models._tabular._automl._lama import LAMAClassifier, LAMARegressor, _build_roles, _resolve_cls_task_params
 from tests.models.conftest import MULTI_CAT_FEATURES
 
 FAST_SETTINGS = {'timeout': 20, 'cpu_limit': 1}
@@ -50,6 +50,28 @@ class TestBuildRoles:
         selected = ['f0', 'f1', 'f2', *MULTI_CAT_FEATURES]
         roles = _build_roles(MULTI_CAT_FEATURES, selected)
         assert roles == {'target': '__lama_target__', 'category': list(MULTI_CAT_FEATURES)}
+
+
+class TestResolveClsTaskParams:
+    """Резолвит (task_name, loss, metric) для Task — бинарный/мультикласс и переопределение через model_settings."""
+
+    def test_binary_defaults(self):
+        assert _resolve_cls_task_params(True, {}) == ('binary', 'logloss', 'auc')
+
+    def test_multiclass_defaults(self):
+        assert _resolve_cls_task_params(False, {}) == ('multiclass', 'crossentropy', 'auc')
+
+    def test_binary_loss_override(self):
+        task_name, loss, metric = _resolve_cls_task_params(True, {'loss': 'logloss'})
+        assert (task_name, loss, metric) == ('binary', 'logloss', 'auc')
+
+    def test_multiclass_loss_and_metric_override(self):
+        task_name, loss, metric = _resolve_cls_task_params(False, {'loss': 'f1', 'metric': 'accuracy'})
+        assert (task_name, loss, metric) == ('multiclass', 'f1', 'accuracy')
+
+    def test_metric_override_applies_to_binary_too(self):
+        task_name, loss, metric = _resolve_cls_task_params(True, {'metric': 'accuracy'})
+        assert (task_name, loss, metric) == ('binary', 'logloss', 'accuracy')
 
 
 class TestLAMAParamsGuard:

@@ -43,6 +43,10 @@ import numpy as np
 from ml_toolkit.transformers._windowing import compute_window_mean_and_std, resolve_window_size
 
 FEATURE = 'extreme_share'
+FILL_NAN: dict[str | None, float] = {
+    'extreme_w': -999.0,  # extreme_w в [0,1]
+    'balance_w': -999.0,  # balance_w в [-0.5,0.5]
+}
 
 
 @nb.njit(cache=True)

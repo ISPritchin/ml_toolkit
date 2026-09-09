@@ -49,6 +49,7 @@ import numpy as np
 
 from ml_toolkit.transformers._windowing import (
     EPS,
+    FILL_NAN_UNBOUNDED,
     compute_window_sum,
     fill_window_sorted,
     resolve_window_size,
@@ -56,6 +57,10 @@ from ml_toolkit.transformers._windowing import (
 )
 
 FEATURE = 'value_clustering'
+# top1/top3/bot3/concentration/density идут через safe_ratio от сумм произвольного знака
+# (знакопеременные данные) — не гарантированно неотрицательны.
+# herfindahl — сумма квадратов долей, неотрицательна структурно в любом случае.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

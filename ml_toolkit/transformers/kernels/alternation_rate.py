@@ -44,9 +44,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, resolve_window_size, safe_ratio
 
 FEATURE = 'alternation_rate'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

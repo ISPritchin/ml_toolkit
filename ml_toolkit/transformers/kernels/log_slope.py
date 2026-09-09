@@ -38,9 +38,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import fit_linear_trend_slope, resolve_window_size
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, fit_linear_trend_slope, resolve_window_size
 
 FEATURE = 'log_slope'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # OLS-наклон по log1p(|v|) — на сжатой лог-шкале, не строго ограничен
 
 
 @nb.njit(cache=True)

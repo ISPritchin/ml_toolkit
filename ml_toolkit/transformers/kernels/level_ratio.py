@@ -40,9 +40,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'level_ratio'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

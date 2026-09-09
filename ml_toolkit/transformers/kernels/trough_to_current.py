@@ -39,9 +39,12 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import compute_window_min_and_max, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_min_and_max, resolve_window_size, safe_ratio
 
 FEATURE = 'trough_to_current'
+# "v/lo >= 0" верно только при неотрицательных v/lo — при знакопеременных данных
+# safe_ratio(v, lo) любого знака.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

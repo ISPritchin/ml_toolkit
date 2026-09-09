@@ -55,6 +55,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size, safe_ratio
 
 FEATURE = 'energy_ratio_by_chunks'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # все доли энергии в [0,1], неотрицательны — -1 недостижим
 
 
 @nb.njit(cache=True)

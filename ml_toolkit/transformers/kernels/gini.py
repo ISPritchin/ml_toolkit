@@ -42,9 +42,13 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, compute_window_sum, fill_window_sorted, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, compute_window_sum, fill_window_sorted, resolve_window_size
 
 FEATURE = 'gini'
+# "[0,1]" — классическое определение Джини для неотрицательных величин. При знакопеременных
+# данных win_sum может быть сколь угодно близко к 0 (взаимная компенсация) при большом
+# gini_num — итог не ограничен ни сверху, ни снизу (деление не идёт через safe_ratio).
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

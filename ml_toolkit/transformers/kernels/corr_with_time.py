@@ -43,6 +43,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import EPS, resolve_window_size
 
 FEATURE = 'corr_with_time'
+FILL_NAN: dict[str | None, float] = {None: -2.0}  # корреляция Пирсона в [-1,1] — -2 недостижим
 
 
 @nb.njit(cache=True)

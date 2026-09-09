@@ -42,9 +42,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import compute_window_mean_and_std, resolve_window_size
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_mean_and_std, resolve_window_size
 
 FEATURE = 'volatility_trend'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # разность двух std, сырой масштаб колонки, без универсальной границы
 
 
 @nb.njit(cache=True)

@@ -41,6 +41,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'roughness_ratio'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # TV_norm_short/TV_norm_long >= 0 (TV и mean неотрицательны) — -1 недостижим
 
 
 @nb.njit(cache=True)

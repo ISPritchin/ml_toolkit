@@ -77,6 +77,30 @@ Phase C — Итоговый датасет:
 
     FEATURE: str                                      # уникальное имя
     compute(values, position, params) -> (arrays, suffixes)
+    FILL_NAN: dict[str | None, float]                  # см. fill_known_nan ниже
+
+Заполнение NaN (fill_known_nan)
+────────────────────────────────
+`fill_known_nan(df)` — заполняет NaN в уже готовом датафрейме фич, опираясь на
+`FILL_NAN` каждого кернела (значение по умолчанию для его выходных колонок,
+объявленное в самом кернеле — OCP: новый кернел не требует правки этой функции
+или какого-либо центрального реестра). Не привязана к preset'у — колонка
+опознаётся по имени (`{product_col}__{transformer}__...`), поэтому подходит для
+любого датафрейма, выданного этим модулем, независимо от того, каким preset'ом
+он собран. Оставляет незнакомые колонки как есть. Не запускается автоматически
+внутри select_features/apply_selected_features/generate_feature_groups/
+apply_feature_groups — вызывающая задача применяет её сама, отдельным шагом,
+уже после того как принятые колонки записаны на диск (в т.ч. поэтому
+корреляционный фильтр в этих функциях видит настоящие NaN, а не сентинелы:
+`_pearson_excluding_invalid_pairs` корректно исключает их попарно из расчёта, а
+подстановка происходит уже после отбора и не может исказить его результат).
+
+Ключ `fill_nan` в preset'е (см. `_load_preset`) — более старый, локальный
+механизм подстановки значения ещё на Phase A, до корреляционного фильтра; при
+использовании одного `segment` на нескольких трансформерах он может завысить
+их взаимную корреляцию на gap-строках (см. комментарии в
+`transformers/presets/discount_sensitivity*.yaml`). `fill_known_nan` этой
+проблемы не имеет и для новых пресетов предпочтителен.
 
 Параметры трансформеров (окна, лаги и т.п.) задаются через пресет —
 словарь {feature_name: params_dict}. Автоматического пресета по умолчанию нет
@@ -1263,3 +1287,74 @@ def apply_selected_features(
         tmp_dir=tmp_dir,
         name=name,
     )
+
+
+def _resolve_fill_value(tail: str, fill_map: dict[str | None, float]) -> float | None:
+    """Находит значение для заполнения NaN по "хвосту" имени колонки (suffix[__segment_fragment])."""
+    if tail in fill_map:
+        return fill_map[tail]
+    for suffix_key in sorted((k for k in fill_map if k is not None), key=len, reverse=True):
+        if tail.startswith(suffix_key):
+            return fill_map[suffix_key]
+    return fill_map.get(None)
+
+
+def fill_known_nan(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame | pl.LazyFrame:
+    """Заполняет NaN в колонках, чьё имя опознаётся как выход известного трансформера.
+
+    Не привязана ни к какому preset — работает с любым датафреймом, полученным из
+    `ml_toolkit.feature_generation` (`select_features`/`apply_selected_features`/
+    `generate_feature_groups`/`apply_feature_groups`), независимо от того, каким
+    preset'ом он собран. Каждый трансформер описывает свои значения заполнения сам,
+    в собственном модуле-кернеле (`ml_toolkit/transformers/kernels/<name>.py`,
+    константа `FILL_NAN: dict[str | None, float]`) — добавление нового кернела не
+    требует правки этой функции или какого-либо центрального реестра (OCP).
+
+    Имя колонки, которую пишет движок наварки, всегда имеет вид
+    `{product_col}__{transformer}__{suffix}` (или без хвоста, если у трансформера
+    нет suffix), с возможным `__{segment_fragment}` в конце, если трансформер
+    сегментирован (см. `_col_name`/`segment_suffix_fragment`). Разделитель между
+    частями — двойное подчёркивание, тогда как сами `product_col`/`transformer`/
+    `suffix` используют одинарное — поэтому `transformer` надёжно восстанавливается
+    как `col.split('__')[1]`, без необходимости знать `product_cols` заранее.
+
+    `FILL_NAN` каждого кернела — это `{suffix_или_None: value}`:
+      - `None` — единое значение для всех suffix'ов этого трансформера (типичный
+        случай — один тип величины на разных окнах, например `window_mean`);
+      - конкретная строка-префикс (например, `'extreme_w'` у `extreme_share`,
+        который выдаёт `extreme_w6`/`balance_w6`/...) — значение только для
+        suffix'ов, начинающихся с неё; используется, когда один трансформер
+        возвращает величины разной природы/диапазона за один вызов.
+      - трансформер с `FILL_NAN = {}` (например, `recency`/`tenure`) заведомо не
+        производит NaN по конструкции — колонки таких трансформеров не трогаются.
+
+    Колонки, чей `transformer`-токен не совпал ни с одним известным кернелом
+    (например, сырые `id_column_name`/`ts_column_name`, или result какого-то
+    внешнего преобразования), остаются как есть — функция не пытается угадывать.
+
+    Args:
+        df: Датасет с фичами (eager или lazy), полученный из наварки `ml_toolkit`.
+
+    Returns:
+        Тот же тип (`DataFrame`/`LazyFrame`), что и на входе, с заполненными NaN
+        в опознанных колонках.
+
+    """
+    exprs = []
+    for col in df.columns:
+        parts = col.split('__')
+        if len(parts) < 2:
+            continue
+        module = TRANSFORMERS.get(parts[1])
+        fill_map = getattr(module, 'FILL_NAN', None) if module is not None else None
+        if not fill_map:
+            continue
+        value = _resolve_fill_value('__'.join(parts[2:]), fill_map)
+        if value is not None:
+            # fill_null — для настоящих polars null (например, после anti-join
+            # в бизнес-коде вызывающей задачи); fill_nan — для float NaN, которым
+            # сегментация/кернелы реально помечают "нет значения" (см. `in_segment`
+            # в _generate_candidate_features_to_parquets) и который parquet
+            # round-trip не превращает в null. Нужны оба.
+            exprs.append(pl.col(col).fill_null(value).fill_nan(value))
+    return df.with_columns(exprs) if exprs else df

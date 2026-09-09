@@ -51,6 +51,7 @@ import numpy as np
 from ml_toolkit.transformers._segmentation import compute_segment_position
 
 FEATURE = 'segment_gap'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):

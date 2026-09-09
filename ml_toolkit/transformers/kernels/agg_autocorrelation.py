@@ -54,6 +54,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size, windowed_lag_pearson
 
 FEATURE = 'agg_autocorrelation'
+FILL_NAN: dict[str | None, float] = {None: -2.0}  # все выходы производны от Pearson r в [-1,1]
 
 
 @nb.njit(cache=True)

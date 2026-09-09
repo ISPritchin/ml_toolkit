@@ -38,7 +38,10 @@ Example:
 import numba as nb
 import numpy as np
 
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED
+
 FEATURE = 'accel'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # вторая разность в единицах колонки, без универсальной границы
 
 
 @nb.njit(cache=True)

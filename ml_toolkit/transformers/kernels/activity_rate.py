@@ -37,6 +37,7 @@ import numba as nb
 import numpy as np
 
 FEATURE = 'activity_rate'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции
 
 
 @nb.njit(cache=True)

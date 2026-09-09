@@ -39,6 +39,7 @@ import numba as nb
 import numpy as np
 
 FEATURE = 'streak'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции (счётчик последовательных изменений)
 
 
 @nb.njit(cache=True)

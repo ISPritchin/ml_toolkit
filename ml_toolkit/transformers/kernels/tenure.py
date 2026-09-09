@@ -39,6 +39,7 @@ import numba as nb
 import numpy as np
 
 FEATURE = 'tenure'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции
 
 
 @nb.njit(cache=True)

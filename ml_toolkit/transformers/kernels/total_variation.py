@@ -44,6 +44,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'total_variation'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # TV и TV_norm неотрицательны независимо от масштаба колонки
 
 
 @nb.njit(cache=True)

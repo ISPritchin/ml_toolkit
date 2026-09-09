@@ -35,9 +35,12 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import compute_window_sum, resolve_window_size
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_sum, resolve_window_size
 
 FEATURE = 'rolling_sum'
+# сумма сырых значений колонки — при знакопеременных данных произвольного знака и
+# масштаба; "сумма >= 0" верно только при неотрицательных значениях.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

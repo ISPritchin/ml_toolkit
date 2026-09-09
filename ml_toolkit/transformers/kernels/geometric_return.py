@@ -42,6 +42,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'geometric_return'
+FILL_NAN: dict[str | None, float] = {None: -2.0}  # exp(mean(log_diff))-1 > -1 всегда (exp строго положителен) — -2 недостижим
 
 
 @nb.njit(cache=True)

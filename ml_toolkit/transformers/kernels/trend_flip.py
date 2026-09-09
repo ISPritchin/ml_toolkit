@@ -48,9 +48,13 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, fit_linear_trend_slope, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, fit_linear_trend_slope, resolve_window_size
 
 FEATURE = 'trend_flip'
+FILL_NAN: dict[str | None, float] = {
+    'flag': -1.0,  # дискретный флаг {0,1} — -1 недостижим
+    'slope_change': FILL_NAN_UNBOUNDED,  # разность двух наклонов, сырой масштаб колонки, без универсальной границы
+}
 
 
 @nb.njit(cache=True)

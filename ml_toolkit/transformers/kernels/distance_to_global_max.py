@@ -36,9 +36,13 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, safe_ratio
 
 FEATURE = 'distance_to_global_max'
+# числитель (v - running_max) <= 0 структурно (running_max берёт max с текущим v), но
+# safe_ratio клампирует итог в [-1e6, 0], а не в [-1, 0] — тот более узкий диапазон
+# верен только при неотрицательных данных.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

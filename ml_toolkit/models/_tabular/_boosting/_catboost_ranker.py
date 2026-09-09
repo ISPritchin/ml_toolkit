@@ -171,6 +171,7 @@ class CatBoostRanker(BaseModel):
                 'random_seed': 42,
                 'verbose': False,
                 'early_stopping_rounds': 100,
+                'allow_writing_files': False,
             }
             m = _CB_Ranker(**params)
             pruning_callback = make_catboost_pruning_callback(trial)
@@ -192,6 +193,7 @@ class CatBoostRanker(BaseModel):
             'random_seed': 42,
             'verbose': False,
             'early_stopping_rounds': 100,
+            'allow_writing_files': False,
         }
         logger.info('[CB Ranker] Best score=%.4f', study.best_value)
         model = _CB_Ranker(**best_params)
@@ -199,7 +201,7 @@ class CatBoostRanker(BaseModel):
         return model, best_params
 
     def _fit_direct(self, _CB_Ranker: type, tr_pool: _Pool, va_pool: _Pool | None):
-        model = _CB_Ranker(**self.params)
+        model = _CB_Ranker(**{'allow_writing_files': False, **self.params})
         model.fit(tr_pool, eval_set=va_pool)
         return model, dict(self.params)
 

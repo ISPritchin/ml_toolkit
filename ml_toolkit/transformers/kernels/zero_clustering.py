@@ -48,6 +48,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size, safe_ratio
 
 FEATURE = 'zero_clustering'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции
 
 
 @nb.njit(cache=True)

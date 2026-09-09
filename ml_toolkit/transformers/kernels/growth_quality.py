@@ -49,6 +49,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import EPS, compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'growth_quality'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # все выходы неотрицательны (доли/Gini/счётчики)
 
 
 @nb.njit(cache=True)

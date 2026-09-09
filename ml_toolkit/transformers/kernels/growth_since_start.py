@@ -36,9 +36,12 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, safe_ratio
 
 FEATURE = 'growth_since_start'
+# "(v-first)/first >= -1" верно только при неотрицательных v/first — при знакопеременных
+# данных числитель/знаменатель safe_ratio любого знака.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

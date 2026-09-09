@@ -41,6 +41,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import EPS, fit_linear_trend_slope, resolve_window_size
 
 FEATURE = 'direction_flag'
+FILL_NAN: dict[str | None, float] = {None: -2.0}  # дискретный флаг {-1,0,1} — -2 недостижим
 
 
 @nb.njit(cache=True)

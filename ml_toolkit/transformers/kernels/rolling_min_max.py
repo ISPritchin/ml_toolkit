@@ -37,9 +37,22 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import compute_window_min_and_max, resolve_window_size
+from ml_toolkit.transformers._windowing import (
+    FILL_NAN_UNBOUNDED,
+    FILL_NAN_UNBOUNDED_HIGH,
+    compute_window_min_and_max,
+    resolve_window_size,
+)
 
 FEATURE = 'rolling_min_max'
+FILL_NAN: dict[str | None, float] = {
+    # ряд не обязан быть неотрицательным, поэтому нет доказанно недостижимого
+    # числа "рядом с нулём" — берём заведомо большой сентинел, направленный
+    # в сторону, противоположную своей роли (min → +, max → -), чтобы
+    # заполненное значение не читалось как правдоподобный реальный экстремум.
+    'min_w': FILL_NAN_UNBOUNDED_HIGH,
+    'max_w': FILL_NAN_UNBOUNDED,
+}
 
 
 @nb.njit(cache=True)

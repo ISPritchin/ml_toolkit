@@ -35,7 +35,10 @@ Example:
 import numba as nb
 import numpy as np
 
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED
+
 FEATURE = 'log1p_level'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # sign·log1p(|v|) — лог-сжатая шкала, знакопеременная, не строго ограничена
 
 
 @nb.njit(cache=True)

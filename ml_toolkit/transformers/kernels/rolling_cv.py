@@ -41,6 +41,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import compute_window_mean_and_std, resolve_window_size, safe_ratio
 
 FEATURE = 'rolling_cv'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # std/|mean| >= 0 всегда — -1 недостижим
 
 
 @nb.njit(cache=True)

@@ -45,6 +45,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'local_extrema'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции (простой счётчик разворотов)
 
 
 @nb.njit(cache=True)

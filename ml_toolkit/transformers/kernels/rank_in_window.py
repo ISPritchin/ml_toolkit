@@ -40,6 +40,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'rank_in_window'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # count/ws в [0,1] — -1 недостижим
 
 
 @nb.njit(cache=True)

@@ -36,9 +36,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, safe_ratio
 
 FEATURE = 'lag_growth_ratio'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

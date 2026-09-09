@@ -39,6 +39,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'active_months'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции (простой счётчик ненулевых месяцев)
 
 
 @nb.njit(cache=True)

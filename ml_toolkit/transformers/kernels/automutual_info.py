@@ -55,6 +55,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import fill_window_sorted, resolve_window_size, sorted_quantile
 
 FEATURE = 'automutual_info'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # MI/ln(3) >= 0 всегда — -1 недостижим
 
 _LN3 = np.log(3.0)
 

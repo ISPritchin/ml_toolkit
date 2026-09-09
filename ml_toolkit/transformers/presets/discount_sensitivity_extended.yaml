@@ -9,25 +9,21 @@
 # active_run_count) - там разрыв и есть сигнал. Сегментируем всё, что описывает
 # динамику ЗНАЧЕНИЯ - там долгий нулевой разрыв исказил бы сигнал.
 #
-# fill_nan: та же конвенция сентинелов, что в discount_sensitivity.yaml (см. его
-# комментарий) - значение, заведомо невозможное для СОБСТВЕННОГО диапазона
-# трансформера: -1 (гарантированно неотрицательные величины), -2 (величины,
-# ограниченные корреляцией/долей), -999 (нормированные, но не строго ограниченные:
-# z-score, счётчики, флаги), -999999 (величины на сыром масштабе колонки). Тот же
-# компромисс с корреляционным фильтром применим при дальнейшей прогонке через
-# select_features/corr_threshold - см. discount_sensitivity.yaml.
+# Заполнение NaN — как в discount_sensitivity.yaml: не здесь, а в FILL_NAN
+# кернела каждого трансформера, применяется отдельно через fill_known_nan(df)
+# после отбора (см. её комментарий в feature_generation.py).
 
 segments:
-  short_gap:
+  medium_gap:
     strategy: zero_gap
-    gap_threshold: 3
+    gap_threshold: 8
 
 # -----------------------------------------------------------------------------
 # Текущее состояние / активность
 # -----------------------------------------------------------------------------
 
 segment_gap:
-  segment: short_gap
+  segment: medium_gap
 
 recency: {}
 
@@ -49,81 +45,65 @@ active_run_count:
 
 window_mean:
   windows: [3, 6, 12]
-  segment: short_gap           # простой интерпретируемый уровень
-  fill_nan: -1
+  segment: medium_gap           # простой интерпретируемый уровень
 
 window_median:
   windows: [3, 6, 12]
-  segment: short_gap           # устойчивая к выбросам версия уровня
-  fill_nan: -1
+  segment: medium_gap           # устойчивая к выбросам версия уровня
 
 rolling_min_max:
   windows: [3, 6, 12]
-  segment: short_gap           # диапазон разброса значения за период
-  fill_nan: -1
+  segment: medium_gap           # диапазон разброса значения за период
 
 log_level:
   windows: [3, 12]
-  segment: short_gap
-  fill_nan: -1
+  segment: medium_gap
 
 slope:
   windows: [3, 12]
-  segment: short_gap
-  fill_nan: -999999
+  segment: medium_gap
 
 accel:
-  segment: short_gap
-  fill_nan: -999999
+  segment: medium_gap
 
 growth_since_start:
-  segment: short_gap
-  fill_nan: -2
+  segment: medium_gap
 
 distance_to_global_max:
-  segment: short_gap
-  fill_nan: -2
+  segment: medium_gap
 
 cumulative_share:
-  segment: short_gap           # доля текущей точки в накопленной сумме текущего сегмента активности
-  fill_nan: -1                  # v/|cumsum| >= 0 всегда (значения неотрицательны)
+  segment: medium_gap           # доля текущей точки в накопленной сумме текущего сегмента активности
 
 rolling_cv:
   windows: [3, 12]
-  segment: short_gap
-  fill_nan: -1
+  segment: medium_gap
 
 rolling_std:
   windows: [3, 12]
-  segment: short_gap           # абсолютная волатильность рядом с нормированной CV - для
+  segment: medium_gap           # абсолютная волатильность рядом с нормированной CV - для
                                 # предсказания РАЗМЕРА скидки масштаб может быть важен сам по себе
-  fill_nan: -1                  # std >= 0 всегда, независимо от масштаба колонки
 
 # -----------------------------------------------------------------------------
 # Память / качество тренда / структурные сдвиги - новое относительно базового пресета
 # -----------------------------------------------------------------------------
 
 autocorr:
-  segment: short_gap           # инерционность/предсказуемость динамики (лаги 1/2/3/6/12)
-  fill_nan: -2                  # все выходы - Pearson r в [-1,1], -2 недостижим
+  segment: medium_gap           # инерционность/предсказуемость динамики (лаги 1/2/3/6/12)
 
 trend_consistency:
   windows: [12]
-  segment: short_gap           # тренд - устойчивый сигнал или шум (R², clean_streak)
-  fill_nan: -999                # смесь долей [0,1] и не строго ограниченных noise_signal/r_squared
+  segment: medium_gap           # тренд - устойчивый сигнал или шум (R², clean_streak)
 
 regime_change:
   windows: [12]
-  segment: short_gap           # резкий сдвиг уровня - возможный маркер пересмотра условий
-  fill_nan: -999                # magnitude/late_vs_early/asymmetry в единицах σ, без жёсткой границы
+  segment: medium_gap           # резкий сдвиг уровня - возможный маркер пересмотра условий
 
 lifecycle_phase:
   windows: [12]
-  segment: short_gap           # фаза (разгон/зрелость/спад) - разная фаза = разная позиция в переговорах
-  fill_nan: -999999             # post_peak_slope_w12 на сыром масштабе колонки
+  segment: medium_gap           # фаза (разгон/зрелость/спад) - разная фаза = разная позиция в переговорах
 
 extreme_events:
   windows: [12]
-  segment: short_gap           # заменяет extreme_share базового пресета: та же гипотеза
+  segment: medium_gap           # заменяет extreme_share базового пресета: та же гипотеза
                                 # "промо-driven всплески", но с разбивкой на всплеск/обвал/давность
-  fill_nan: -999                # смесь счётчиков/z-score/флагов, без единой строгой границы

@@ -43,6 +43,7 @@ _DEFAULT_BASE_PARAMS: dict[str, Any] = {
     'eval_metric': 'PRAUC',
     'random_seed': 42,
     'verbose': 0,
+    'allow_writing_files': False,
 }
 
 
@@ -160,6 +161,7 @@ class HardNegativeMiner(BasePreset):
                 'early_stopping_rounds': custom.get('early_stopping_rounds', 100),
                 'random_seed': custom.get('random_seed', self.random_seed),
                 'verbose': custom.get('verbose', 0),
+                'allow_writing_files': custom.get('allow_writing_files', False),
             }
             trial.set_user_attr('cb_params', params)
             pruning_cb = CatBoostPruningCallback(trial, params['eval_metric'])
@@ -230,7 +232,11 @@ class HardNegativeMiner(BasePreset):
         sample_weights = np.ones(len(y_tr))
         va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
 
-        fixed_params = {**(self.base_params or _DEFAULT_BASE_PARAMS), 'random_seed': self.random_seed}
+        fixed_params = {
+            'allow_writing_files': False,
+            **(self.base_params or _DEFAULT_BASE_PARAMS),
+            'random_seed': self.random_seed,
+        }
         best_auc = -1.0
         best_model = None
         self.models_ = []

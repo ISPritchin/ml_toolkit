@@ -39,6 +39,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size
 
 FEATURE = 'run_above_mean'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции (счётчик серии, среднее используется только для сравнения)
 
 
 @nb.njit(cache=True)

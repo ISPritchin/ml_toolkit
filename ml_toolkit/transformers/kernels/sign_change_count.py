@@ -42,6 +42,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'sign_change_count'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции (простой счётчик смен знака)
 
 
 @nb.njit(cache=True)

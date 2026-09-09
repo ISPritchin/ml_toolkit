@@ -59,6 +59,7 @@ from ml_toolkit.transformers._windowing import (
 )
 
 FEATURE = 'burstiness'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции
 
 
 @nb.njit(cache=True)

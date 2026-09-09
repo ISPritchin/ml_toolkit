@@ -49,6 +49,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import EPS, resolve_window_size
 
 FEATURE = 'flow_regularity'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # все выходы неотрицательны (счётчики/std/CV/флаги {0,1})
 
 
 @nb.njit(cache=True)

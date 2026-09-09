@@ -47,6 +47,7 @@ from ml_toolkit.transformers._windowing import (
 )
 
 FEATURE = 'skew_proxy'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # (mean-lo)/(hi-lo) в [0,1] (lo<=mean<=hi всегда) — -1 недостижим
 
 
 @nb.njit(cache=True)

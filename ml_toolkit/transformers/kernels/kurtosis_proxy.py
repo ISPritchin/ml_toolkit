@@ -48,6 +48,7 @@ import numpy as np
 
 from ml_toolkit.transformers._windowing import (
     EPS,
+    FILL_NAN_UNBOUNDED,
     compute_window_mean_and_std,
     compute_window_sorted_buffer,
     compute_window_sum,
@@ -57,6 +58,7 @@ from ml_toolkit.transformers._windowing import (
 )
 
 FEATURE = 'kurtosis_proxy'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

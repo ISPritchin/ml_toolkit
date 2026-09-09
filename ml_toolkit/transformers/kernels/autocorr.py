@@ -49,9 +49,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import pearson_from_sums, safe_ratio, windowed_lag_pearson
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, pearson_from_sums, safe_ratio, windowed_lag_pearson
 
 FEATURE = 'autocorr'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # partial_lag2 идёт через safe_ratio, знак не доказан
 
 
 @nb.njit(cache=True)

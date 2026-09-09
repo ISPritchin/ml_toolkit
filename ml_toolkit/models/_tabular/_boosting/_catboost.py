@@ -260,6 +260,7 @@ class CatBoostRegressor(BaseModel):
                 'verbose': 0,
                 'early_stopping_rounds': 100,
                 'random_seed': 42,
+                'allow_writing_files': False,
             }
             trial.set_user_attr('cb_params', params)
             m = _CB_Regressor(**params)
@@ -295,7 +296,7 @@ class CatBoostRegressor(BaseModel):
         return model, best_params
 
     def _fit_direct(self, _CB_Regressor: type, tr_pool: _Pool, va_pool: _Pool | None):
-        model = _CB_Regressor(**self.params)
+        model = _CB_Regressor(**{'allow_writing_files': False, **self.params})
         if va_pool is not None:
             model.fit(tr_pool, eval_set=va_pool, verbose=False)
         else:
@@ -493,6 +494,7 @@ class CatBoostClassifier(BaseModel):
                 'verbose': 0,
                 'early_stopping_rounds': 100,
                 'random_seed': 42,
+                'allow_writing_files': False,
             }
             trial.set_user_attr('cb_params', params)
 
@@ -547,7 +549,7 @@ class CatBoostClassifier(BaseModel):
         return model, best_params
 
     def _fit_direct(self, _CB_Classifier: type, tr_pool: _Pool, va_pool: _Pool | None):
-        model = _CB_Classifier(**self.params)
+        model = _CB_Classifier(**{'allow_writing_files': False, **self.params})
         if va_pool is not None:
             model.fit(tr_pool, eval_set=va_pool, verbose=False)
         else:

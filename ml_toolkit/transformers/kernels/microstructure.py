@@ -45,9 +45,20 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, compute_window_mean_and_std, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import (
+    EPS,
+    FILL_NAN_UNBOUNDED,
+    compute_window_mean_and_std,
+    resolve_window_size,
+    safe_ratio,
+)
 
 FEATURE = 'microstructure'
+# snr/surprise/predictability/vs_cond_mean/surprise_dir идут через safe_ratio или
+# структурно ограничены (predictability в (0,1]). cond_mean = mean*ws/active_count —
+# сырой масштаб колонки, произвольного знака при знакопеременных данных. Единый
+# сентинел безопасен для всех выходов сразу.
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)

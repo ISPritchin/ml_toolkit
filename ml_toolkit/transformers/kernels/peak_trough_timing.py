@@ -46,6 +46,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'peak_trough_timing'
+FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не производит по конструкции (позиционный индекс, без деления)
 
 
 @nb.njit(cache=True)

@@ -52,6 +52,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import compute_window_mean, resolve_window_size, safe_ratio
 
 FEATURE = 'recovery_dynamics'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # все выходы неотрицательны (доли, счётчики, флаги, скорость от неотрицательного числителя/знаменателя)
 
 
 @nb.njit(cache=True)

@@ -70,6 +70,7 @@ import numba as nb
 import numpy as np
 
 FEATURE = 'client_age'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # оба выхода неотрицательны (флаг {0,1} и норм. позиция [0,1))
 
 
 @nb.njit(cache=True)

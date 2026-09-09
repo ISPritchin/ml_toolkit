@@ -38,6 +38,7 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size
 
 FEATURE = 'max_abs_jump'
+FILL_NAN: dict[str | None, float] = {None: -1.0}  # |скачок| >= 0 всегда — -1 недостижим
 
 
 @nb.njit(cache=True)

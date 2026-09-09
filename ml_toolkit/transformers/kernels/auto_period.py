@@ -51,6 +51,10 @@ import numpy as np
 from ml_toolkit.transformers._windowing import resolve_window_size, windowed_lag_pearson
 
 FEATURE = 'auto_period'
+FILL_NAN: dict[str | None, float] = {
+    'period': -1.0,  # лаг-индекс, всегда >= 0 — -1 недостижим
+    'strength': -2.0,  # Pearson r в [-1,1] — -2 недостижим
+}
 
 
 @nb.njit(cache=True)

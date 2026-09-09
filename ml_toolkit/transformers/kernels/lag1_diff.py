@@ -41,9 +41,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import safe_ratio
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, safe_ratio
 
 FEATURE = 'lag1_diff'
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
 
 
 @nb.njit(cache=True)
