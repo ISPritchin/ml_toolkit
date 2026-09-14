@@ -548,6 +548,68 @@ def _is_already_sorted(df: pl.DataFrame, entity_col: str, ts_col: str) -> bool:
     return stats['n_runs'][0] == stats['n_unique'][0] and not stats['has_ts_inversion'][0]
 
 
+def _filter_suffixes(
+    arrays: list[np.ndarray],
+    suffixes: list[str],
+    include_suffixes: list[str] | None,
+    exclude_suffixes: list[str] | None,
+    context: str,
+) -> tuple[list[np.ndarray], list[str]]:
+    """Оставляет только запрошенные суффиксы вывода трансформера.
+
+    Применяется к «сырым» суффиксам, как их вернул `module.compute()` — до
+    добавления суффикса сегментации. `include_suffixes` (allow-list)
+    применяется первым, затем `exclude_suffixes` (deny-list) сужает
+    результат дальше; оба опциональны и независимы друг от друга. Неизвестное
+    имя суффикса в любом из списков — опечатка, а не молчаливый no-op, поэтому
+    поднимается `ValueError` с перечнем реально доступных суффиксов этого
+    трансформера.
+
+    Args:
+        arrays: Массивы, как их вернул `module.compute()`.
+        suffixes: Суффиксы, соответствующие `arrays` (тот же порядок).
+        include_suffixes: allow-list суффиксов или None (не фильтровать).
+        exclude_suffixes: deny-list суффиксов или None (не фильтровать).
+        context: Строка для сообщений об ошибке/логов (какая пара product_col×transformer).
+
+    Returns:
+        Отфильтрованные (arrays, suffixes) в исходном относительном порядке.
+        Пустые списки, если фильтр вырезал все суффиксы.
+
+    Raises:
+        ValueError: `include_suffixes`/`exclude_suffixes` содержит имя, которого
+            нет среди `suffixes`.
+
+    """
+    if include_suffixes is None and exclude_suffixes is None:
+        return arrays, suffixes
+
+    available = set(suffixes)
+    for key, names in (('include_suffixes', include_suffixes), ('exclude_suffixes', exclude_suffixes)):
+        if names is None:
+            continue
+        unknown = set(names) - available
+        if unknown:
+            raise ValueError(
+                f'{context}: {key} содержит неизвестные суффиксы {sorted(unknown)}. '
+                f'Доступные суффиксы этого трансформера: {sorted(available)}'
+            )
+
+    keep = set(suffixes)
+    if include_suffixes is not None:
+        keep &= set(include_suffixes)
+    if exclude_suffixes is not None:
+        keep -= set(exclude_suffixes)
+
+    if not keep:
+        logger.warning('%s: include_suffixes/exclude_suffixes отфильтровали все выходы трансформера', context)
+        return [], []
+
+    filtered = [(s, a) for s, a in zip(suffixes, arrays, strict=False) if s in keep]
+    new_suffixes, new_arrays = zip(*filtered)
+    return list(new_arrays), list(new_suffixes)
+
+
 def _generate_candidate_features_to_parquets(
     df: pl.DataFrame | Path,
     entity_col: str,
@@ -587,9 +649,14 @@ def _generate_candidate_features_to_parquets(
 
     """
     if isinstance(df, Path):
-        # Данные уже отсортированы на диске — грузим только нужные колонки
+        # Данные уже отсортированы на диске — грузим только нужные колонки.
+        # Файл содержит ВСЕ колонки исходного df (см. sink_parquet в
+        # generate_feature_groups/apply_feature_groups — LazyFrame сохраняется
+        # целиком, без .select()), не только [entity_col, ts_col] + product_cols:
+        # остальные "сквозные" колонки (не участвующие ни в одном трансформере)
+        # _build_output_from_parquets прокинет в выход как есть, без изменений.
         n_rows = pq.read_metadata(df).num_rows
-        base_path = df  # parquet содержит ровно [entity_col, ts_col] + product_cols
+        base_path = df
         entity_codes = (
             pl.read_parquet(df, columns=[entity_col])[entity_col]
             .rle_id()
@@ -604,7 +671,13 @@ def _generate_candidate_features_to_parquets(
             df_sorted = df.sort([entity_col, ts_col])
 
         base_path = tmp_dir / f'{name}_base.parquet'
-        df_sorted.select([entity_col, ts_col] + product_cols).write_parquet(base_path, row_group_size=_ROW_GROUP_SIZE)
+        # Пишем df_sorted ЦЕЛИКОМ (не только entity_col/ts_col/product_cols) —
+        # так же, как это уже происходит для LazyFrame-входа через sink_parquet
+        # (см. ветку `isinstance(df, Path)` выше). "Сквозные" колонки, не
+        # участвующие ни в одном трансформере (id других сущностей, таргет,
+        # метаданные...), должны доехать до итогового датасета без джойна
+        # руками — этим занимается _build_output_from_parquets.
+        df_sorted.write_parquet(base_path, row_group_size=_ROW_GROUP_SIZE)
         n_rows = df_sorted.height
 
         entity_codes = (
@@ -645,6 +718,9 @@ def _generate_candidate_features_to_parquets(
         for transformer_name, module, params in product_col_transformers[product_col]:
             segment_cfg = params.get('segment')
             fill_nan_value = params.get('fill_nan')
+            include_suffixes = params.get('include_suffixes')
+            exclude_suffixes = params.get('exclude_suffixes')
+            suffix_filter_context = f"'{product_col}' / '{transformer_name}'"
 
             if segment_cfg is not None and transformer_name != 'segment_gap':
                 # Сегментированный трансформер: считаем альтернативную позицию
@@ -661,8 +737,14 @@ def _generate_candidate_features_to_parquets(
                     product_values, position_within_entity, strategy, segment_cfg,
                     external_mask=external_mask,
                 )
-                call_params = {k: v for k, v in params.items() if k not in ('segment', 'fill_nan')}
+                call_params = {
+                    k: v for k, v in params.items()
+                    if k not in ('segment', 'fill_nan', 'include_suffixes', 'exclude_suffixes')
+                }
                 arrays, suffixes = module.compute(product_values, seg_position, call_params)
+                arrays, suffixes = _filter_suffixes(
+                    arrays, suffixes, include_suffixes, exclude_suffixes, context=suffix_filter_context
+                )
                 arrays = [np.where(in_segment, np.asarray(arr, dtype=np.float64), np.nan) for arr in arrays]
             else:
                 # segment_gap сам строит сегментацию внутри compute() (нужна
@@ -671,9 +753,20 @@ def _generate_candidate_features_to_parquets(
                 # разрывы, поэтому именно в разрывах ему нужно значение 1.0.
                 # 'segment' здесь НЕ вычищается: если transformer_name ==
                 # 'segment_gap', его собственный compute() читает params['segment']
-                # напрямую (см. kernels/segment_gap.py) — только fill_nan чужой ключ.
-                call_params = {k: v for k, v in params.items() if k != 'fill_nan'}
+                # напрямую (см. kernels/segment_gap.py) — fill_nan/include_suffixes/
+                # exclude_suffixes ему тоже чужие ключи и вычищаются как обычно.
+                call_params = {
+                    k: v for k, v in params.items()
+                    if k not in ('fill_nan', 'include_suffixes', 'exclude_suffixes')
+                }
                 arrays, suffixes = module.compute(product_values, position_within_entity, call_params)
+                arrays, suffixes = _filter_suffixes(
+                    arrays, suffixes, include_suffixes, exclude_suffixes, context=suffix_filter_context
+                )
+
+            if not suffixes:
+                logger.debug("(%s) '%s' / '%s': все суффиксы отфильтрованы, пара пропущена", name, product_col, transformer_name)
+                continue
 
             if fill_nan_value is not None:
                 # Применяется независимо для каждого трансформера (params —
@@ -819,8 +912,19 @@ def _build_output_from_parquets(
     Файлы признаков открываются по одному внутри цикла и сразу освобождаются:
     пиковое число открытых дескрипторов равно 2 (base + текущий файл фич).
 
+    `base_path` содержит ВСЕ колонки исходного df, а не только
+    [entity_col, ts_col] + product_cols (см. `_generate_candidate_features_to_parquets`).
+    Любая колонка сверх этих трёх групп — "сквозная" (не участвует ни в одном
+    трансформере: другие product-колонки без своих трансформеров тут не в счёт,
+    речь про таргет/метаданные/что угодно, чего нет ни в product_cols, ни в
+    entity_col/ts_col) — прокидывается в выход как есть, в исходном типе, без
+    float32-каста (в отличие от product_cols и accepted_cols, которые всегда
+    численные и приводятся к float32). Порядок таких колонок — как в
+    исходном df. Это то, что избавляет вызывающий код от ручного join'а
+    результата обратно к датасету по (entity_col, ts_col).
+
     Args:
-        base_path: Parquet с [entity_col, ts_col] + product_cols, отсортированный
+        base_path: Parquet со всеми колонками исходного df, отсортированный
             по (entity_col, ts_col), записанный с row_group_size=_ROW_GROUP_SIZE.
         entity_col: Имя колонки-идентификатора.
         ts_col: Имя колонки с датой конца месяца.
@@ -841,15 +945,21 @@ def _build_output_from_parquets(
     base_schema = base_file.schema_arrow
     ts_type = base_schema.field(ts_col).type
 
+    reserved = {entity_col, ts_col, *product_cols}
+    passthrough_cols = [c for c in base_schema.names if c not in reserved]
+
     out_schema = pa.schema(
         [base_schema.field(entity_col), base_schema.field(ts_col)]
         + [pa.field(c, pa.float32()) for c in product_cols]
+        + [base_schema.field(c) for c in passthrough_cols]
         + [pa.field(c, pa.float32()) for c in accepted_cols]
     )
 
     with pq.ParquetWriter(out_path, schema=out_schema) as writer:
         for rg_idx in range(n_row_groups):
-            base_batch = base_file.read_row_group(rg_idx, columns=[entity_col, ts_col] + product_cols)
+            base_batch = base_file.read_row_group(
+                rg_idx, columns=[entity_col, ts_col] + product_cols + passthrough_cols
+            )
 
             row_mask: pa.ChunkedArray | None = None
             if min_ts is not None or max_ts is not None:
@@ -871,6 +981,8 @@ def _build_output_from_parquets(
             }
             for col in product_cols:
                 chunk[col] = pc.cast(base_batch.column(col), pa.float32())
+            for col in passthrough_cols:
+                chunk[col] = base_batch.column(col)
             del base_batch
 
             for fpath, cols in file_to_cols.items():
@@ -882,7 +994,7 @@ def _build_output_from_parquets(
                     chunk[col] = arr.filter(row_mask) if row_mask is not None else arr
                 del feat_batch
 
-            ordered = [entity_col, ts_col] + product_cols + accepted_cols
+            ordered = [entity_col, ts_col] + product_cols + passthrough_cols + accepted_cols
             writer.write_table(pa.table({col: chunk[col] for col in ordered}))
             del chunk
 
@@ -1037,6 +1149,63 @@ def generate_feature_groups(
     return accepted_cols
 
 
+def generate_feature_groups_df(
+    df: pl.DataFrame | pl.LazyFrame,
+    entity_column_name: str,
+    ts_column_name: str,
+    feature_spec: list[FeatureSpecEntry],
+    corr_threshold: float | None = None,
+    min_output_ts_key: Any | None = None,  # noqa: ANN401 — см. generate_feature_groups
+    max_output_ts_key: Any | None = None,  # noqa: ANN401 — см. generate_feature_groups
+    max_rows_for_correlation: int | None = _DEFAULT_MAX_ROWS_FOR_CORRELATION,
+    name: str = 'dataset',
+) -> pl.DataFrame:
+    """Как `generate_feature_groups`, но без `out_path` — сразу возвращает результат как DataFrame.
+
+    Самый простой способ навариться фичи для датасета, который уже в памяти:
+    путь к файлу задавать не нужно, временный parquet — деталь реализации
+    (создаётся во временной директории и удаляется сразу после чтения, не
+    остаётся на диске). Возвращённый `df` уже содержит entity/ts/все исходные
+    product-колонки вместе с наваренными — джойнить их самостоятельно не нужно.
+
+    Для пары датасетов одной схемы (например, train/valid или client/holding)
+    или когда результат должен остаться на диске — используйте
+    `generate_feature_groups`/`apply_feature_groups` напрямую: там явный
+    `out_path`, и первый вызов возвращает `accepted_cols` для второго.
+
+    Args:
+        df: Датасет (eager или lazy) — см. `generate_feature_groups`.
+        entity_column_name: Имя колонки-идентификатора сущности.
+        ts_column_name: Имя колонки с датой конца месяца.
+        feature_spec: Список пар `(columns, preset)` — см. `generate_feature_groups`.
+        corr_threshold: Порог |r| для корреляционного фильтра. По умолчанию
+            `None` — фильтр не запускается.
+        min_output_ts_key: Нижняя граница по ts_column_name (включительно).
+        max_output_ts_key: Верхняя граница по ts_column_name (включительно).
+        max_rows_for_correlation: Максимум строк для расчёта корреляции.
+        name: Метка для временных файлов и логов.
+
+    Returns:
+        `pl.DataFrame` с исходными и наваренными колонками.
+
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / 'out.parquet'
+        generate_feature_groups(
+            df,
+            entity_column_name=entity_column_name,
+            ts_column_name=ts_column_name,
+            feature_spec=feature_spec,
+            out_path=out_path,
+            corr_threshold=corr_threshold,
+            min_output_ts_key=min_output_ts_key,
+            max_output_ts_key=max_output_ts_key,
+            max_rows_for_correlation=max_rows_for_correlation,
+            name=name,
+        )
+        return pl.read_parquet(out_path)
+
+
 def select_features(
     df: pl.DataFrame | pl.LazyFrame,
     entity_column_name: str,
@@ -1123,6 +1292,68 @@ def select_features(
         tmp_dir=tmp_dir,
         name=name,
     )
+
+
+def select_features_df(
+    df: pl.DataFrame | pl.LazyFrame,
+    entity_column_name: str,
+    ts_column_name: str,
+    product_cols: list[str],
+    corr_threshold: float | None = _DEFAULT_CORR_THRESHOLD,
+    transformer_names: list[str] | None = None,
+    min_output_ts_key: Any | None = None,  # noqa: ANN401 — см. select_features
+    max_output_ts_key: Any | None = None,  # noqa: ANN401 — см. select_features
+    max_rows_for_correlation: int | None = _DEFAULT_MAX_ROWS_FOR_CORRELATION,
+    preset: Path | str | dict | None = None,
+    name: str = 'dataset',
+) -> pl.DataFrame:
+    """Как `select_features`, но без `out_path` — сразу возвращает результат как DataFrame.
+
+    Тот же самый набор трансформеров на все `product_cols` сразу (см.
+    `select_features`), только без файла: временный parquet — деталь
+    реализации, удаляется сразу после чтения. Возвращённый `df` уже содержит
+    entity/ts/все исходные product-колонки вместе с отобранными наваренными —
+    джойнить их самостоятельно не нужно.
+
+    Для пары датасетов одной схемы или когда результат должен остаться на
+    диске — используйте `select_features`/`apply_selected_features` напрямую:
+    там явный `out_path`, и первый вызов возвращает `accepted_cols` для второго.
+
+    Args:
+        df: Датасет (eager или lazy) — см. `select_features`.
+        entity_column_name: Имя колонки-идентификатора сущности.
+        ts_column_name: Имя колонки с датой конца месяца.
+        product_cols: Имена product-колонок, по которым считаются признаки.
+        corr_threshold: Порог |r| для корреляционного фильтра. Default: 0.9.
+        transformer_names: Подмножество AVAILABLE_TRANSFORMER_NAMES. None — все
+            трансформеры из пресета.
+        min_output_ts_key: Нижняя граница по ts_column_name (включительно).
+        max_output_ts_key: Верхняя граница по ts_column_name (включительно).
+        max_rows_for_correlation: Максимум строк для расчёта корреляции.
+        preset: Пресет параметров трансформеров — обязателен, см. `select_features`.
+        name: Метка для временных файлов и логов.
+
+    Returns:
+        `pl.DataFrame` с исходными и отобранными наваренными колонками.
+
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / 'out.parquet'
+        select_features(
+            df,
+            entity_column_name=entity_column_name,
+            ts_column_name=ts_column_name,
+            product_cols=product_cols,
+            out_path=out_path,
+            corr_threshold=corr_threshold,
+            transformer_names=transformer_names,
+            min_output_ts_key=min_output_ts_key,
+            max_output_ts_key=max_output_ts_key,
+            max_rows_for_correlation=max_rows_for_correlation,
+            preset=preset,
+            name=name,
+        )
+        return pl.read_parquet(out_path)
 
 
 def apply_feature_groups(

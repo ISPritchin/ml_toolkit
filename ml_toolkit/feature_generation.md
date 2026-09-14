@@ -1,207 +1,196 @@
 # ml_toolkit/feature_generation.py
 
-Генерический движок наварки фич для **одного** датасета за раз. Не хардкодит имена колонок и не знает, сколько у вас датасетов и как они связаны (это уровень `tasks/`, см. `tasks/auto_kkp_classification/feature_generation.py`).
+Считает признаки по временным рядам датасета и докладывает их прямо в `df`. Лишние колонки (таргет, метаданные — всё, чего нет в `feature_spec`) остаются в выходе как есть, join не нужен.
 
 ---
 
-## У вас уже есть датасет — как навариться нужные фичи для нужных колонок
-
-Датасет может быть **уже в памяти** (`pl.DataFrame`) или **лежать на диске** (`pl.LazyFrame`, например `pl.scan_parquet(...)`) — движок принимает и то, и другое одной и той же сигнатурой, разницы в вызове нет:
+## Датасет в памяти → тот же датасет с фичами
 
 ```python
 import polars as pl
-from ml_toolkit.feature_generation import generate_feature_groups
+from ml_toolkit.feature_generation import generate_feature_groups_df
 
-df = pl.scan_parquet("cltv_df.parquet")   # на диске — файл целиком в память не читается
-# df = pl.read_parquet("cltv_df.parquet") # или уже в памяти как DataFrame — работает так же
-# df = уже готовый pl.DataFrame из предыдущих шагов пайплайна — тоже ОК
-```
+df = pl.DataFrame({
+    "client_id": [1, 1, 1, 2, 2, 2],
+    "ts_key":    [1, 2, 3, 1, 2, 3],
+    "trans_sum": [10., 20., 15., 5., 5., 5.],
+    "trans_cnt": [1., 2., 1., 1., 1., 1.],
+    "region":    ["msk", "msk", "msk", "spb", "spb", "spb"],
+    "target":    [0, 1, 0, 0, 0, 1],
+})
 
-Если `df` — `LazyFrame`, движок сам сортирует по `(entity_column_name, ts_column_name)` и стримит результат во временный parquet (`sink_parquet`) — Python-память не раздувается под весь датасет разом, даже если он большой.
-
-Дальше — **`feature_spec`**: список пар `(колонки, что навариться)`. Именно он отвечает на вопрос "каким колонкам какие фичи навариваем":
-
-```python
-result_cols = generate_feature_groups(
-    df,
-    entity_column_name="id_key",       # колонка-идентификатор сущности (клиент/холдинг/...)
-    ts_column_name="ts_key",           # колонка с датой конца месяца
-    feature_spec=[
-        ("trans_sum", {"slope": {"windows": [6, 12, 24]}, "streak": {}}),  # этой — slope и streak
-        ("trans_cnt", {"ewma": {"alphas": [0.3]}}),                        # этой — только ewma
-        ("fee_amount", {}),                                                # эту оставить как есть
-    ],
-    out_path="cltv_df_with_features.parquet",
+out = generate_feature_groups_df(
+    df, entity_column_name="client_id", ts_column_name="ts_key",
+    feature_spec=[("trans_sum", {"slope": {"windows": [3]}, "streak": {}})],
 )
+print(out)
 ```
 
-Второй элемент каждой пары — **обязателен** и всегда явный: либо словарь `{имя_трансформера: параметры}` (можно перечислить только нужные трансформеры со своими параметрами — как выше), либо ссылка на пресет из файла (см. раздел про пресеты ниже). Автоматического пресета "по умолчанию" нет: если не задать второй элемент — это ошибка (`ValueError`), а не тихий fallback на какие-то параметры.
+```text
+shape: (6, 9)
+┌───────────┬────────┬───────────┬───────────┬────────┬────────┬───────────────────────┬────────────────────────┬──────────────────────────┐
+│ client_id ┆ ts_key ┆ trans_sum ┆ trans_cnt ┆ region ┆ target ┆ trans_sum__slope__w3 ┆ trans_sum__streak__up ┆ trans_sum__streak__down │
+│ i64       ┆ i64    ┆ f32       ┆ f64       ┆ str    ┆ i64    ┆ f32                   ┆ f32                    ┆ f32                      │
+╞═══════════╪════════╪═══════════╪═══════════╪════════╪════════╪═══════════════════════╪════════════════════════╪══════════════════════════╡
+│ 1         ┆ 1      ┆ 10.0      ┆ 1.0       ┆ msk    ┆ 0      ┆ 0.0                   ┆ 0.0                    ┆ 0.0                      │
+│ 1         ┆ 2      ┆ 20.0      ┆ 2.0       ┆ msk    ┆ 1      ┆ 10.0                  ┆ 1.0                    ┆ 0.0                      │
+│ 1         ┆ 3      ┆ 15.0      ┆ 1.0       ┆ msk    ┆ 0      ┆ 2.5                   ┆ 0.0                    ┆ 1.0                      │
+│ 2         ┆ 1      ┆ 5.0       ┆ 1.0       ┆ spb    ┆ 0      ┆ 0.0                   ┆ 0.0                    ┆ 0.0                      │
+│ 2         ┆ 2      ┆ 5.0       ┆ 1.0       ┆ spb    ┆ 0      ┆ 0.0                   ┆ 0.0                    ┆ 0.0                      │
+│ 2         ┆ 3      ┆ 5.0       ┆ 1.0       ┆ spb    ┆ 1      ┆ 0.0                   ┆ 0.0                    ┆ 0.0                      │
+└───────────┴────────┴───────────┴───────────┴────────┴────────┴───────────────────────┴────────────────────────┴──────────────────────────┘
+```
 
-`out_path` получит: `id_key`, `ts_key`, все три raw-колонки (`trans_sum`, `trans_cnt`, `fee_amount`) плюс наваренные признаки — `trans_sum__slope__w6`, `trans_sum__streak__up`, ... `trans_cnt__ewma__...`. Для `fee_amount` признаков не будет — только сама колонка (осознанный pass-through через `{}`). `result_cols` — список наваренных имён (пригодится, если нужно применить тот же набор ко второму датасету, см. ниже).
+`trans_cnt`/`region`/`target` не в `feature_spec` — вернулись как есть, даже `trans_cnt` не приведён к `float32` (к нему приводятся только реальные product-колонки и наваренные фичи).
 
-### Одни и те же трансформеры для нескольких колонок сразу
+Никакого `out_path`: `_df` создаёт временный parquet, читает обратно, удаляет.
 
-Не обязательно писать по одной паре на колонку — можно сгруппировать:
+---
+
+## Разные трансформеры для разных колонок
 
 ```python
 feature_spec = [
-    (["trans_sum", "trans_cnt"], {"slope": {"windows": [6, 12, 24]}, "rolling_std": {"windows": [6, 12]}}),
-    ("fee_amount", {"ewma": {"alphas": [0.3]}}),
+    ("trans_sum", "minimum"),                     # пресет целиком — ml_toolkit/transformers/presets/minimum.yaml
+    ("trans_cnt", {"ewma": {"alphas": [0.3]}}),    # inline-словарь вручную
 ]
+generate_feature_groups_df(df, entity_column_name="client_id", ts_column_name="ts_key", feature_spec=feature_spec).columns
 ```
 
-### Указать колонки через `polars.selectors` (если колонок много/имена не фиксированы)
-
-Вместо перечисления имён строками можно передать селектор — он резолвится против реальной схемы `df` (без чтения данных, даже если `df` — `LazyFrame` на диске):
-
-```python
-import polars.selectors as cs
-
-SLOPE_AND_STREAK = {"slope": {"windows": [6, 12, 24]}, "streak": {}}
-
-feature_spec = [
-    (cs.starts_with("trans_"), SLOPE_AND_STREAK),                                  # все колонки "trans_*"
-    (cs.starts_with("cnt_"), {"rolling_std": {"windows": [6, 12]}}),                # все "cnt_*"
-    ([cs.starts_with("a_"), cs.ends_with("_pct")], {"zscore": {"windows": [12]}}),  # смесь нескольких селекторов
-]
+```text
+['client_id', 'ts_key', 'trans_sum', 'trans_cnt', 'region', 'target',
+ 'trans_sum__slope__w6', 'trans_sum__slope__w12', 'trans_sum__slope__w24',
+ 'trans_cnt__ewma__a30', 'trans_cnt__ewma__diff_a30']
 ```
 
-Если разные строки/селекторы в итоге называют одну и ту же колонку с одним и тем же трансформером **и одинаковыми параметрами** (например, явное имя пересекается с широким селектором) — он считается **ровно один раз**, повторной наварки не будет. Если параметры при этом различаются — это конфликт, см. ниже.
-
-### Какие трансформеры доступны
-
-```python
-from ml_toolkit.feature_generation import AVAILABLE_TRANSFORMER_NAMES
-```
-
-Ключи словаря `{имя_трансформера: параметры}` должны быть именами из `AVAILABLE_TRANSFORMER_NAMES` (список — в разделе "Реестр трансформеров" ниже). Неизвестное имя — `ValueError`.
-
-### Пресеты — способ не писать параметры вручную каждый раз
-
-Если параметры трансформера уже есть в одном из готовых yaml-файлов репозитория (`ml_toolkit/transformers/presets/`) — не обязательно переписывать их в inline-словарь, можно сослаться на пресет по имени или пути. Второй элемент пары в `feature_spec` — это:
-
-- `dict[str, dict]` — явный словарь `{transformer_name: params}`, как в примерах выше;
-- `str` — имя пресета (например, `"minimum"`), ищется в `ml_toolkit/transformers/presets/{имя}.yaml`, или полный путь строкой;
-- `Path` — точный путь к yaml-файлу.
-
-В репозитории нет готового "полного" пресета со всеми 81 трансформерами и нет дефолтного имени — только то, что вы сами положите в `presets/` (сейчас там лежит `minimum.yaml` с одним `slope`, как отправная точка). Пресет из файла применяется **целиком** — все трансформеры, перечисленные в нём:
-
-```python
-result_cols = generate_feature_groups(
-    df, entity_column_name="id_key", ts_column_name="ts_key",
-    feature_spec=[
-        ("trans_sum", "minimum"),        # все трансформеры из minimum.yaml
-        ("trans_cnt", {"ewma": {"alphas": [0.3]}}),  # а для этой колонки — только ewma вручную
-    ],
-    out_path="out.parquet",
-)
-```
-
-Вот как выглядит запись `slope` в `ml_toolkit/transformers/presets/minimum.yaml`:
-
-```yaml
-slope:
-  windows: [6, 12, 24]
-```
-
-Если нужен весь пресет, но с одним изменённым значением — загрузите yaml, поменяйте нужную запись и передайте получившийся словарь как обычный inline-словарь:
+Пресет с одним изменённым параметром — просто словарь:
 
 ```python
 import yaml
 from pathlib import Path
 
 preset = yaml.safe_load(Path("ml_toolkit/transformers/presets/minimum.yaml").read_text())
-preset["slope"]["windows"] = [3, 6, 12]   # свои окна вместо [6, 12, 24]
-
-result_cols = generate_feature_groups(
-    df, entity_column_name="id_key", ts_column_name="ts_key",
-    feature_spec=[("trans_sum", preset)],   # весь minimum.yaml, но с изменённым slope
-    out_path="out.parquet",
-)
+preset["slope"]["windows"] = [1, 2]
+feature_spec = [("trans_sum", preset)]
 ```
 
-Какие ключи принимает конкретный трансформер — смотрите в его модуле `ml_toolkit/transformers/kernels/{name}.py` (докстринг там всегда содержит раздел `Preset` с примером). Трансформеры без параметров (например, `streak`, `growth_since_start`) — это просто `{}`.
+Один набор трансформеров сразу на несколько колонок — списком имён или `polars.selectors`:
 
-Если разные группы `feature_spec` называют одну и ту же колонку с одним и тем же трансформером, но **разными** параметрами — это конфликт: `ValueError` вместо тихого выбора одного из вариантов.
+```python
+feature_spec = [(["trans_sum", "trans_cnt"], {"slope": {"windows": [3]}})]
+
+import polars.selectors as cs
+feature_spec = [(cs.starts_with("trans_"), {"slope": {"windows": [3]}})]  # то же самое
+```
+
+```text
+['client_id', 'ts_key', 'trans_sum', 'trans_cnt', 'region', 'target', 'trans_sum__slope__w3', 'trans_cnt__slope__w3']
+```
+
+`preset` обязателен всегда — `None` даёт `ValueError`, автопресета нет. `AVAILABLE_TRANSFORMER_NAMES` — полный список имён трансформеров.
 
 ---
 
-## Второй датасет с той же схемой фич (например, другая гранулярность)
+## На диске → на диске
 
-Если у вас два датасета одной "формы" (одинаковые product-колонки, но разная сущность — клиент vs холдинг, магазин vs регион) и нужно, чтобы оба получили **идентичный** набор колонок — навариваете первый через `generate_feature_groups`, второй — через `apply_feature_groups` с тем же `feature_spec` и `result_cols`:
+Та же функция без `_df`, с явным `out_path`; `df` может быть `pl.scan_parquet(...)` — не читается в память целиком:
+
+```python
+from ml_toolkit.feature_generation import generate_feature_groups
+
+result_cols = generate_feature_groups(
+    pl.scan_parquet("df.parquet"), entity_column_name="client_id", ts_column_name="ts_key",
+    feature_spec=feature_spec, out_path="df_with_features.parquet",
+)
+print(result_cols)
+```
+
+```text
+['trans_sum__slope__w6', 'trans_sum__slope__w12', 'trans_sum__slope__w24',
+ 'trans_cnt__ewma__a30', 'trans_cnt__ewma__diff_a30']
+```
+
+---
+
+## Второй датасет, та же схема
+
+Тот же `feature_spec` и `result_cols` с первого вызова → идентичный набор колонок на другом датасете:
 
 ```python
 from ml_toolkit.feature_generation import apply_feature_groups
 
+holding_df = pl.DataFrame({
+    "holding_id": [9, 9, 9], "ts_key": [1, 2, 3],
+    "trans_sum": [3., 6., 9.], "trans_cnt": [1., 2., 3.],
+})
+
 apply_feature_groups(
-    other_df,                          # тот же feature_spec, другой df/другая entity-колонка
-    entity_column_name="agreement_primary_key",
-    ts_column_name="ts_key",
-    feature_spec=feature_spec,          # тот же список, что и в generate_feature_groups
-    accepted_cols=result_cols,          # что навариться — из первого вызова
-    out_path="other_df_with_features.parquet",
+    holding_df, entity_column_name="holding_id", ts_column_name="ts_key",
+    feature_spec=feature_spec, accepted_cols=result_cols,
+    out_path="holding_with_features.parquet",
 )
+print(pl.read_parquet("holding_with_features.parquet"))
 ```
 
-`feature_spec` здесь должен покрывать (как надмножество) все `result_cols` — иначе часть колонок не будет наварена (`KeyError`). Проще всего передавать один и тот же `feature_spec`, что и в первом вызове — тогда параметры каждой группы автоматически совпадают, без риска разъехаться между парными вызовами.
+```text
+shape: (3, 9)
+┌────────────┬────────┬───────────┬───────────┬───────────────────────┬────────────────────────┬────────────────────────┬───────────────────────┬────────────────────────────┐
+│ holding_id ┆ ts_key ┆ trans_sum ┆ trans_cnt ┆ trans_sum__slope__w6 ┆ trans_sum__slope__w12 ┆ trans_sum__slope__w24 ┆ trans_cnt__ewma__a30 ┆ trans_cnt__ewma__diff_a30 │
+│ i64        ┆ i64    ┆ f32       ┆ f32       ┆ f32                   ┆ f32                    ┆ f32                    ┆ f32                   ┆ f32                        │
+╞════════════╪════════╪═══════════╪═══════════╪═══════════════════════╪════════════════════════╪════════════════════════╪═══════════════════════╪════════════════════════════╡
+│ 9          ┆ 1      ┆ 3.0       ┆ 1.0       ┆ 0.0                   ┆ 0.0                    ┆ 0.0                    ┆ 1.0                   ┆ 0.0                        │
+│ 9          ┆ 2      ┆ 6.0       ┆ 2.0       ┆ 3.0                   ┆ 3.0                    ┆ 3.0                    ┆ 1.3                   ┆ 0.7                        │
+│ 9          ┆ 3      ┆ 9.0       ┆ 3.0       ┆ 3.0                   ┆ 3.0                    ┆ 3.0                    ┆ 1.81                  ┆ 1.19                       │
+└────────────┴────────┴───────────┴───────────┴───────────────────────┴────────────────────────┴────────────────────────┴───────────────────────┴────────────────────────────┘
+```
+
+`feature_spec` здесь должен покрывать все `result_cols` как надмножество — иначе `KeyError`. Проще всего передать тот же `feature_spec`.
 
 ---
 
-## Нужен автоматический отбор фич (корреляционный фильтр)?
-
-По умолчанию `generate_feature_groups` навариваете именно то, что попросили в `feature_spec`, — ничего не отбрасывается. Если хотите дополнительно прогнать жадный корреляционный фильтр (отбросить кандидатов, которые почти дублируют друг друга), передайте `corr_threshold`:
+## Отсев дублирующихся фич
 
 ```python
-result_cols = generate_feature_groups(
-    df, entity_column_name="id_key", ts_column_name="ts_key",
-    feature_spec=feature_spec, out_path="out.parquet",
-    corr_threshold=0.9,   # |r| > 0.9 → кандидат отбрасывается
-)
+kw = dict(df=df, entity_column_name="client_id", ts_column_name="ts_key",
+          feature_spec=[("trans_sum", {"slope": {"windows": [3, 6, 12]}})])
+
+print([c for c in generate_feature_groups_df(**kw).columns if "__" in c])
+print([c for c in generate_feature_groups_df(**kw, corr_threshold=0.9).columns if "__" in c])
 ```
 
-Фильтр — жадный Пирсон, читает кандидатов из временных parquet по одной колонке за раз (не грузит весь датасет фич разом), нули-в-обоих исключаются перед расчётом корреляции. `max_rows_for_correlation` (default 100 000) ограничивает число строк для расчёта на больших датасетах.
+```text
+['trans_sum__slope__w3', 'trans_sum__slope__w6', 'trans_sum__slope__w12']
+['trans_sum__slope__w3']
+```
 
-### Частный случай: один и тот же набор трансформеров на все колонки
-
-Если разных наборов не нужно и вы хотите **всегда** прогонять корреляционный фильтр (включён по умолчанию, `corr_threshold=0.9`) — есть более короткая uniform-обёртка `select_features`/`apply_selected_features`. `preset` здесь — точно такой же обязательный параметр без автоматического дефолта, как и в групповом API (`preset=None` поднимает `ValueError`); единственное отличие от `generate_feature_groups` — `transformer_names` может дополнительно сузить пресет до подмножества трансформеров:
+Один и тот же набор на все `product_cols` сразу, фильтр включён по умолчанию (`0.9`) — `select_features_df`:
 
 ```python
-from ml_toolkit.feature_generation import select_features, apply_selected_features
+from ml_toolkit.feature_generation import select_features_df
 
-accepted_cols = select_features(
-    df,
-    entity_column_name="id_key",
-    ts_column_name="ts_key",
-    product_cols=["trans_sum", "trans_cnt"],   # одни и те же трансформеры на обе колонки
-    out_path="out.parquet",
-    preset={"slope": {"windows": [6, 12, 24]}, "ewma": {"alphas": [0.3]}},  # обязателен
-    transformer_names=["slope", "ewma"],        # None — все трансформеры пресета
-)
+select_features_df(
+    df, entity_column_name="client_id", ts_column_name="ts_key",
+    product_cols=["trans_sum", "trans_cnt"], preset={"slope": {"windows": [3]}},
+).columns
 ```
 
-Внутри это тонкая обёртка: `transformer_names`+`preset` резолвятся в явный словарь `{transformer_name: params}` и передаются в `generate_feature_groups(feature_spec=[(product_cols, resolved)], corr_threshold=0.9, ...)`.
+```text
+['client_id', 'ts_key', 'trans_sum', 'trans_cnt', 'region', 'target', 'trans_sum__slope__w3']
+```
+
+`trans_cnt__slope__w3` отфильтровался — с `trans_sum__slope__w3` он коррелирует выше 0.9 (фильтр включён по умолчанию, в отличие от группового API). Дисковые/парные аналоги — `select_features`/`apply_selected_features` (та же пара ролей, что у `generate_feature_groups`/`apply_feature_groups`, но с единым `product_cols` вместо `feature_spec`).
 
 ---
 
-## Параметры, общие для всех четырёх функций
+## Трансформеры
 
-| Параметр | Смысл |
-|---|---|
-| `entity_column_name` | Колонка-идентификатор сущности (клиент, холдинг — что угодно однородное внутри `df`). |
-| `ts_column_name` | Колонка с датой конца месяца. |
-| `out_path` | Путь итогового parquet. |
-| `min_output_ts_key` / `max_output_ts_key` | Границы по `ts_column_name` (включительно), применяются **после** наварки — не обрезают историю, на которой считаются окна. |
-| `tmp_dir` | Только у `select_features`/`generate_feature_groups` — папка для временных parquet с кандидатами. `None` → системная temp (авто-удаление). Задайте явно, чтобы файлы остались для отладки. |
-| `name` | Метка для логов/tqdm — например, имя датасета в вызывающей задаче ("subset" / "holding"). |
+```python
+from ml_toolkit.feature_generation import AVAILABLE_TRANSFORMER_NAMES
+```
 
-`preset`/параметры трансформеров — не общий параметр всех четырёх функций, но обязателен без исключений: в `select_features`/`apply_selected_features` это отдельные kwargs `transformer_names`+`preset` (preset=None — `ValueError`, автоматического дефолта нет); в `generate_feature_groups`/`apply_feature_groups` это второй, обязательный элемент каждой пары в `feature_spec` (см. выше).
+93 штуки, параметры каждого — в докстринге `ml_toolkit/transformers/kernels/{имя}.py`, раздел `Preset entry`:
 
----
-
-## Реестр трансформеров
-
-81 трансформер, сгруппированных тематически (полный список — `ml_toolkit/transformers/__init__.py`, параметры каждого — докстринг соответствующего модуля в `ml_toolkit/transformers/kernels/`):
-
+- *simple statistics*: `window_mean`, `window_median`
 - *trend*: `slope`, `slope_ratio`, `momentum`, `direction_flag`, `max_abs_jump`, `streak`, `growth_since_start`
 - *volatility*: `rolling_std`, `rolling_cv`, `rolling_min_max`, `extreme_share`, `skew_proxy`
 - *tenure/activity*: `active_months`, `active_run_count`, `activity_rate`, `client_age`, `inactive_streak`, `longest_active_run`, `recency`, `tenure`, `zero_share`
@@ -213,33 +202,87 @@ accepted_cols = select_features(
 - *log growth*: `geometric_return`, `log_level`, `log_slope`, `log_slope_ratio`, `log_volatility`
 - *smoothness*: `alternation_rate`, `roughness_ratio`, `total_variation`
 - *distribution moments*: `kurtosis_proxy`
-- *прочее*: `burstiness`, `cross_window_momentum`, `extreme_events`, `flow_regularity`, `growth_quality`, `lag_comparison`, `lifecycle_phase`, `mean_deviation_shape`, `microstructure`, `nonlinearity`, `plateau`, `quantile_persistence`, `recovery_dynamics`, `regime_change`, `trend_consistency`, `value_clustering`, `window_mean`, `window_median`, `window_volatility_ratios`, `zero_clustering`
+- *остальное*: `burstiness`, `cross_window_momentum`, `extreme_events`, `flow_regularity`, `growth_quality`, `lag_comparison`, `lifecycle_phase`, `mean_deviation_shape`, `microstructure`, `nonlinearity`, `plateau`, `quantile_persistence`, `recovery_dynamics`, `regime_change`, `trend_consistency`, `value_clustering`, `window_volatility_ratios`, `zero_clustering`
+- *tsfresh-inspired*: `c3`, `permutation_entropy`, `change_quantiles`, `energy_ratio_by_chunks`, `index_mass_quantile`, `agg_autocorrelation`
+- *catch22/tsfel-inspired*: `dfa`, `transition_matrix`, `acf_characteristic_scale`, `automutual_info`, `auto_period`
+- *сегментация как фича*: `segment_gap` (обычно не навариваете сами — подключается через `segment:` в params другого трансформера, см. CLAUDE.md → «Segmentation»)
 
-Именование выходных колонок: `{product_col}__{feature}__{suffix}` (или без `__{suffix}`, если у трансформера нет суффиксов, например `growth_since_start`).
+Имя выходной колонки: `{product_col}__{feature}__{suffix}` (без `__{suffix}`, если у трансформера один безымянный выход, например `growth_since_start`).
+
+Нужны не все выходы трансформера, а только часть из них — `include_suffixes`/`exclude_suffixes` в params. Сегментация по разрывам активности и заполнение NaN — `segment`/`fill_nan`. Подробности — CLAUDE.md → «Segmentation», «Filling NaN», «Selecting output suffixes».
 
 ---
 
-## Ошибки и edge cases
+## NaN от сегментации → `fill_known_nan`
 
-| Ситуация | Поведение |
+```python
+df_gap = pl.DataFrame({
+    "client_id": [1] * 6,
+    "ts_key":    [1, 2, 3, 4, 5, 6],
+    "trans_sum": [0., 0., 9., 12., 18., 15.],   # молчал, потом начал
+})
+
+out = generate_feature_groups_df(
+    df_gap, entity_column_name="client_id", ts_column_name="ts_key",
+    feature_spec=[("trans_sum", {
+        "window_mean": {"windows": [3], "segment": {"strategy": "zero_gap", "gap_threshold": 2}},
+    })],
+)
+print(out)
+print(fill_known_nan(out))
+```
+
+```text
+shape: (6, 4)                                              shape: (6, 4)
+┌───────────┬────────┬───────────┬───────────────────┐     ┌───────────┬────────┬───────────┬────────────────────┐
+│ client_id ┆ ts_key ┆ trans_sum ┆ ...window_mean__w3 │     │ client_id ┆ ts_key ┆ trans_sum ┆ ...window_mean__w3 │
+│ i64       ┆ i64    ┆ f32       ┆ f32                │     │ i64       ┆ i64    ┆ f32       ┆ f32                 │
+╞═══════════╪════════╪═══════════╪════════════════════╡     ╞═══════════╪════════╪═══════════╪═════════════════════╡
+│ 1         ┆ 1      ┆ 0.0       ┆ NaN                │     │ 1         ┆ 1      ┆ 0.0       ┆ -1.0000e30          │
+│ 1         ┆ 2      ┆ 0.0       ┆ NaN                │     │ 1         ┆ 2      ┆ 0.0       ┆ -1.0000e30          │
+│ 1         ┆ 3      ┆ 9.0       ┆ 9.0                │     │ 1         ┆ 3      ┆ 9.0       ┆ 9.0                 │
+│ 1         ┆ 4      ┆ 12.0      ┆ 10.5               │     │ 1         ┆ 4      ┆ 12.0      ┆ 10.5                │
+│ 1         ┆ 5      ┆ 18.0      ┆ 13.0               │     │ 1         ┆ 5      ┆ 18.0      ┆ 13.0                │
+│ 1         ┆ 6      ┆ 15.0      ┆ 15.0               │     │ 1         ┆ 6      ┆ 15.0      ┆ 15.0                │
+└───────────┴────────┴───────────┴────────────────────┘     └───────────┴────────┴───────────┴─────────────────────┘
+```
+
+`zero_gap` безусловно исключает ведущие нули (клиента ещё не было) — это `NaN`, не `0` (`0` = «мало истории»). `fill_known_nan(df)` заполняет их сама, без `preset`: смотрит на имя колонки, находит кернель по токену `transformer`, берёт его `FILL_NAN`. Тут `-1e30`-сентинел, не `-1.0` — `window_mean` считает среднее в масштабе исходной колонки без гарантированной границы, `-1.0` мог бы оказаться настоящим значением.
+
+---
+
+## Частые ошибки
+
+| Ситуация | Что произойдёт |
 |---|---|
 | `feature_spec` пуст (`[]`) | `ValueError` |
 | Элемент `feature_spec` — не пара `(columns, preset)` | `ValueError` |
-| Второй элемент пары не задан (`None`) | `ValueError` — автоматического пресета по умолчанию нет |
-| `select_features`/`apply_selected_features`: `preset=None` | `ValueError` — то же самое правило, дефолта нет и здесь |
-| Неизвестное имя трансформера (ключ словаря) | `ValueError` со списком `AVAILABLE_TRANSFORMER_NAMES` |
-| Строка/селектор в `feature_spec` резолвится в колонку вне схемы `df` | `ValueError` с именами отсутствующих колонок |
-| Селектор ни во что не резолвится (например, датасет без опциональных колонок) | `logger.warning`, группа молча пропускается |
-| `(columns, {})` | Осознанный pass-through — колонка в выходе, фич по ней нет |
-| Одна и та же колонка + трансформер запрошены в разных группах `feature_spec` с разными параметрами | `ValueError` — конфликт, не тихий выбор одного из вариантов |
-| `accepted_cols` в `apply_feature_groups` содержит колонку, не покрытую `feature_spec` | `KeyError` — `feature_spec` должен быть надмножеством |
+| Второй элемент пары (или `preset`) не задан (`None`) | `ValueError` — автопресета нет нигде |
+| Неизвестное имя трансформера | `ValueError` со списком `AVAILABLE_TRANSFORMER_NAMES` |
+| Колонка/селектор вне схемы `df` | `ValueError` с именами отсутствующих колонок |
+| Селектор ни во что не резолвится | `logger.warning`, группа пропускается |
+| `(columns, {})` | Осознанный пропуск — колонка в выходе, фич по ней нет |
+| Одна колонка+трансформер, разные параметры в разных группах | `ValueError` — конфликт, не тихий выбор |
+| `accepted_cols` в `apply_*` содержит колонку вне `feature_spec`/`product_cols` | `KeyError` |
 
 ---
 
-## Как это устроено под капотом (кратко)
+## Общие параметры
 
-1. **Наварка кандидатов** — для каждой пары (колонка, трансформер) признаки считаются и сразу пишутся во временный parquet (не держим весь широкий датасет фич в памяти разом).
-2. **Корреляционный фильтр** (только если задан `corr_threshold`) — жадный Пирсон, читает кандидатов по одной колонке за раз.
-3. **Сборка выхода** — только нужные колонки читаются из временных parquet, по одному row group за раз, и пишутся в `out_path`.
+| Параметр | Смысл |
+|---|---|
+| `entity_column_name` / `ts_column_name` | Колонка-идентификатор сущности / колонка с датой. |
+| `min_output_ts_key` / `max_output_ts_key` | Границы по `ts_column_name` (включительно), режут выход **после** наварки — история для окон не обрезается. |
+| `name` | Метка для логов/tqdm. |
+| `out_path` / `tmp_dir` | Только у функций без `_df` — путь к результату / к временным parquet-кандидатам. `tmp_dir=None` → авто-temp. |
 
-`apply_feature_groups`/`apply_selected_features` (второй датасет) идут другим, более коротким путём: считают только то, что нужно для покрытия `accepted_cols`, без промежуточных parquet-файлов.
+---
+
+## Под капотом
+
+1. `df` (отсортированный по entity/ts) целиком пишется во временный parquet — отсюда сквозные колонки в выходе.
+2. Для каждой пары (колонка, трансформер) фичи считаются и сразу пишутся в свой parquet — широкий набор фич разом в памяти не держится.
+3. Корреляционный фильтр (если задан `corr_threshold`) — жадный Пирсон, кандидат за кандидатом; сквозных колонок не касается.
+4. Сборка выхода читает всё по одному row group за раз: product-колонки и фичи → `float32`, сквозные колонки — как есть.
+
+`apply_feature_groups`/`apply_selected_features` — тот же путь без шага 3, сразу по готовому `accepted_cols`.

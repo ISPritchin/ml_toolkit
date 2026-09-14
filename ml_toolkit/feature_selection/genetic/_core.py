@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 # Scorer: обучает модель на выбранных признаках, возвращает float для минимизации.
 ScorerFn = Callable[[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series], float]
 
+# CLASSIFICATION_PRESETS (ml_toolkit.model_evaluation) уже умеет и binary (y_proba
+# 1D — вероятность положительного класса), и multiclass (y_proba 2D (n, K)) —
+# сам решает по y_proba.ndim, какую формулу применить (macro для f1/precision/
+# recall/roc_auc/pr_auc, OvR-среднее для brier/ece, argmax + нативный sklearn
+# для accuracy/balanced_accuracy/mcc/cohen_kappa/gini). genetic-модуль эти формулы
+# не дублирует — только решает, какие из них "выше — лучше" (нужно инвертировать
+# знак для минимизации) и добавляет обратную совместимость по именам.
+_LOWER_IS_BETTER_CLS_METRICS = frozenset({'log_loss', 'brier', 'ece'})
+_CLS_METRIC_ALIASES: dict[str, str] = {'logloss': 'log_loss'}  # старое имя в genetic API
+
 
 def make_catboost_scorer(
     task: str,
@@ -33,14 +43,36 @@ def make_catboost_scorer(
     (baseline, cat_features) фиксируются здесь; GA передаёт только срезанные
     X_train / X_valid.
 
+    ``task='classification'`` работает и для бинарной, и для multiclass задачи —
+    режим определяется автоматически по числу уникальных меток в ``y_train``
+    (``len(np.unique(y_train)) > 2``), тем же способом, что и адаптеры в
+    ``ml_toolkit.models`` (``CatBoostClassifier``/``LightGBMClassifier``/
+    ``XGBoostClassifier``). Если в ``model_params`` не задан явный
+    ``loss_function``, для multiclass он проставляется в ``'MultiClass'``
+    автоматически (как и в этих адаптерах) — явный ``loss_function`` в
+    ``model_params`` не переопределяется.
+
     Args:
-        task: ``'classification'`` или ``'regression'``.
-        metric: Строка-метрика или ``callable(y_true, y_score) -> float``
+        task: ``'classification'`` (бинарная или multiclass — см. выше) или
+            ``'regression'``.
+        metric: Строка-метрика или ``callable(y_true, y_proba) -> float``
             (конвенция: значение для минимизации; для «выше — лучше» нужен минус).
-            Строки (классификация): ``'pr_auc'``, ``'roc_auc'``, ``'f1'``,
-            ``'balanced_accuracy'``, ``'logloss'``, ``'brier'``, ``'mcc'``,
-            ``'accuracy'``. Строки (регрессия): ``'mae'``, ``'rmse'``,
-            ``'median_ae'``, ``'mape'``, ``'smape'``, ``'r2'``.
+            При multiclass ``y_proba`` в callable — полная матрица ``(n, n_classes)``
+            от ``predict_proba``, при бинарной — как раньше, 1D-вектор вероятности
+            положительного класса.
+
+            Строки (классификация, единый реестр с
+            ``ml_toolkit.model_evaluation.CLASSIFICATION_PRESETS`` — при multiclass
+            каждая метрика сама переключается на macro/OvR-агрегацию, подробности
+            там же): ``'pr_auc'``, ``'roc_auc'``, ``'f1'``, ``'precision'``,
+            ``'recall'``, ``'balanced_accuracy'``, ``'accuracy'``, ``'mcc'``,
+            ``'cohen_kappa'``, ``'gini'``, ``'log_loss'`` (алиас — старое имя
+            ``'logloss'``), ``'brier'``, ``'ece'``. ``'ks'`` тоже доступна, но
+            определена только для бинарной классификации и поднимет
+            ``ValueError`` при multiclass ``y``.
+
+            Строки (регрессия): ``'mae'``, ``'rmse'``, ``'median_ae'``,
+            ``'mape'``, ``'smape'``, ``'r2'``.
         model_params: Параметры CatBoostClassifier / CatBoostRegressor.
         cat_features: Категориальные признаки; автоматически фильтруются по
             колонкам переданного X_train.
@@ -57,19 +89,9 @@ def make_catboost_scorer(
 
     """
     from catboost import CatBoostClassifier, CatBoostRegressor, Pool
-    from sklearn.metrics import (
-        accuracy_score,
-        average_precision_score,
-        balanced_accuracy_score,
-        brier_score_loss,
-        f1_score,
-        log_loss,
-        matthews_corrcoef,
-        mean_squared_error,
-        median_absolute_error,
-        r2_score,
-        roc_auc_score,
-    )
+    from sklearn.metrics import mean_squared_error, median_absolute_error, r2_score
+
+    from ml_toolkit.model_evaluation import CLASSIFICATION_PRESETS
 
     _cat_set = set(cat_features or [])
 
@@ -80,34 +102,37 @@ def make_catboost_scorer(
         y_valid: pd.Series,
     ) -> float:
         cat_sel = [f for f in X_train.columns if f in _cat_set]
-        ModelClass = CatBoostClassifier if task == 'classification' else CatBoostRegressor
-        model = ModelClass(**model_params)
+
+        if task == 'classification':
+            cb_params = dict(model_params)
+            if len(np.unique(np.asarray(y_train))) > 2:
+                cb_params.setdefault('loss_function', 'MultiClass')
+            model = CatBoostClassifier(**cb_params)
+        else:
+            model = CatBoostRegressor(**model_params)
+
         train_pool = Pool(X_train, y_train, cat_features=cat_sel, baseline=baseline_train)
         valid_pool = Pool(X_valid, y_valid, cat_features=cat_sel, baseline=baseline_valid)
         model.fit(train_pool, eval_set=valid_pool)
 
         if task == 'classification':
-            proba = model.predict_proba(valid_pool)[:, 1]
-            pred = (proba >= 0.5).astype(int)
+            proba = model.predict_proba(valid_pool)
+            # Бинарная задача: 1D-вектор P(y=1), как и раньше (для обратной
+            # совместимости и потому что CLASSIFICATION_PRESETS сам различает
+            # бинарный/multiclass случай по ndim, а не по числу столбцов proba).
+            # Multiclass: полная матрица (n, n_classes) — presets делают
+            # argmax/OvR/macro сами (см. ml_toolkit/model_evaluation/_classification.py).
+            proba_for_metric = proba[:, 1] if proba.shape[1] == 2 else proba
             if callable(metric):
-                return float(metric(y_valid.to_numpy(), proba))
-            if metric == 'pr_auc':
-                return -average_precision_score(y_valid, proba)
-            if metric == 'roc_auc':
-                return -roc_auc_score(y_valid, proba)
-            if metric == 'f1':
-                return -f1_score(y_valid, pred)
-            if metric == 'balanced_accuracy':
-                return -balanced_accuracy_score(y_valid, pred)
-            if metric == 'logloss':
-                return log_loss(y_valid, proba)
-            if metric == 'brier':
-                return brier_score_loss(y_valid, proba)
-            if metric == 'mcc':
-                return -matthews_corrcoef(y_valid, pred)
-            if metric == 'accuracy':
-                return -accuracy_score(y_valid, pred)
-            raise ValueError(f'Unsupported classification metric: {metric}')
+                return float(metric(y_valid.to_numpy(), proba_for_metric))
+            metric_name = _CLS_METRIC_ALIASES.get(metric, metric)
+            if metric_name not in CLASSIFICATION_PRESETS:
+                raise ValueError(
+                    f'Unsupported classification metric: {metric!r}. '
+                    f'Available: {sorted(CLASSIFICATION_PRESETS)}'
+                )
+            value = CLASSIFICATION_PRESETS[metric_name](y_valid.to_numpy(), proba_for_metric)
+            return value if metric_name in _LOWER_IS_BETTER_CLS_METRICS else -value
 
         pred = model.predict(valid_pool)
         pred_post = postprocess_fn(pred) if postprocess_fn is not None else pred

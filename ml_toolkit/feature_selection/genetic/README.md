@@ -79,9 +79,27 @@ make_catboost_scorer(
 
 `baseline_train` / `baseline_valid` задаются как предвычисленные массивы (например `X_train['fee_nds_amount']`), а не именем колонки — CatBoost использует их как фиксированное смещение при residual learning. `postprocess_fn` применяется к предиктам регрессора до расчёта метрики; если нужны доп. колонки — замкните их снаружи.
 
-Строковые метрики (регрессия): `'mae'`, `'rmse'`, `'median_ae'`, `'mape'`, `'smape'`, `'r2'`. Строковые метрики (классификация): `'pr_auc'`, `'roc_auc'`, `'f1'`, `'balanced_accuracy'`, `'logloss'`, `'brier'`, `'mcc'`, `'accuracy'`.
+Строковые метрики (регрессия): `'mae'`, `'rmse'`, `'median_ae'`, `'mape'`, `'smape'`, `'r2'`.
+
+Строковые метрики (классификация) — общий реестр с `ml_toolkit.model_evaluation.CLASSIFICATION_PRESETS`: `'pr_auc'`, `'roc_auc'`, `'f1'`, `'precision'`, `'recall'`, `'balanced_accuracy'`, `'accuracy'`, `'mcc'`, `'cohen_kappa'`, `'gini'`, `'log_loss'` (алиас — старое имя `'logloss'`), `'brier'`, `'ece'`. `'ks'` тоже доступна, но определена только для бинарной классификации.
 
 Callable-метрика: `fn(y_true: np.ndarray, y_score: np.ndarray) -> float` — по конвенции возвращает значение для минимизации.
+
+### Бинарная и multiclass классификация
+
+`task='classification'` работает без изменений в вызове для обеих задач — multiclass определяется автоматически по числу уникальных меток в `y_train` (`len(np.unique(y_train)) > 2`), так же, как в адаптерах `ml_toolkit.models` (`CatBoostClassifier`/`LightGBMClassifier`/`XGBoostClassifier`). Если в `model_params` не задан явный `loss_function`, при multiclass он автоматически проставляется в `'MultiClass'` (явный `loss_function` в `model_params` никогда не переопределяется).
+
+Каждая строковая метрика сама переключается на подходящую multiclass-агрегацию (macro для `f1`/`precision`/`recall`/`roc_auc`/`pr_auc`, OvR-среднее для `brier`/`ece`, `argmax` + нативный sklearn для `accuracy`/`balanced_accuracy`/`mcc`/`cohen_kappa`/`gini`) — вызывающему коду не нужно ничего указывать дополнительно:
+
+```python
+scorer = make_catboost_scorer(
+    task='classification',
+    metric='f1',    # macro-F1, если y_train содержит > 2 классов
+    model_params={'iterations': 300, 'verbose': 0},
+)
+```
+
+Для callable-метрики при multiclass в `y_score` приходит полная матрица `predict_proba` формы `(n, n_classes)` (а не срез по одному классу, как при бинарной задаче) — если метрике нужны hard-предикты, берите `y_score.argmax(axis=1)` внутри неё самостоятельно.
 
 ### Примеры пользовательских метрик (callable)
 

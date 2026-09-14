@@ -19,7 +19,9 @@ from ml_toolkit.feature_generation import (
     apply_feature_groups,
     apply_selected_features,
     generate_feature_groups,
+    generate_feature_groups_df,
     select_features,
+    select_features_df,
 )
 
 SLOPE_DEFAULT = {'slope': {'windows': [6, 12, 24]}}
@@ -367,3 +369,197 @@ def test_generate_feature_groups_conflicting_presets_for_same_column_raises(tmp_
             ],
             out_path=tmp_path / 'out.parquet',
         )
+
+
+def test_generate_feature_groups_include_suffixes_keeps_only_listed(tmp_path):
+    df = _growth_and_decline_df('entity_id')
+
+    result_cols = generate_feature_groups(
+        df,
+        entity_column_name='entity_id',
+        ts_column_name='ts_key',
+        feature_spec=[('value', {'slope': {'windows': [6, 12, 24], 'include_suffixes': ['w6', 'w24']}})],
+        out_path=tmp_path / 'out.parquet',
+    )
+
+    assert set(result_cols) == {'value__slope__w6', 'value__slope__w24'}
+    out = pl.read_parquet(tmp_path / 'out.parquet')
+    assert 'value__slope__w12' not in out.columns
+
+
+def test_generate_feature_groups_exclude_suffixes_drops_listed(tmp_path):
+    df = _growth_and_decline_df('entity_id')
+
+    result_cols = generate_feature_groups(
+        df,
+        entity_column_name='entity_id',
+        ts_column_name='ts_key',
+        feature_spec=[('value', {'slope': {'windows': [6, 12, 24], 'exclude_suffixes': ['w12']}})],
+        out_path=tmp_path / 'out.parquet',
+    )
+
+    assert set(result_cols) == {'value__slope__w6', 'value__slope__w24'}
+
+
+def test_generate_feature_groups_unknown_suffix_raises(tmp_path):
+    df = _growth_and_decline_df('entity_id')
+
+    with pytest.raises(ValueError, match='include_suffixes'):
+        generate_feature_groups(
+            df,
+            entity_column_name='entity_id',
+            ts_column_name='ts_key',
+            feature_spec=[('value', {'slope': {'windows': [6, 12], 'include_suffixes': ['w999']}})],
+            out_path=tmp_path / 'out.parquet',
+        )
+
+
+def test_generate_feature_groups_conflicting_suffix_filters_for_same_transformer_raises(tmp_path):
+    df = _two_product_df('entity_id')
+
+    with pytest.raises(ValueError, match='разными параметрами'):
+        generate_feature_groups(
+            df,
+            entity_column_name='entity_id',
+            ts_column_name='ts_key',
+            feature_spec=[
+                ('trans_a', {'slope': {'windows': [6, 12, 24], 'include_suffixes': ['w6']}}),
+                ('trans_a', {'slope': {'windows': [6, 12, 24], 'include_suffixes': ['w12']}}),
+            ],
+            out_path=tmp_path / 'out.parquet',
+        )
+
+
+def test_generate_feature_groups_df_returns_dataframe_without_out_path():
+    df = _growth_and_decline_df('entity_id')
+
+    out = generate_feature_groups_df(
+        df,
+        entity_column_name='entity_id',
+        ts_column_name='ts_key',
+        feature_spec=[('value', SLOPE_DEFAULT)],
+    )
+
+    assert isinstance(out, pl.DataFrame)
+    assert set(out.columns) == {
+        'entity_id', 'ts_key', 'value', 'value__slope__w6', 'value__slope__w12', 'value__slope__w24',
+    }
+    assert out.height == df.height
+
+
+def _df_with_passthrough_columns(entity_col: str) -> pl.DataFrame:
+    """Датасет, у которого есть колонки вне feature_spec (region/target) — не product_cols."""
+    months = list(range(1, 13))
+    growing = [10.0 * i for i in months]
+    declining = [10.0 * (13 - i) for i in months]
+    return pl.DataFrame({
+        entity_col: [1] * len(months) + [2] * len(months),
+        'ts_key': months + months,
+        'value': growing + declining,
+        'region': ['msk'] * len(months) + ['spb'] * len(months),
+        'target': [i % 2 for i in months] * 2,
+    })
+
+
+def test_generate_feature_groups_df_keeps_passthrough_columns():
+    df = _df_with_passthrough_columns('entity_id')
+
+    out = generate_feature_groups_df(
+        df, entity_column_name='entity_id', ts_column_name='ts_key',
+        feature_spec=[('value', SLOPE_DEFAULT)],
+    )
+
+    assert set(out.columns) == {
+        'entity_id', 'ts_key', 'value', 'region', 'target',
+        'value__slope__w6', 'value__slope__w12', 'value__slope__w24',
+    }
+    assert out['region'].to_list() == df['region'].to_list()
+    assert out['target'].to_list() == df['target'].to_list()
+    assert out['target'].dtype == df['target'].dtype
+    assert out.height == df.height
+
+
+def test_generate_feature_groups_passthrough_columns_survive_corr_filter():
+    df = _df_with_passthrough_columns('entity_id')
+
+    out = generate_feature_groups_df(
+        df, entity_column_name='entity_id', ts_column_name='ts_key',
+        feature_spec=[('value', SLOPE_DEFAULT)],
+        corr_threshold=0.9,  # выкинет часть окон slope, но не должен трогать region/target
+    )
+
+    assert 'region' in out.columns
+    assert 'target' in out.columns
+
+
+def test_generate_feature_groups_passthrough_columns_respect_ts_filter():
+    df = _df_with_passthrough_columns('entity_id')
+
+    out = generate_feature_groups_df(
+        df, entity_column_name='entity_id', ts_column_name='ts_key',
+        feature_spec=[('value', SLOPE_DEFAULT)],
+        min_output_ts_key=6,
+    )
+
+    assert out.height == df.filter(pl.col('ts_key') >= 6).height
+    assert set(out['ts_key'].to_list()) == set(range(6, 13))
+
+
+def test_apply_feature_groups_keeps_own_passthrough_columns(tmp_path):
+    source_df = _df_with_passthrough_columns('entity_id')
+    other_df = pl.DataFrame({
+        'group_id': [7] * 6,
+        'ts_key': list(range(1, 7)),
+        'value': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        'note': ['a', 'b', 'c', 'd', 'e', 'f'],  # другая passthrough-колонка, не region/target
+    })
+
+    result_cols = generate_feature_groups(
+        source_df, entity_column_name='entity_id', ts_column_name='ts_key',
+        feature_spec=[('value', SLOPE_DEFAULT)], out_path=tmp_path / 'source.parquet',
+    )
+    apply_feature_groups(
+        other_df, entity_column_name='group_id', ts_column_name='ts_key',
+        feature_spec=[('value', SLOPE_DEFAULT)], accepted_cols=result_cols,
+        out_path=tmp_path / 'other.parquet',
+    )
+
+    out = pl.read_parquet(tmp_path / 'other.parquet')
+    assert set(out.columns) == {
+        'group_id', 'ts_key', 'value', 'note',
+        'value__slope__w6', 'value__slope__w12', 'value__slope__w24',
+    }
+    assert out['note'].to_list() == other_df['note'].to_list()
+
+
+def test_generate_feature_groups_no_passthrough_columns_is_unchanged(tmp_path):
+    """Датасет без лишних колонок (только entity/ts/product_cols) - поведение как раньше."""
+    df = _growth_and_decline_df('entity_id')
+
+    result_cols = generate_feature_groups(
+        df, entity_column_name='entity_id', ts_column_name='ts_key',
+        feature_spec=[('value', SLOPE_DEFAULT)], out_path=tmp_path / 'out.parquet',
+    )
+
+    out = pl.read_parquet(tmp_path / 'out.parquet')
+    assert out.columns == ['entity_id', 'ts_key', 'value', *result_cols]
+
+
+def test_select_features_df_returns_dataframe_without_out_path():
+    df = _growth_and_decline_df('entity_id')
+
+    out = select_features_df(
+        df,
+        entity_column_name='entity_id',
+        ts_column_name='ts_key',
+        product_cols=['value'],
+        corr_threshold=None,
+        transformer_names=['slope'],
+        preset='minimum',
+    )
+
+    assert isinstance(out, pl.DataFrame)
+    assert set(out.columns) == {
+        'entity_id', 'ts_key', 'value', 'value__slope__w6', 'value__slope__w12', 'value__slope__w24',
+    }
+    assert out.height == df.height
