@@ -20,8 +20,8 @@ from sklearn.tree import DecisionTreeRegressor as _SKDTRegressor
 from ml_toolkit.models._base import BaseModel
 from ml_toolkit.models._tabular._forests._common import (
     make_impute_pipeline,
-    predict_via_pipeline,
     predict_proba_via_pipeline,
+    predict_via_pipeline,
 )
 from ml_toolkit.models._utils import (
     CLS_METRICS,

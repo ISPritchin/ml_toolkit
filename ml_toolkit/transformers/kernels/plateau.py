@@ -48,7 +48,7 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, compute_window_mean, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED_LOW, compute_window_mean, resolve_window_size
 
 FEATURE = 'plateau'
 FILL_NAN: dict[str | None, float] = {
@@ -56,7 +56,7 @@ FILL_NAN: dict[str | None, float] = {
     'longest_flat': -1.0,  # счётчик >= 0 — -1 недостижим
     'near_mean': -1.0,  # доля в [0,1] — -1 недостижим
     'current_flat_streak': -1.0,  # счётчик >= 0 — -1 недостижим
-    'plateau_exit_recency': FILL_NAN_UNBOUNDED,  # легитимный диапазон уже включает -1 (плато не завершалось) — обычный -1 занят
+    'plateau_exit_recency': FILL_NAN_UNBOUNDED_LOW,  # легитимный диапазон уже включает -1 (плато не завершалось) — обычный -1 занят
 }
 
 _FLAT_THRESHOLD = 0.05  # |diff| < 5% от mean считается плоским

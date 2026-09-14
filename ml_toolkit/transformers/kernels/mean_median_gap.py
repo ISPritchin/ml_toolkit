@@ -38,7 +38,7 @@ import numba as nb
 import numpy as np
 
 from ml_toolkit.transformers._windowing import (
-    FILL_NAN_UNBOUNDED,
+    FILL_NAN_UNBOUNDED_LOW,
     compute_window_mean,
     fill_window_sorted,
     resolve_window_size,
@@ -48,7 +48,7 @@ from ml_toolkit.transformers._windowing import (
 
 FEATURE = 'mean_median_gap'
 FILL_NAN: dict[str | None, float] = {
-    None: FILL_NAN_UNBOUNDED,
+    None: FILL_NAN_UNBOUNDED_LOW,
 }
 
 

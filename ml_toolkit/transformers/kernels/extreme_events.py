@@ -52,10 +52,15 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_mean_and_std, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import (
+    FILL_NAN_UNBOUNDED_LOW,
+    compute_window_mean_and_std,
+    resolve_window_size,
+    safe_ratio,
+)
 
 FEATURE = 'extreme_events'
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # смесь счётчиков/z-score/флагов, без единой строгой границы
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}  # смесь счётчиков/z-score/флагов, без единой строгой границы
 
 
 @nb.njit(cache=True)

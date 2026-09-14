@@ -18,7 +18,6 @@ import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
 
 try:
     from quantile_forest import RandomForestQuantileRegressor

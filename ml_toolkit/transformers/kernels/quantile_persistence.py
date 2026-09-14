@@ -50,7 +50,7 @@ import numpy as np
 
 from ml_toolkit.transformers._windowing import (
     EPS,
-    FILL_NAN_UNBOUNDED,
+    FILL_NAN_UNBOUNDED_LOW,
     fill_window_sorted,
     resolve_window_size,
     sorted_median,
@@ -58,7 +58,7 @@ from ml_toolkit.transformers._windowing import (
 )
 
 FEATURE = 'quantile_persistence'
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # q_stability = 1-CV(rank) формально не ограничена снизу
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}  # q_stability = 1-CV(rank) формально не ограничена снизу
 
 
 @nb.njit(cache=True)

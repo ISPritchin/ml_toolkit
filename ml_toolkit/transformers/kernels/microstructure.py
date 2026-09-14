@@ -47,7 +47,7 @@ import numpy as np
 
 from ml_toolkit.transformers._windowing import (
     EPS,
-    FILL_NAN_UNBOUNDED,
+    FILL_NAN_UNBOUNDED_LOW,
     compute_window_mean_and_std,
     resolve_window_size,
     safe_ratio,
@@ -58,7 +58,7 @@ FEATURE = 'microstructure'
 # структурно ограничены (predictability в (0,1]). cond_mean = mean*ws/active_count —
 # сырой масштаб колонки, произвольного знака при знакопеременных данных. Единый
 # сентинел безопасен для всех выходов сразу.
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)

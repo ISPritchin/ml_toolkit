@@ -55,13 +55,19 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, pearson_from_sums, safe_ratio, windowed_lag_pearson
+from ml_toolkit.transformers._windowing import (
+    EPS,
+    FILL_NAN_UNBOUNDED_LOW,
+    pearson_from_sums,
+    safe_ratio,
+    windowed_lag_pearson,
+)
 
 FEATURE = 'seasonal_autocorr'
 # lag6/lag12/lag6_w24/lag12_w24 — Pearson r в [-1,1]; quarter_cv/amplitude неотрицательны
 # структурно (sqrt/max-min); even_odd идёт через safe_ratio от средних произвольного знака
 # (знакопеременные данные) — не гарантированно неотрицателен.
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)

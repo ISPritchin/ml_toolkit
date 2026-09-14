@@ -234,7 +234,6 @@ class LightGBMRegressor(BaseModel):
         baseline_va: np.ndarray | None,
         pp: Callable,
     ):
-        import optuna
 
         baseline_col = self.model_settings.get('baseline_col')
         metric_fn, direction = resolve_metric_fn(
@@ -456,7 +455,6 @@ class LightGBMClassifier(BaseModel):
         cat_in_sel: list[str],
         is_binary: bool,
     ):
-        import optuna
 
         metric_fn, direction = resolve_metric_fn(
             self.model_settings, 'cls_metric', CLS_METRICS['pr_auc'][0], 'maximize', CLS_METRICS,

@@ -57,14 +57,14 @@ import numpy as np
 
 from ml_toolkit.transformers._windowing import (
     EPS,
-    FILL_NAN_UNBOUNDED,
+    FILL_NAN_UNBOUNDED_LOW,
     fit_linear_trend_slope,
     resolve_window_size,
     safe_ratio,
 )
 
 FEATURE = 'trend_consistency'
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # смесь долей [0,1] и не строго ограниченных noise_signal/r_squared
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}  # смесь долей [0,1] и не строго ограниченных noise_signal/r_squared
 
 
 @nb.njit(cache=True)

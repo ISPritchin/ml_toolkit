@@ -42,12 +42,12 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_sum, resolve_window_size
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED_LOW, compute_window_sum, resolve_window_size
 
 FEATURE = 'cusum'
 FILL_NAN: dict[str | None, float] = {
     'pos': -1.0,  # cusum_pos >= 0 всегда (сумма положительных отклонений) — -1 недостижим
-    'neg': FILL_NAN_UNBOUNDED,  # cusum_neg <= 0, сырой масштаб без универсальной нижней границы
+    'neg': FILL_NAN_UNBOUNDED_LOW,  # cusum_neg <= 0, сырой масштаб без универсальной нижней границы
 }
 
 

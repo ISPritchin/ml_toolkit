@@ -1,18 +1,18 @@
 from .kernels import (
     # trend change
     accel,
+    # new groups
+    acf_characteristic_scale,
     # tenure / activity
     active_months,
     active_run_count,
     activity_rate,
-    # new groups
-    acf_characteristic_scale,
     agg_autocorrelation,
     # smoothness
     alternation_rate,
+    auto_period,
     # autocorr & seasonal
     autocorr,
-    auto_period,
     automutual_info,
     # new groups
     burstiness,

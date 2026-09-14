@@ -41,14 +41,14 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED
+from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED_LOW
 
 FEATURE = 'ewma'
 FILL_NAN: dict[str | None, float] = {
     # взвешенное среднее сырых значений колонки — при знакопеременных данных произвольного
     # знака и масштаба, как и обычный mean; "EWMA >= 0" верно только при неотрицательных v.
-    None: FILL_NAN_UNBOUNDED,
-    'diff': FILL_NAN_UNBOUNDED,  # v - EWMA, сырой масштаб колонки, без универсальной границы
+    None: FILL_NAN_UNBOUNDED_LOW,
+    'diff': FILL_NAN_UNBOUNDED_LOW,  # v - EWMA, сырой масштаб колонки, без универсальной границы
 }
 
 

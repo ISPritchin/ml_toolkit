@@ -38,8 +38,8 @@ import numba as nb
 import numpy as np
 
 from ml_toolkit.transformers._windowing import (
-    FILL_NAN_UNBOUNDED,
     FILL_NAN_UNBOUNDED_HIGH,
+    FILL_NAN_UNBOUNDED_LOW,
     compute_window_min_and_max,
     resolve_window_size,
 )
@@ -51,7 +51,7 @@ FILL_NAN: dict[str | None, float] = {
     # в сторону, противоположную своей роли (min → +, max → -), чтобы
     # заполненное значение не читалось как правдоподобный реальный экстремум.
     'min_w': FILL_NAN_UNBOUNDED_HIGH,
-    'max_w': FILL_NAN_UNBOUNDED,
+    'max_w': FILL_NAN_UNBOUNDED_LOW,
 }
 
 

@@ -21,7 +21,12 @@ import pytest
 
 pytest.importorskip('lightautoml')
 
-from ml_toolkit.models._tabular._automl._lama import LAMAClassifier, LAMARegressor, _build_roles, _resolve_cls_task_params
+from ml_toolkit.models._tabular._automl._lama import (
+    LAMAClassifier,
+    LAMARegressor,
+    _build_roles,
+    _resolve_cls_task_params,
+)
 from tests.models.conftest import MULTI_CAT_FEATURES
 
 FAST_SETTINGS = {'timeout': 20, 'cpu_limit': 1}

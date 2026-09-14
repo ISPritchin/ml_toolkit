@@ -51,14 +51,14 @@ import numpy as np
 
 from ml_toolkit.transformers._windowing import (
     EPS,
-    FILL_NAN_UNBOUNDED,
+    FILL_NAN_UNBOUNDED_LOW,
     compute_window_mean_and_std,
     resolve_window_size,
     safe_ratio,
 )
 
 FEATURE = 'mean_deviation_shape'
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # up_semi/down_semi — std-подобные величины в единицах колонки
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}  # up_semi/down_semi — std-подобные величины в единицах колонки
 
 
 @nb.njit(cache=True)

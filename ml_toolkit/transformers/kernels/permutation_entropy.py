@@ -69,16 +69,15 @@ def _perm_type3(x: float, y: float, z: float) -> int:
     lt_xz = x <= z
     if lt_xy and lt_yz:
         return 0  # x<=y<=z
-    elif lt_xy and lt_xz:
+    if lt_xy and lt_xz:
         return 1  # x<=z<y
-    elif lt_xy:
+    if lt_xy:
         return 2  # z<x<=y
-    elif lt_yz and lt_xz:
+    if lt_yz and lt_xz:
         return 3  # y<x<=z
-    elif lt_yz:
+    if lt_yz:
         return 4  # y<=z<x
-    else:
-        return 5  # z<y<x
+    return 5  # z<y<x
 
 
 @nb.njit(cache=True)

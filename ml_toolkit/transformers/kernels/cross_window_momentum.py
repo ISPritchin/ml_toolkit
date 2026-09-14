@@ -46,10 +46,15 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, compute_window_mean, resolve_window_size, safe_ratio
+from ml_toolkit.transformers._windowing import (
+    FILL_NAN_UNBOUNDED_LOW,
+    compute_window_mean,
+    resolve_window_size,
+    safe_ratio,
+)
 
 FEATURE = 'cross_window_momentum'
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)

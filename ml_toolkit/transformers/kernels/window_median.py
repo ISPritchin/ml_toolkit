@@ -33,12 +33,17 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import FILL_NAN_UNBOUNDED, fill_window_sorted, resolve_window_size, sorted_median
+from ml_toolkit.transformers._windowing import (
+    FILL_NAN_UNBOUNDED_LOW,
+    fill_window_sorted,
+    resolve_window_size,
+    sorted_median,
+)
 
 FEATURE = 'window_median'
 # медиана сырых значений колонки — при знакопеременных данных произвольного знака и
 # масштаба; "median >= 0" верно только при неотрицательных значениях.
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)

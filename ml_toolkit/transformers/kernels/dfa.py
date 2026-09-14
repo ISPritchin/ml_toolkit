@@ -53,10 +53,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, compute_window_mean, resolve_window_size
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED_LOW, compute_window_mean, resolve_window_size
 
 FEATURE = 'dfa'
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}  # экспонента alpha практически в узком диапазоне (~[-1, 3]), но не доказано строго
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}  # экспонента alpha практически в узком диапазоне (~[-1, 3]), но не доказано строго
 
 
 @nb.njit(cache=True)

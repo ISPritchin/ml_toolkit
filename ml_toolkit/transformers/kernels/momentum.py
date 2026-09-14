@@ -39,10 +39,10 @@ Example:
 import numba as nb
 import numpy as np
 
-from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED, safe_ratio
+from ml_toolkit.transformers._windowing import EPS, FILL_NAN_UNBOUNDED_LOW, safe_ratio
 
 FEATURE = 'momentum'
-FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED}
+FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
