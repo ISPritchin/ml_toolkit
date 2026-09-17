@@ -68,3 +68,19 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'rank_trend_w4') == pytest.approx([0.0, -0.5, 0.666667, -0.25, -0.25, 0.75, -0.5, -0.25, 0.75], abs=1e-6)
     assert _get(arrs, sfxs, 'q_stability_w4') == pytest.approx([1.0, 0.666667, 0.591752, 0.552786, 0.698489, 0.552786, 0.552786, 0.698489, 0.552786], abs=1e-6)
     assert _get(arrs, sfxs, 'above_ewma_w4') == pytest.approx([0.0, 0.5, 0.333333, 0.5, 0.5, 0.75, 0.5, 0.25, 0.5], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 20, 30, 40, 50, 60]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_produces_distinct_suffixes():
+    values = [10, 999, 20, 999, 30, 999, 40, 999, 50, 999, 60]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert 'above_med_w6_d2' in sfxs
+    assert 'q_stability_w6_d2' in sfxs

@@ -69,3 +69,20 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'all_accel') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'all_decel') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'horizon_spread') == pytest.approx([0.0, 0.0, 0.0, 0.036368, 0.259511, 0.133531, -0.036905, 0.096627, 0.087011, 0.294155, 0.389465, 0.199713, 0.06024, 0.608281, 0.230987, 0.048665, -0.575102, 0.434286, 0.567163, 0.281984, -0.04652, 0.26404, 0.308492, -0.108854, 0.189101, 0.254892], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_params():
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11, 0, 18, 7, 25, 0, 0, 14, 30, 5, 0, 22, 16, 0, 9, 28, 3]
+    arrs_plain, sfxs_plain = _run(values, {})
+    arrs_explicit, sfxs_explicit = _run(values, {'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_produces_distinct_suffixes():
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11, 0, 18, 7, 25, 0, 0, 14, 30, 5, 0, 22, 16, 0, 9, 28, 3]
+    arrs, sfxs = _run(values, {'dilations': [1, 2]})
+    assert 'ratio_w1_w3' in sfxs
+    assert 'ratio_w1_w3_d2' in sfxs
+    assert len(sfxs) == 12

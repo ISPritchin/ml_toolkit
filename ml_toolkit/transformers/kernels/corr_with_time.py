@@ -19,6 +19,7 @@ Outputs:
 Preset entry:
     corr_with_time:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     |r| > 0.9 — очень чистый линейный тренд; slope значим и надёжен.
@@ -47,36 +48,46 @@ FILL_NAN: dict[str | None, float] = {None: -2.0}  # корреляция Пир�
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            if ws >= 3:
-                st = 0.0
-                sv = 0.0
-                stv = 0.0
-                st2 = 0.0
-                sv2 = 0.0
-                for offset in range(ws):
-                    t = float(offset)
-                    v = product_values[row_idx - ws + 1 + offset]
-                    st += t
-                    sv += v
-                    stv += t * v
-                    st2 += t * t
-                    sv2 += v * v
-                cov = ws * stv - st * sv
-                var = ((ws * st2 - st * st) * (ws * sv2 - sv * sv)) ** 0.5
-                out[j, row_idx] = cov / var if var > EPS else 0.0
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                if ws >= 3:
+                    st = 0.0
+                    sv = 0.0
+                    stv = 0.0
+                    st2 = 0.0
+                    sv2 = 0.0
+                    base = row_idx - (ws - 1) * dilation
+                    for offset in range(ws):
+                        t = float(offset)
+                        v = product_values[base + offset * dilation]
+                        st += t
+                        sv += v
+                        stv += t * v
+                        st2 += t * t
+                        sv2 += v * v
+                    cov = ws * stv - st * sv
+                    var = ((ws * st2 - st * st) * (ws * sv2 - sv * sv)) ** 0.5
+                    out[k, row_idx] = cov / var if var > EPS else 0.0
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12, 24]}."""
+    """params: {"windows": [6, 12, 24], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out = _kernel(values, position, windows, dilations)
+    suffixes = [f'w{w}' if d == 1 else f'w{w}_d{d}' for w in params['windows'] for d in params.get('dilations', [1])]
+    return [out[k] for k in range(len(suffixes))], suffixes

@@ -50,3 +50,21 @@ def test_full_output_vector():
     values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'w4') == pytest.approx([0.0, 0.0, 2.25543, 1.861179, 1.995804, 2.085155, 2.174237, 1.968964, 2.096638], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [50, 30, 0, 80, 0, 0, 20, 40, 0, 10, 0, 60, 0, 0, 35]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['w6']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry log1p values 0,1,2,3 (constant diff=1 -> vol=0), odd indices are
+    # noise the dilation=2 step must skip entirely
+    e1, e2, e3 = math.e - 1, math.e**2 - 1, math.e**3 - 1
+    values = [0, 999, e1, 999, e2, 999, e3]
+    arrs, sfxs = _run(values, {'windows': [4], 'dilations': [1, 2]})
+    assert sfxs == ['w4', 'w4_d2']
+    assert _get(arrs, sfxs, 'w4_d2')[-1] == pytest.approx(0.0, abs=1e-6)

@@ -112,6 +112,40 @@ preset), так что разным группам колонок можно (и
 явно. Готовые именованные пресеты ищутся в ml_toolkit/transformers/presets/
 (например, preset='minimum').
 
+Сдвиг во времени (`shift` param key)
+─────────────────────────────────────
+Любой трансформер поддерживает опциональный ключ `shift` (целое число) в
+params — переносит уже посчитанное значение с одной строки сущности на
+другую, БЕЗ изменений в самих кернелах (кернел ничего не знает про `shift`,
+как и про `segment`): вычисляется как обычно, а на уровне Phase A результат
+просто сдвигается вдоль оси времени внутри каждой сущности отдельно (не
+перетекает через границу сущности — там, где источник сдвига выходит за
+пределы своей сущности, ставится NaN, который затем подхватывает `fill_nan`,
+если он тоже задан).
+
+`shift > 0` — «перенести значение из прошлого в текущую строку» (row[t]
+получает то, что было посчитано в row[t-shift]): безопасно, утечки нет —
+перенесённое значение никогда не использовало ничего позже своей исходной
+строки, изменилась только строка, к которой оно приписано в итоговой
+таблице. Типичный случай: «сумма за окно 12, посчитанная год назад, влияет
+на текущую цель» — вместо `windows: [12]` и отдельного шифта таргета,
+сдвигаем саму фичу вперёд на 12 строк.
+
+`shift < 0` — «перенести значение из будущего в текущую строку» (row[t]
+получает то, что будет посчитано в row[t+|shift|]): технически
+поддерживается (параметр — обычное знаковое целое), но это осознанная
+УТЕЧКА данных, если такая фича попадёт в модель, прогнозирующую что-либо на
+момент t или позже — row[t] будет знать то, что физически ещё не
+произошло. Используется только для ретроспективного анализа/разметки, не
+для признаков «живого» прогноза.
+
+Суффикс колонки получает фрагмент `shiftN` (N>0) или `leadN` (N<0),
+добавляется после сегментного фрагмента, если оба заданы одновременно
+(`{product}__{feature}__{suffix}__seg-.../__shiftN`). Как и `segment`, `shift`
+участвует в bucketing `_resolve_feature_spec`: один и тот же трансформер,
+запрошенный с разным `shift` в разных группах feature_spec, — это не
+конфликт, а осознанный запрос нескольких вариантов сразу (разные колонки).
+
 Именование признаков:
   - Если suffix непустой: {product_col}__{feature}__{suffix}
   - Если suffix пустой:   {product_col}__{feature}
@@ -415,9 +449,10 @@ def _resolve_feature_spec(
     просят один и тот же (колонка, трансформер) с РАЗНЫМИ параметрами — это
     настоящий конфликт, не тихий дедуп: поднимается `ValueError`. Исключение:
     если единственное различие — разный резолвленный `segment` (params содержит
-    ключ 'segment'), это не конфликт, а осознанный запрос того же трансформера
-    с разной сегментацией — оба варианта сохраняются как разные кандидаты
-    (различаются суффиксом колонки, см. `segment_suffix_fragment`).
+    ключ 'segment') и/или разный `shift`, это не конфликт, а осознанный запрос
+    того же трансформера в нескольких вариантах сразу — все сохраняются как
+    разные кандидаты (различаются суффиксом колонки, см.
+    `segment_suffix_fragment`/`_shift_suffix_fragment`).
 
     Args:
         df: Датасет, схема которого используется для резолва селекторов в columns.
@@ -467,7 +502,8 @@ def _resolve_feature_spec(
             for name, module, params in selected:
                 segment_cfg = params.get('segment')
                 seg_sig = segment_suffix_fragment(segment_cfg) if segment_cfg else None
-                key = (name, seg_sig)
+                shift_sig = params.get('shift', 0)
+                key = (name, seg_sig, shift_sig)
                 if key in bucket and bucket[key][1] != params:
                     raise ValueError(
                         f"feature_spec: колонка '{col}', трансформер '{name}' "
@@ -482,7 +518,7 @@ def _resolve_feature_spec(
         raise ValueError(f'feature_spec ссылается на колонки, отсутствующие в df: {sorted(unknown)}')
 
     return {
-        col: [(name, module, params) for (name, _seg_sig), (module, params) in bucket.items()]
+        col: [(name, module, params) for (name, _seg_sig, _shift_sig), (module, params) in bucket.items()]
         for col, bucket in requested.items()
     }
 
@@ -610,6 +646,45 @@ def _filter_suffixes(
     return list(new_arrays), list(new_suffixes)
 
 
+def _apply_shift(arr: np.ndarray, entity_start_of_row: np.ndarray, shift: int) -> np.ndarray:
+    """row[i] <- arr[i-shift], только если i-shift лежит в той же сущности, что и i.
+
+    `entity_start_of_row[i]` — абсолютный индекс первой строки сущности, которой
+    принадлежит строка i (`np.arange(n) - position_within_entity`); совпадение
+    этого индекса у i и i-shift означает «одна и та же сущность» без обращения к
+    исходным entity-кодам.
+
+    shift > 0 — переносит значение из ПРОШЛОГО (i-shift раньше i) на текущую
+        строку: безопасно, перенесённое значение не использовало ничего позже
+        своей исходной строки.
+    shift < 0 — переносит значение из БУДУЩЕГО (i-shift позже i) на текущую
+        строку: осознанная утечка, если такая колонка используется как признак
+        прогноза на момент i или позже (см. докстринг модуля, раздел «Сдвиг во
+        времени»).
+
+    Строки, для которых i-shift выходит за пределы массива или попадает в
+    другую сущность, получают NaN (недостаточно истории/будущего для сдвига —
+    та же конвенция «NaN = строка исключена», что и у сегментации; `fill_nan`,
+    если задан, применяется позже и подхватывает и эти NaN тоже).
+    """
+    n = arr.shape[0]
+    row_idx = np.arange(n)
+    src_idx = row_idx - shift
+    in_bounds = (src_idx >= 0) & (src_idx < n)
+
+    out = np.full(n, np.nan, dtype=np.float64)
+    same_entity = np.zeros(n, dtype=bool)
+    same_entity[in_bounds] = (
+        entity_start_of_row[row_idx[in_bounds]] == entity_start_of_row[src_idx[in_bounds]]
+    )
+    out[same_entity] = arr[src_idx[same_entity]]
+    return out
+
+
+def _shift_suffix_fragment(shift: int) -> str:
+    return f'shift{shift}' if shift > 0 else f'lead{-shift}'
+
+
 def _generate_candidate_features_to_parquets(
     df: pl.DataFrame | Path,
     entity_col: str,
@@ -688,6 +763,9 @@ def _generate_candidate_features_to_parquets(
 
     position_within_entity = compute_position_within_entity(entity_codes)
     del entity_codes
+    # Абсолютный индекс первой строки сущности, которой принадлежит строка i —
+    # используется только для проверки границ в _apply_shift (см. `shift` param).
+    entity_start_of_row = np.arange(n_rows) - position_within_entity
 
     mask_cache: dict[str, np.ndarray] = {}
 
@@ -720,6 +798,7 @@ def _generate_candidate_features_to_parquets(
             fill_nan_value = params.get('fill_nan')
             include_suffixes = params.get('include_suffixes')
             exclude_suffixes = params.get('exclude_suffixes')
+            shift_value = params.get('shift', 0)
             suffix_filter_context = f"'{product_col}' / '{transformer_name}'"
 
             if segment_cfg is not None and transformer_name != 'segment_gap':
@@ -739,7 +818,7 @@ def _generate_candidate_features_to_parquets(
                 )
                 call_params = {
                     k: v for k, v in params.items()
-                    if k not in ('segment', 'fill_nan', 'include_suffixes', 'exclude_suffixes')
+                    if k not in ('segment', 'fill_nan', 'include_suffixes', 'exclude_suffixes', 'shift')
                 }
                 arrays, suffixes = module.compute(product_values, seg_position, call_params)
                 arrays, suffixes = _filter_suffixes(
@@ -754,10 +833,10 @@ def _generate_candidate_features_to_parquets(
                 # 'segment' здесь НЕ вычищается: если transformer_name ==
                 # 'segment_gap', его собственный compute() читает params['segment']
                 # напрямую (см. kernels/segment_gap.py) — fill_nan/include_suffixes/
-                # exclude_suffixes ему тоже чужие ключи и вычищаются как обычно.
+                # exclude_suffixes/shift ему тоже чужие ключи и вычищаются как обычно.
                 call_params = {
                     k: v for k, v in params.items()
-                    if k not in ('fill_nan', 'include_suffixes', 'exclude_suffixes')
+                    if k not in ('fill_nan', 'include_suffixes', 'exclude_suffixes', 'shift')
                 }
                 arrays, suffixes = module.compute(product_values, position_within_entity, call_params)
                 arrays, suffixes = _filter_suffixes(
@@ -767,6 +846,14 @@ def _generate_candidate_features_to_parquets(
             if not suffixes:
                 logger.debug("(%s) '%s' / '%s': все суффиксы отфильтрованы, пара пропущена", name, product_col, transformer_name)
                 continue
+
+            if shift_value:
+                # До fill_nan: сдвиг создаёт свои NaN на границах сущности
+                # (недостаточно истории/будущего), и они должны попадать под
+                # тот же fill_nan, что и NaN кернела/сегментации — единая
+                # конвенция "любой источник NaN в этой паре покрывается одним
+                # fill_nan", см. докстринг модуля.
+                arrays = [_apply_shift(np.asarray(arr, dtype=np.float64), entity_start_of_row, shift_value) for arr in arrays]
 
             if fill_nan_value is not None:
                 # Применяется независимо для каждого трансформера (params —
@@ -781,16 +868,25 @@ def _generate_candidate_features_to_parquets(
                 seg_fragment = segment_suffix_fragment(segment_cfg)
                 suffixes = [f'{s}__{seg_fragment}' if s else seg_fragment for s in suffixes]
 
+            if shift_value:
+                shift_fragment = _shift_suffix_fragment(shift_value)
+                suffixes = [f'{s}__{shift_fragment}' if s else shift_fragment for s in suffixes]
+
             group_arrays: dict[str, np.ndarray] = {}
             for suffix, arr in zip(suffixes, arrays, strict=False):
                 col = _col_name(product_col, transformer_name, suffix)
                 group_arrays[col] = np.asarray(arr, dtype=np.float32)
                 all_candidate_cols.append(col)
 
-            # segment_cfg входит в имя файла: без этого два варианта одного
-            # трансформера с разной сегментацией писались бы в один и тот же
-            # файл, и второй write_parquet затирал бы первый целиком.
-            file_tag = f'{transformer_name}__{seg_fragment}' if segment_cfg is not None else transformer_name
+            # segment_cfg/shift_value входят в имя файла: без этого разные
+            # варианты одного трансформера (по сегментации и/или сдвигу)
+            # писались бы в один и тот же файл, и последний write_parquet
+            # затирал бы предыдущие целиком.
+            file_tag = transformer_name
+            if segment_cfg is not None:
+                file_tag = f'{file_tag}__{seg_fragment}'
+            if shift_value:
+                file_tag = f'{file_tag}__{shift_fragment}'
             tmp_path = tmp_dir / f'{name}_{product_col}__{file_tag}.parquet'
             pl.DataFrame(group_arrays).write_parquet(tmp_path, row_group_size=_ROW_GROUP_SIZE)
             for col in group_arrays:

@@ -31,6 +31,8 @@ Outputs:
 Preset entry:
     extreme_events:
       windows: [12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart and
+                          # redefines "crash" as a d-step drop instead of strict month-over-month
 
 Interpretation:
     spike_count = 1, max_spike_z = 3.5 — один мощный выброс за год.
@@ -68,82 +70,95 @@ def _kernel(
     product_values: np.ndarray,
     position_within_entity: np.ndarray,
     windows: np.ndarray,
+    dilations: np.ndarray,
     spike_z: float,
     crash_drop: float,
 ):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_spike_count = np.zeros((n_w, n_rows))
-    out_max_spike_z = np.zeros((n_w, n_rows))
-    out_crash_count = np.zeros((n_w, n_rows))
-    out_max_drop = np.zeros((n_w, n_rows))
-    out_extreme_recency = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    n_k = n_w * n_d
+    out_spike_count = np.zeros((n_k, n_rows))
+    out_max_spike_z = np.zeros((n_k, n_rows))
+    out_crash_count = np.zeros((n_k, n_rows))
+    out_max_drop = np.zeros((n_k, n_rows))
+    out_extreme_recency = np.zeros((n_k, n_rows))
     out_is_spike_now = np.zeros(n_rows)
-    out_balance = np.zeros((n_w, n_rows))
+    out_balance = np.zeros((n_k, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            mean, std = compute_window_mean_and_std(product_values, row_idx, ws)
-            spike_count = 0
-            crash_count = 0
-            max_spike_z = 0.0
-            max_drop = 0.0
-            last_extreme_ago = ws  # worse case: never
-            z_now = 0.0
-            for offset in range(ws):
-                abs_idx = row_idx - ws + 1 + offset
-                v = product_values[abs_idx]
-                z = safe_ratio(v - mean, std)
-                if offset == ws - 1:
-                    z_now = z
-                is_extreme = False
-                if z > spike_z:
-                    spike_count += 1
-                    max_spike_z = max(max_spike_z, z)
-                    is_extreme = True
-                if offset >= 1:
-                    prev = product_values[abs_idx - 1]
-                    drop = safe_ratio(prev - v, prev)
-                    if drop > crash_drop:
-                        crash_count += 1
-                        max_drop = max(max_drop, drop)
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                base = row_idx - (ws - 1) * dilation
+                mean, std = compute_window_mean_and_std(product_values, row_idx, ws, dilation)
+                spike_count = 0
+                crash_count = 0
+                max_spike_z = 0.0
+                max_drop = 0.0
+                last_extreme_ago = ws  # worse case: never
+                z_now = 0.0
+                for offset in range(ws):
+                    abs_idx = base + offset * dilation
+                    v = product_values[abs_idx]
+                    z = safe_ratio(v - mean, std)
+                    if offset == ws - 1:
+                        z_now = z
+                    is_extreme = False
+                    if z > spike_z:
+                        spike_count += 1
+                        max_spike_z = max(max_spike_z, z)
                         is_extreme = True
-                if is_extreme:
-                    last_extreme_ago = ws - 1 - offset
-            out_spike_count[j, row_idx] = spike_count
-            out_max_spike_z[j, row_idx] = max_spike_z
-            out_crash_count[j, row_idx] = crash_count
-            out_max_drop[j, row_idx] = max_drop
-            out_extreme_recency[j, row_idx] = last_extreme_ago
-            out_balance[j, row_idx] = spike_count - crash_count
-            if j == 0:
-                # is_spike_now: z текущего месяца уже вычислен в цикле окна
-                out_is_spike_now[row_idx] = 1.0 if z_now > spike_z else 0.0
+                    if offset >= 1:
+                        prev = product_values[abs_idx - dilation]
+                        drop = safe_ratio(prev - v, prev)
+                        if drop > crash_drop:
+                            crash_count += 1
+                            max_drop = max(max_drop, drop)
+                            is_extreme = True
+                    if is_extreme:
+                        last_extreme_ago = ws - 1 - offset
+                out_spike_count[k, row_idx] = spike_count
+                out_max_spike_z[k, row_idx] = max_spike_z
+                out_crash_count[k, row_idx] = crash_count
+                out_max_drop[k, row_idx] = max_drop
+                out_extreme_recency[k, row_idx] = last_extreme_ago
+                out_balance[k, row_idx] = spike_count - crash_count
+                if k == 0:
+                    # is_spike_now: z текущего месяца по первому (window, dilation) сочетанию
+                    out_is_spike_now[row_idx] = 1.0 if z_now > spike_z else 0.0
+                k += 1
     return out_spike_count, out_max_spike_z, out_crash_count, out_max_drop, out_extreme_recency, out_is_spike_now, out_balance
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12], "spike_z": 2.0, "crash_drop": 0.5 (опционально)}."""
+    """params: {"windows": [12], "dilations": [1, 2], "spike_z": 2.0, "crash_drop": 0.5 (опционально)}."""
     windows = np.array(params['windows'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     spike_z = float(params.get('spike_z', 2.0))
     crash_drop = float(params.get('crash_drop', 0.5))
-    sc, mz, cc, md, er, isn, bal = _kernel(values, position, windows, spike_z, crash_drop)
+    sc, mz, cc, md, er, isn, bal = _kernel(values, position, windows, dilations, spike_z, crash_drop)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(sc[j])
-        suffixes.append(f'spike_count_w{w}')
-        arrays.append(mz[j])
-        suffixes.append(f'max_spike_z_w{w}')
-        arrays.append(cc[j])
-        suffixes.append(f'crash_count_w{w}')
-        arrays.append(md[j])
-        suffixes.append(f'max_drop_w{w}')
-        arrays.append(er[j])
-        suffixes.append(f'recency_w{w}')
-        arrays.append(bal[j])
-        suffixes.append(f'balance_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(sc[k])
+            suffixes.append(f'spike_count_{w_tag}')
+            arrays.append(mz[k])
+            suffixes.append(f'max_spike_z_{w_tag}')
+            arrays.append(cc[k])
+            suffixes.append(f'crash_count_{w_tag}')
+            arrays.append(md[k])
+            suffixes.append(f'max_drop_{w_tag}')
+            arrays.append(er[k])
+            suffixes.append(f'recency_{w_tag}')
+            arrays.append(bal[k])
+            suffixes.append(f'balance_{w_tag}')
+            k += 1
     arrays.append(isn)
     suffixes.append('is_spike_now')
     return arrays, suffixes

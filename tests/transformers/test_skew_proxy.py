@@ -59,3 +59,19 @@ def test_full_output_vector():
     values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'w4') == pytest.approx([0.0, 0.5, 0.5, 0.5625, 0.4375, 0.6, 0.466667, 0.316667, 0.4875], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 10, 10, 10, 10, 40]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['w6']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # row_idx=5 (last), ws=3, dilation=2 -> idx 1,3,5 -> [10,10,40], mean=20, lo=10, hi=40
+    values = [999, 10, 999, 10, 999, 40]
+    arrs, sfxs = _run(values, {'windows': [3], 'dilations': [1, 2]})
+    assert sfxs == ['w3', 'w3_d2']
+    assert _get(arrs, sfxs, 'w3_d2')[-1] == pytest.approx((20 - 10) / (40 - 10), abs=1e-6)

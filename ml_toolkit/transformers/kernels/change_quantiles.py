@@ -29,6 +29,8 @@ Preset entry:
       windows: [6, 12]
       ql: 0.2
       qh: 0.8
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart and
+                          # redefines the "adjacent" pair as a d-step pair instead of MoM
 
 Interpretation:
     change_mean высокий при обычном rolling_std низком — шум сосредоточен именно в
@@ -69,13 +71,15 @@ def _kernel(
     product_values: np.ndarray,
     position_within_entity: np.ndarray,
     windows: np.ndarray,
+    dilations: np.ndarray,
     ql: float,
     qh: float,
 ):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_mean = np.zeros((n_w, n_rows))
-    out_std = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_mean = np.zeros((n_w * n_d, n_rows))
+    out_std = np.zeros((n_w * n_d, n_rows))
 
     max_w = 1
     for j in range(n_w):
@@ -84,46 +88,57 @@ def _kernel(
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            if ws < 2:
-                continue
-            fill_window_sorted(sorted_buf, product_values, row_idx, ws)
-            lo = sorted_quantile(sorted_buf, ws, ql)
-            hi = sorted_quantile(sorted_buf, ws, qh)
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                if ws < 2:
+                    k += 1
+                    continue
+                fill_window_sorted(sorted_buf, product_values, row_idx, ws, dilation)
+                lo = sorted_quantile(sorted_buf, ws, ql)
+                hi = sorted_quantile(sorted_buf, ws, qh)
 
-            start = row_idx - ws + 1
-            count = 0
-            d_sum = 0.0
-            d_sq_sum = 0.0
-            for offset in range(1, ws):
-                prev = product_values[start + offset - 1]
-                cur = product_values[start + offset]
-                if prev >= lo and prev <= hi and cur >= lo and cur <= hi:
-                    d = abs(cur - prev)
-                    count += 1
-                    d_sum += d
-                    d_sq_sum += d * d
-            if count > 0:
-                mean_d = d_sum / count
-                out_mean[j, row_idx] = mean_d
-                if count >= 2:
-                    var_d = d_sq_sum / count - mean_d * mean_d
-                    out_std[j, row_idx] = (max(var_d, 0.0)) ** 0.5
+                base = row_idx - (ws - 1) * dilation
+                count = 0
+                d_sum = 0.0
+                d_sq_sum = 0.0
+                for offset in range(1, ws):
+                    idx = base + offset * dilation
+                    prev = product_values[idx - dilation]
+                    cur = product_values[idx]
+                    if prev >= lo and prev <= hi and cur >= lo and cur <= hi:
+                        d = abs(cur - prev)
+                        count += 1
+                        d_sum += d
+                        d_sq_sum += d * d
+                if count > 0:
+                    mean_d = d_sum / count
+                    out_mean[k, row_idx] = mean_d
+                    if count >= 2:
+                        var_d = d_sq_sum / count - mean_d * mean_d
+                        out_std[k, row_idx] = (max(var_d, 0.0)) ** 0.5
+                k += 1
     return out_mean, out_std
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12], "ql": 0.2, "qh": 0.8 (ql/qh опциональны)}."""
+    """params: {"windows": [6, 12], "dilations": [1, 2], "ql": 0.2, "qh": 0.8 (все три опциональны)}."""
     windows = np.array(params['windows'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     ql = float(params.get('ql', 0.2))
     qh = float(params.get('qh', 0.8))
-    out_mean, out_std = _kernel(values, position, windows, ql, qh)
+    out_mean, out_std = _kernel(values, position, windows, dilations, ql, qh)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(out_mean[j])
-        suffixes.append(f'mean_w{w}')
-        arrays.append(out_std[j])
-        suffixes.append(f'std_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(out_mean[k])
+            suffixes.append(f'mean_{w_tag}')
+            arrays.append(out_std[k])
+            suffixes.append(f'std_{w_tag}')
+            k += 1
     return arrays, suffixes

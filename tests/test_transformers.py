@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from ml_toolkit.transformers import (
     autocorr,
@@ -60,6 +61,48 @@ def test_trend_slope_detects_growth_and_decline():
 
     arrs4, sfxs4 = streak.compute(declining, pos, {})
     assert _get(arrs4, sfxs4, 'down')[-1] == 6.0
+
+
+def test_direction_flag_dilations_defaults_to_1_and_matches_plain_windows():
+    growing = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    pos = compute_position_within_entity(np.zeros(7, dtype=np.int64))
+    arrs_plain, sfxs_plain = direction_flag.compute(growing, pos, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = direction_flag.compute(growing, pos, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['w6']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_direction_flag_dilation_2_reads_every_other_point():
+    # every-other-point sub-series is strictly increasing -> direction_flag=+1
+    values = np.array([0.0, 999.0, 20.0, 999.0, 40.0])
+    pos = compute_position_within_entity(np.zeros(5, dtype=np.int64))
+    arrs, sfxs = direction_flag.compute(values, pos, {'windows': [3], 'dilations': [1, 2]})
+    assert sfxs == ['w3', 'w3_d2']
+    assert _get(arrs, sfxs, 'w3_d2')[-1] == 1.0
+
+
+def test_slope_dilations_defaults_to_1_and_matches_plain_windows():
+    growing = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    pos = compute_position_within_entity(np.zeros(7, dtype=np.int64))
+
+    arrs_plain, sfxs_plain = slope.compute(growing, pos, {'windows': [6, 12]})
+    arrs_explicit, sfxs_explicit = slope.compute(growing, pos, {'windows': [6, 12], 'dilations': [1]})
+
+    assert sfxs_plain == sfxs_explicit == ['w6', 'w12']
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_slope_dilation_2_reads_every_other_point():
+    # every-other-point sub-series is [0,20,40,60,...] with slope 20 per dilated step
+    values = np.array([0.0, 999.0, 20.0, 999.0, 40.0, 999.0, 60.0, 999.0, 80.0])
+    pos = compute_position_within_entity(np.zeros(9, dtype=np.int64))
+
+    arrs, sfxs = slope.compute(values, pos, {'windows': [3], 'dilations': [1, 2]})
+    assert sfxs == ['w3', 'w3_d2']
+    assert _get(arrs, sfxs, 'w3_d2')[-1] == pytest.approx(20.0)
+    # the d=1 (contiguous) column at the same row sees the noisy interleaved values, not 20.0
+    assert _get(arrs, sfxs, 'w3')[-1] != pytest.approx(20.0)
 
 
 def test_volatility_cv_higher_for_spiky_series():
@@ -201,6 +244,25 @@ def test_trend_consistency_high_for_clean_trend():
     pos = compute_position_within_entity(np.zeros(12, dtype=np.int64))
     arrs, sfxs = trend_consistency.compute(values, pos, {'windows': [12]})
     assert _get(arrs, sfxs, 'dir_consistency_w12')[-1] > 0.9
+
+
+def test_trend_consistency_dilations_defaults_to_1_and_matches_plain_windows():
+    values = np.arange(1.0, 13.0)
+    pos = compute_position_within_entity(np.zeros(12, dtype=np.int64))
+    arrs_plain, sfxs_plain = trend_consistency.compute(values, pos, {'windows': [12]})
+    arrs_explicit, sfxs_explicit = trend_consistency.compute(values, pos, {'windows': [12], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_trend_consistency_dilation_2_reads_every_other_point():
+    # every-other-point sub-series is a clean monotone trend -> dir_consistency=1.0
+    values = np.array([1.0, 999.0, 2.0, 999.0, 3.0, 999.0, 4.0, 999.0, 5.0, 999.0, 6.0])
+    pos = compute_position_within_entity(np.zeros(11, dtype=np.int64))
+    arrs, sfxs = trend_consistency.compute(values, pos, {'windows': [6], 'dilations': [1, 2]})
+    assert 'dir_consistency_w6_d2' in sfxs
+    assert _get(arrs, sfxs, 'dir_consistency_w6_d2')[-1] == pytest.approx(1.0)
 
 
 def test_burstiness_calm_share_all_zeros():

@@ -38,3 +38,20 @@ def test_insufficient_history_is_zero():
 def test_all_zero_window_is_zero_via_safe_ratio():
     arrs, sfxs = _run([0, 0, 0, 0, 0, 0], {'windows': [6]})
     assert _get(arrs, sfxs, 'last_w6')[-1] == pytest.approx(0.0)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [5, 5, 10, 10, 30, 30]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['first_w6', 'mid_w6', 'last_w6']
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [5,5,10,10,30,30] -> known last_share 0.878
+    values = [5, 999, 5, 999, 10, 999, 10, 999, 30, 999, 30]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert sfxs == ['first_w6', 'mid_w6', 'last_w6', 'first_w6_d2', 'mid_w6_d2', 'last_w6_d2']
+    assert _get(arrs, sfxs, 'last_w6_d2')[-1] == pytest.approx(0.878, abs=0.01)

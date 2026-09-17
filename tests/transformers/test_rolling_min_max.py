@@ -61,3 +61,21 @@ def test_full_output_vector():
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'min_w4') == pytest.approx([6.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'max_w4') == pytest.approx([6.0, 6.0, 12.0, 12.0, 12.0, 15.0, 15.0, 15.0, 20.0], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 80, 40, 20, 5, 30]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['min_w6', 'max_w6']
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # row_idx=4 (last), ws=3, dilation=2 -> idx 0,2,4 -> [10,40,5]
+    values = [10, 999, 40, 999, 5]
+    arrs, sfxs = _run(values, {'windows': [3], 'dilations': [1, 2]})
+    assert sfxs == ['min_w3', 'max_w3', 'min_w3_d2', 'max_w3_d2']
+    assert _get(arrs, sfxs, 'min_w3_d2')[-1] == pytest.approx(5.0)
+    assert _get(arrs, sfxs, 'max_w3_d2')[-1] == pytest.approx(40.0)

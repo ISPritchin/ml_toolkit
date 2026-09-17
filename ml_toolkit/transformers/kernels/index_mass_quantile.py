@@ -27,6 +27,7 @@ Outputs:
 Preset entry:
     index_mass_quantile:
       windows: [12, 24]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     q50 ≈ 0.5 — масса распределена равномерно по окну (как у линейно растущего
@@ -58,58 +59,72 @@ FILL_NAN: dict[str | None, float] = {None: -1.0}  # доли окна в [0,1] �
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_q25 = np.zeros((n_w, n_rows))
-    out_q50 = np.zeros((n_w, n_rows))
-    out_q75 = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_q25 = np.zeros((n_w * n_d, n_rows))
+    out_q50 = np.zeros((n_w * n_d, n_rows))
+    out_q75 = np.zeros((n_w * n_d, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            if ws < 2:
-                continue
-            start = row_idx - ws + 1
-            total = 0.0
-            for offset in range(ws):
-                total += product_values[start + offset]
-            if total <= EPS:
-                continue
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                if ws < 2:
+                    k += 1
+                    continue
+                base = row_idx - (ws - 1) * dilation
+                total = 0.0
+                for offset in range(ws):
+                    total += product_values[base + offset * dilation]
+                if total <= EPS:
+                    k += 1
+                    continue
 
-            thr25 = 0.25 * total
-            thr50 = 0.5 * total
-            thr75 = 0.75 * total
-            running = 0.0
-            found25 = False
-            found50 = False
-            found75 = False
-            for offset in range(ws):
-                running += product_values[start + offset]
-                if not found25 and running >= thr25:
-                    out_q25[j, row_idx] = offset / (ws - 1)
-                    found25 = True
-                if not found50 and running >= thr50:
-                    out_q50[j, row_idx] = offset / (ws - 1)
-                    found50 = True
-                if not found75 and running >= thr75:
-                    out_q75[j, row_idx] = offset / (ws - 1)
-                    found75 = True
+                thr25 = 0.25 * total
+                thr50 = 0.5 * total
+                thr75 = 0.75 * total
+                running = 0.0
+                found25 = False
+                found50 = False
+                found75 = False
+                for offset in range(ws):
+                    running += product_values[base + offset * dilation]
+                    if not found25 and running >= thr25:
+                        out_q25[k, row_idx] = offset / (ws - 1)
+                        found25 = True
+                    if not found50 and running >= thr50:
+                        out_q50[k, row_idx] = offset / (ws - 1)
+                        found50 = True
+                    if not found75 and running >= thr75:
+                        out_q75[k, row_idx] = offset / (ws - 1)
+                        found75 = True
+                k += 1
     return out_q25, out_q50, out_q75
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12, 24]} — ключ обязателен."""
+    """params: {"windows": [12, 24], "dilations": [1, 2]} — "windows" обязателен, "dilations" optional (default [1])."""
     windows = np.array(params['windows'], dtype=np.int64)
-    q25, q50, q75 = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    q25, q50, q75 = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(q25[j])
-        suffixes.append(f'q25_w{w}')
-        arrays.append(q50[j])
-        suffixes.append(f'q50_w{w}')
-        arrays.append(q75[j])
-        suffixes.append(f'q75_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(q25[k])
+            suffixes.append(f'q25_{w_tag}')
+            arrays.append(q50[k])
+            suffixes.append(f'q50_{w_tag}')
+            arrays.append(q75[k])
+            suffixes.append(f'q75_{w_tag}')
+            k += 1
     return arrays, suffixes

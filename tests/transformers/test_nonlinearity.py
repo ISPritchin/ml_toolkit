@@ -67,3 +67,20 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'mean_accel_w4') == pytest.approx([0.0, 0.0, 18.0, 1.5, -10.5, 9.0, -1.0, -9.5, 15.5], abs=1e-6)
     assert _get(arrs, sfxs, 'accel_std_w4') == pytest.approx([0.0, 0.0, 0.0, 16.5, 4.5, 15.0, 25.0, 16.5, 8.5], abs=1e-6)
     assert _get(arrs, sfxs, 'frac_concave_w4') == pytest.approx([0.0, 0.0, 0.0, 0.5, 1.0, 0.5, 0.5, 0.5, 0.0], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 20, 30, 20, 10, 5]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [10,20,30,20,10,5] -> known quad_proxy -1.737
+    values = [10, 999, 20, 999, 30, 999, 20, 999, 10, 999, 5]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert 'quad_proxy_w6_d2' in sfxs
+    assert _get(arrs, sfxs, 'quad_proxy_w6_d2')[-1] == pytest.approx(-1.737, abs=0.01)

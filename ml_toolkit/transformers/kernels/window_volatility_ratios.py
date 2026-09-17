@@ -27,6 +27,7 @@ Outputs:
 
 Preset entry:
     window_volatility_ratios: {}
+    # dilations: [1, 2]  # optional, default [1]; applies to all four horizons (3/6/12/24) at once
 
 Interpretation:
     cv_ratio_w3_w12 > 2 — последние 3 месяца в 2 раза нестабильнее годового фона.
@@ -65,46 +66,56 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
+def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, dilations: np.ndarray):
     n_rows = product_values.shape[0]
-    out_cv3_cv6 = np.zeros(n_rows)
-    out_cv3_cv12 = np.zeros(n_rows)
-    out_cv6_cv24 = np.zeros(n_rows)
-    out_vol_accel = np.zeros(n_rows)
-    out_short_excess = np.zeros(n_rows)
-    out_regime_flag = np.zeros(n_rows)
+    n_d = dilations.shape[0]
+    out_cv3_cv6 = np.zeros((n_d, n_rows))
+    out_cv3_cv12 = np.zeros((n_d, n_rows))
+    out_cv6_cv24 = np.zeros((n_d, n_rows))
+    out_vol_accel = np.zeros((n_d, n_rows))
+    out_short_excess = np.zeros((n_d, n_rows))
+    out_regime_flag = np.zeros((n_d, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
-        ws3 = resolve_window_size(pos, 3)
-        ws6 = resolve_window_size(pos, 6)
-        ws12 = resolve_window_size(pos, 12)
-        ws24 = resolve_window_size(pos, 24)
+        for d_idx in range(n_d):
+            dilation = dilations[d_idx]
+            ws3 = resolve_window_size(pos, 3, dilation)
+            ws6 = resolve_window_size(pos, 6, dilation)
+            ws12 = resolve_window_size(pos, 12, dilation)
+            ws24 = resolve_window_size(pos, 24, dilation)
 
-        mean3, std3 = compute_window_mean_and_std(product_values, row_idx, ws3)
-        mean6, std6 = compute_window_mean_and_std(product_values, row_idx, ws6)
-        mean12, std12 = compute_window_mean_and_std(product_values, row_idx, ws12)
-        mean24, std24 = compute_window_mean_and_std(product_values, row_idx, ws24)
+            mean3, std3 = compute_window_mean_and_std(product_values, row_idx, ws3, dilation)
+            mean6, std6 = compute_window_mean_and_std(product_values, row_idx, ws6, dilation)
+            mean12, std12 = compute_window_mean_and_std(product_values, row_idx, ws12, dilation)
+            mean24, std24 = compute_window_mean_and_std(product_values, row_idx, ws24, dilation)
 
-        cv3 = safe_ratio(std3, mean3)
-        cv6 = safe_ratio(std6, mean6)
-        cv12 = safe_ratio(std12, mean12)
-        cv24 = safe_ratio(std24, mean24)
+            cv3 = safe_ratio(std3, mean3)
+            cv6 = safe_ratio(std6, mean6)
+            cv12 = safe_ratio(std12, mean12)
+            cv24 = safe_ratio(std24, mean24)
 
-        out_cv3_cv6[row_idx] = safe_ratio(cv3, cv6)
-        out_cv3_cv12[row_idx] = safe_ratio(cv3, cv12)
-        out_cv6_cv24[row_idx] = safe_ratio(cv6, cv24)
-        out_vol_accel[row_idx] = (std3 - std6) - (std6 - std12)
-        out_short_excess[row_idx] = safe_ratio(cv3 - cv12, cv12)
-        out_regime_flag[row_idx] = 1.0 if cv3 > cv12 * 2.0 else 0.0
+            out_cv3_cv6[d_idx, row_idx] = safe_ratio(cv3, cv6)
+            out_cv3_cv12[d_idx, row_idx] = safe_ratio(cv3, cv12)
+            out_cv6_cv24[d_idx, row_idx] = safe_ratio(cv6, cv24)
+            out_vol_accel[d_idx, row_idx] = (std3 - std6) - (std6 - std12)
+            out_short_excess[d_idx, row_idx] = safe_ratio(cv3 - cv12, cv12)
+            out_regime_flag[d_idx, row_idx] = 1.0 if cv3 > cv12 * 2.0 else 0.0
 
     return out_cv3_cv6, out_cv3_cv12, out_cv6_cv24, out_vol_accel, out_short_excess, out_regime_flag
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {} (no params)."""
-    cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf = _kernel(values, position)
-    return (
-        [cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf],
-        ['cv_ratio_w3_w6', 'cv_ratio_w3_w12', 'cv_ratio_w6_w24', 'vol_accel', 'short_excess', 'regime_flag'],
-    )
+    """params: {"dilations": [1, 2]} (optional, default [1]; no other params)."""
+    dilations_list = params.get('dilations', [1])
+    dilations = np.array(dilations_list, dtype=np.int64)
+    cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf = _kernel(values, position, dilations)
+    base_names = ['cv_ratio_w3_w6', 'cv_ratio_w3_w12', 'cv_ratio_w6_w24', 'vol_accel', 'short_excess', 'regime_flag']
+    arrays = []
+    suffixes = []
+    for d_idx, d in enumerate(dilations_list):
+        tag = '' if d == 1 else f'_d{d}'
+        for arr, name in zip([cv3_cv6, cv3_cv12, cv6_cv24, va, se, rf], base_names, strict=True):
+            arrays.append(arr[d_idx])
+            suffixes.append(f'{name}{tag}')
+    return arrays, suffixes

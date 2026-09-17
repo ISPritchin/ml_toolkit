@@ -38,3 +38,21 @@ def test_no_qualifying_pairs_gives_zero():
     arrs, sfxs = _run([42], {'windows': [6]})
     assert _get(arrs, sfxs, 'mean_w6')[-1] == pytest.approx(0.0)
     assert _get(arrs, sfxs, 'std_w6')[-1] == pytest.approx(0.0)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [5, 20, 22, 21, 23, 5]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['mean_w6', 'std_w6']
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [5,20,22,21,23,5] -> known mean=6.0, std=6.377
+    values = [5, 999, 20, 999, 22, 999, 21, 999, 23, 999, 5]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert sfxs == ['mean_w6', 'std_w6', 'mean_w6_d2', 'std_w6_d2']
+    assert _get(arrs, sfxs, 'mean_w6_d2')[-1] == pytest.approx(6.0, abs=1e-4)
+    assert _get(arrs, sfxs, 'std_w6_d2')[-1] == pytest.approx(6.377, abs=0.01)

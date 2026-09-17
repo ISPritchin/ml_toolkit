@@ -18,6 +18,7 @@ Outputs:
 Preset entry:
     rolling_min_max:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     max_w12 / min_w12 — диапазон разброса: чем больше, тем волатильнее ряд.
@@ -56,30 +57,41 @@ FILL_NAN: dict[str | None, float] = {
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_min = np.zeros((n_w, n_rows))
-    out_max = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_min = np.zeros((n_w * n_d, n_rows))
+    out_max = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            lo, hi = compute_window_min_and_max(product_values, row_idx, ws)
-            out_min[j, row_idx] = lo
-            out_max[j, row_idx] = hi
+            for d in range(n_d):
+                ws = resolve_window_size(pos, windows[j], dilations[d])
+                lo, hi = compute_window_min_and_max(product_values, row_idx, ws, dilations[d])
+                out_min[k, row_idx] = lo
+                out_max[k, row_idx] = hi
+                k += 1
     return out_min, out_max
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}."""
+    """params: {"windows": [12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    out_min, out_max = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out_min, out_max = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(out_min[j])
-        suffixes.append(f'min_w{w}')
-        arrays.append(out_max[j])
-        suffixes.append(f'max_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(out_min[k])
+            suffixes.append(f'min_{w_tag}')
+            arrays.append(out_max[k])
+            suffixes.append(f'max_{w_tag}')
+            k += 1
     return arrays, suffixes

@@ -52,6 +52,22 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'w4') == pytest.approx([1.0, 1.0, 1.0, 2.0, 1.0, 2.0, 3.0, 2.0])
 
 
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [5, 0, 0, 8, 0, 3, 3, 0]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [4]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [4], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['w4']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # row_idx=6 (last), ws=3, dilation=2 -> idx 0,2,4,6? no: ws=3 -> idx 2,4,6 -> [0,0,3] -> 1 nonzero
+    values = [5, 999, 0, 999, 0, 999, 3]
+    arrs, sfxs = _run(values, {'windows': [3], 'dilations': [1, 2]})
+    assert sfxs == ['w3', 'w3_d2']
+    assert _get(arrs, sfxs, 'w3_d2')[-1] == pytest.approx(1.0)
+
+
 def test_with_mixed_zeros():
     # Series with alternating zeros and non-zeros (economic domain):
     # [50, 30, 0, 80, 0, 0, 20, 40, 0, 10, 0, 60, 0, 0, 35]

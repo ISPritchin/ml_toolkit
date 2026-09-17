@@ -14,6 +14,7 @@ Outputs:
 Preset entry:
     window_mean:
       windows: [3, 6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     mean_w12 = 100 — среднее ежемесячное значение 100 за последний год.
@@ -39,27 +40,37 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_mean = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_mean = np.zeros((n_w * n_d, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            out_mean[j, row_idx] = compute_window_mean(product_values, row_idx, ws)
+            for d in range(n_d):
+                ws = resolve_window_size(pos, windows[j], dilations[d])
+                out_mean[k, row_idx] = compute_window_mean(product_values, row_idx, ws, dilations[d])
+                k += 1
 
     return (out_mean,)
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [3, 6, 12]}."""
+    """params: {"windows": [3, 6, 12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    (mean,) = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    (mean,) = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(mean[j])
-        suffixes.append(f'w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            arrays.append(mean[k])
+            suffixes.append(f'w{w}' if d == 1 else f'w{w}_d{d}')
+            k += 1
     return arrays, suffixes

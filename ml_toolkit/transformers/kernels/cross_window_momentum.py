@@ -23,6 +23,7 @@ Outputs:
 
 Preset entry:
     cross_window_momentum: {}
+    # dilations: [1, 2]  # optional, default [1]; applies to all three horizons (3/6/24) at once
 
 Interpretation:
     all_accel = 1 — «бычья» структура на всех горизонтах; сильный кандидат на рост класса.
@@ -58,50 +59,60 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray):
+def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, dilations: np.ndarray):
     n_rows = product_values.shape[0]
-    out_r_w1_w3 = np.zeros(n_rows)
-    out_r_w3_w6 = np.zeros(n_rows)
-    out_r_w6_w24 = np.zeros(n_rows)
-    out_all_accel = np.zeros(n_rows)
-    out_all_decel = np.zeros(n_rows)
-    out_horizon_spread = np.zeros(n_rows)
+    n_d = dilations.shape[0]
+    out_r_w1_w3 = np.zeros((n_d, n_rows))
+    out_r_w3_w6 = np.zeros((n_d, n_rows))
+    out_r_w6_w24 = np.zeros((n_d, n_rows))
+    out_all_accel = np.zeros((n_d, n_rows))
+    out_all_decel = np.zeros((n_d, n_rows))
+    out_horizon_spread = np.zeros((n_d, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
-        ws3 = resolve_window_size(pos, 3)
-        ws6 = resolve_window_size(pos, 6)
-        ws24 = resolve_window_size(pos, 24)
+        for d_idx in range(n_d):
+            dilation = dilations[d_idx]
+            ws3 = resolve_window_size(pos, 3, dilation)
+            ws6 = resolve_window_size(pos, 6, dilation)
+            ws24 = resolve_window_size(pos, 24, dilation)
 
-        mean3 = compute_window_mean(product_values, row_idx, ws3)
-        mean6 = compute_window_mean(product_values, row_idx, ws6)
-        mean24 = compute_window_mean(product_values, row_idx, ws24)
-        v_now = product_values[row_idx]
+            mean3 = compute_window_mean(product_values, row_idx, ws3, dilation)
+            mean6 = compute_window_mean(product_values, row_idx, ws6, dilation)
+            mean24 = compute_window_mean(product_values, row_idx, ws24, dilation)
+            v_now = product_values[row_idx]
 
-        r_w1_w3 = safe_ratio(v_now, mean3)
-        r_w3_w6 = safe_ratio(mean3, mean6)
-        r_w6_w24 = safe_ratio(mean6, mean24)
+            r_w1_w3 = safe_ratio(v_now, mean3)
+            r_w3_w6 = safe_ratio(mean3, mean6)
+            r_w6_w24 = safe_ratio(mean6, mean24)
 
-        out_r_w1_w3[row_idx] = r_w1_w3
-        out_r_w3_w6[row_idx] = r_w3_w6
-        out_r_w6_w24[row_idx] = r_w6_w24
+            out_r_w1_w3[d_idx, row_idx] = r_w1_w3
+            out_r_w3_w6[d_idx, row_idx] = r_w3_w6
+            out_r_w6_w24[d_idx, row_idx] = r_w6_w24
 
-        all_accel = 1.0 if r_w1_w3 > 1.0 and r_w3_w6 > 1.0 and r_w6_w24 > 1.0 else 0.0
-        all_decel = 1.0 if r_w1_w3 < 1.0 and r_w3_w6 < 1.0 and r_w6_w24 < 1.0 else 0.0
-        out_all_accel[row_idx] = all_accel
-        out_all_decel[row_idx] = all_decel
+            all_accel = 1.0 if r_w1_w3 > 1.0 and r_w3_w6 > 1.0 and r_w6_w24 > 1.0 else 0.0
+            all_decel = 1.0 if r_w1_w3 < 1.0 and r_w3_w6 < 1.0 and r_w6_w24 < 1.0 else 0.0
+            out_all_accel[d_idx, row_idx] = all_accel
+            out_all_decel[d_idx, row_idx] = all_decel
 
-        # спред не определён при нулевом mean3/mean24 -> 0 (раньше log(eps) ~ -20.7)
-        spread_ratio = safe_ratio(abs(mean3), mean24)
-        out_horizon_spread[row_idx] = np.log(spread_ratio) if spread_ratio > 0.0 else 0.0
+            # спред не определён при нулевом mean3/mean24 -> 0 (раньше log(eps) ~ -20.7)
+            spread_ratio = safe_ratio(abs(mean3), mean24)
+            out_horizon_spread[d_idx, row_idx] = np.log(spread_ratio) if spread_ratio > 0.0 else 0.0
 
     return out_r_w1_w3, out_r_w3_w6, out_r_w6_w24, out_all_accel, out_all_decel, out_horizon_spread
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {} (no params)."""
-    r13, r36, r624, aa, ad, hs = _kernel(values, position)
-    return (
-        [r13, r36, r624, aa, ad, hs],
-        ['ratio_w1_w3', 'ratio_w3_w6', 'ratio_w6_w24', 'all_accel', 'all_decel', 'horizon_spread'],
-    )
+    """params: {"dilations": [1, 2]} (optional, default [1]; no other params)."""
+    dilations_list = params.get('dilations', [1])
+    dilations = np.array(dilations_list, dtype=np.int64)
+    r13, r36, r624, aa, ad, hs = _kernel(values, position, dilations)
+    base_names = ['ratio_w1_w3', 'ratio_w3_w6', 'ratio_w6_w24', 'all_accel', 'all_decel', 'horizon_spread']
+    arrays = []
+    suffixes = []
+    for d_idx, d in enumerate(dilations_list):
+        tag = '' if d == 1 else f'_d{d}'
+        for arr, name in zip([r13, r36, r624, aa, ad, hs], base_names, strict=True):
+            arrays.append(arr[d_idx])
+            suffixes.append(f'{name}{tag}')
+    return arrays, suffixes

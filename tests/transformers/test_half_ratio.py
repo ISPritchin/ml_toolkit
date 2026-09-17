@@ -58,3 +58,19 @@ def test_full_output_vector():
     values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'w4') == pytest.approx([0.0, 0.0, 0.0, 3.5, 0.75, 0.714286, 2.111111, 0.266667, 1.052632], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 10, 10, 20, 20, 20]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['w6']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [10,10,10,20,20,20] -> same known half_ratio=2.0
+    values = [10, 999, 10, 999, 10, 999, 20, 999, 20, 999, 20]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert sfxs == ['w6', 'w6_d2']
+    assert _get(arrs, sfxs, 'w6_d2')[-1] == pytest.approx(2.0, abs=1e-6)

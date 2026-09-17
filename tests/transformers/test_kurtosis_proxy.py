@@ -70,3 +70,19 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'p90_p10_w4') == pytest.approx([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'upper_tail_w4') == pytest.approx([0.0, 1.0, 0.666667, 0.444444, 0.571429, 0.416667, 0.535714, 0.789474, 0.512821], abs=1e-6)
     assert _get(arrs, sfxs, 'lower_tail_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 10, 10, 10, 10, 70]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_produces_distinct_suffixes():
+    values = [10, 999, 10, 999, 10, 999, 70]
+    arrs, sfxs = _run(values, {'windows': [3], 'dilations': [1, 2]})
+    assert 'kurt_w3_d2' in sfxs
+    assert 'p75_p25_w3_d2' in sfxs

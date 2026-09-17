@@ -22,6 +22,7 @@ Outputs:
 Preset entry:
     peak_trough_timing:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     months_since_trough_w12 = 5 при max_drawdown_w12 > 0.9 — ряд восстанавливается 5 мес после глубокого дна.
@@ -50,41 +51,54 @@ FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не про
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_peak = np.zeros((n_w, n_rows))
-    out_trough = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_peak = np.zeros((n_w * n_d, n_rows))
+    out_trough = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            running_peak = product_values[row_idx - ws + 1]
-            running_trough = running_peak
-            peak_offset = 0
-            trough_offset = 0
-            for offset in range(ws):
-                v = product_values[row_idx - ws + 1 + offset]
-                if v > running_peak:
-                    running_peak = v
-                    peak_offset = offset
-                if v < running_trough:
-                    running_trough = v
-                    trough_offset = offset
-            out_peak[j, row_idx] = (ws - 1) - peak_offset
-            out_trough[j, row_idx] = (ws - 1) - trough_offset
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                base = row_idx - (ws - 1) * dilation
+                running_peak = product_values[base]
+                running_trough = running_peak
+                peak_offset = 0
+                trough_offset = 0
+                for offset in range(ws):
+                    v = product_values[base + offset * dilation]
+                    if v > running_peak:
+                        running_peak = v
+                        peak_offset = offset
+                    if v < running_trough:
+                        running_trough = v
+                        trough_offset = offset
+                out_peak[k, row_idx] = (ws - 1) - peak_offset
+                out_trough[k, row_idx] = (ws - 1) - trough_offset
+                k += 1
     return out_peak, out_trough
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}."""
+    """params: {"windows": [12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    out_peak, out_trough = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out_peak, out_trough = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(out_peak[j])
-        suffixes.append(f'peak_w{w}')
-        arrays.append(out_trough[j])
-        suffixes.append(f'trough_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(out_peak[k])
+            suffixes.append(f'peak_{w_tag}')
+            arrays.append(out_trough[k])
+            suffixes.append(f'trough_{w_tag}')
+            k += 1
     return arrays, suffixes

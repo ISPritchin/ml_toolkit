@@ -17,6 +17,7 @@ Outputs:
 Preset entry:
     mean_median_gap:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     > 0 — правосторонняя асимметрия: редкие крупные всплески тянут среднее вверх.
@@ -53,27 +54,36 @@ FILL_NAN: dict[str | None, float] = {
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_w * n_d, n_rows))
     max_w = 1
     for j in range(n_w):
         max_w = max(max_w, windows[j])
     sorted_buf = np.empty(max_w)
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            mean = compute_window_mean(product_values, row_idx, ws)
-            fill_window_sorted(sorted_buf, product_values, row_idx, ws)
-            median = sorted_median(sorted_buf, ws)
-            out[j, row_idx] = safe_ratio(mean - median, mean)
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                mean = compute_window_mean(product_values, row_idx, ws, dilation)
+                fill_window_sorted(sorted_buf, product_values, row_idx, ws, dilation)
+                median = sorted_median(sorted_buf, ws)
+                out[k, row_idx] = safe_ratio(mean - median, mean)
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6]}."""
+    """params: {"windows": [6], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out = _kernel(values, position, windows, dilations)
+    suffixes = [f'w{w}' if d == 1 else f'w{w}_d{d}' for w in params['windows'] for d in params.get('dilations', [1])]
+    return [out[k] for k in range(len(suffixes))], suffixes

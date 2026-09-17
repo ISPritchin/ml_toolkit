@@ -75,3 +75,21 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'is_new_peak') == pytest.approx([1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0], abs=1e-6)
     assert _get(arrs, sfxs, 'phase_flag') == pytest.approx([1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0, 2.0, 1.0], abs=1e-6)
     assert _get(arrs, sfxs, 'post_peak_slope_w4') == pytest.approx([0.0, 6.0, 3.0, -2.1, 0.3, 0.0, -0.0, 1.1, 1.1], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [4]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [4], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_produces_distinct_suffix_for_post_peak_slope_only():
+    values = [6, 999, 0, 999, 12, 999, 9, 999, 0, 999, 15, 999, 4, 999, 0, 999, 20]
+    arrs, sfxs = _run(values, {'windows': [4], 'dilations': [1, 2]})
+    assert 'post_peak_slope_w4' in sfxs
+    assert 'post_peak_slope_w4_d2' in sfxs
+    # non-windowed outputs are unaffected by dilations -- appear exactly once
+    assert sfxs.count('completeness') == 1

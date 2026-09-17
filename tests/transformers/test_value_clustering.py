@@ -69,3 +69,19 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'concentration_w4') == pytest.approx([1.0, 1.0, 1.0, 1.8, 2.333333, 1.714286, 2.153846, 4.75, 2.052632], abs=1e-6)
     assert _get(arrs, sfxs, 'density_w4') == pytest.approx([1.0, 1.0, 0.75, 0.75, 0.875, 0.8, 0.622222, 0.633333, 0.65], abs=1e-6)
     assert _get(arrs, sfxs, 'herfindahl_w4') == pytest.approx([1.0, 1.0, 0.555556, 0.358025, 0.510204, 0.347222, 0.410714, 0.66759, 0.421433], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 10, 10, 10, 10, 50]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_produces_distinct_suffixes():
+    values = [10, 999, 10, 999, 10, 999, 50]
+    arrs, sfxs = _run(values, {'windows': [3], 'dilations': [1, 2]})
+    assert 'top1_share_w3_d2' in sfxs
+    assert 'herfindahl_w3_d2' in sfxs

@@ -20,6 +20,7 @@ Outputs:
 Preset entry:
     gini:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     gini_w12 ≈ 0.28 для пульсирующего ряда [50,0,0,80,0,0,100,0,0,60,0,0].
@@ -58,30 +59,39 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_w * n_d, n_rows))
     max_w = 1
     for j in range(n_w):
         max_w = max(max_w, windows[j])
     sorted_buf = np.empty(max_w)
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            win_sum = compute_window_sum(product_values, row_idx, ws)
-            if win_sum > EPS:
-                fill_window_sorted(sorted_buf, product_values, row_idx, ws)
-                gini_num = 0.0
-                for i in range(ws):
-                    gini_num += (2 * (i + 1) - ws - 1) * sorted_buf[i]
-                out[j, row_idx] = gini_num / (ws * win_sum)
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                win_sum = compute_window_sum(product_values, row_idx, ws, dilation)
+                if win_sum > EPS:
+                    fill_window_sorted(sorted_buf, product_values, row_idx, ws, dilation)
+                    gini_num = 0.0
+                    for i in range(ws):
+                        gini_num += (2 * (i + 1) - ws - 1) * sorted_buf[i]
+                    out[k, row_idx] = gini_num / (ws * win_sum)
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12, 24]}."""
+    """params: {"windows": [12, 24], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out = _kernel(values, position, windows, dilations)
+    suffixes = [f'w{w}' if d == 1 else f'w{w}_d{d}' for w in params['windows'] for d in params.get('dilations', [1])]
+    return [out[k] for k in range(len(suffixes))], suffixes

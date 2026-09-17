@@ -76,3 +76,21 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'cond_mean_w4') == pytest.approx([6.0, 6.0, 9.0, 9.0, 10.5, 12.0, 9.333333, 9.5, 13.0], abs=1e-6)
     assert _get(arrs, sfxs, 'vs_cond_mean_w4') == pytest.approx([1.0, 0.0, 1.333333, 1.0, 0.0, 1.25, 0.428571, 0.0, 1.538462], abs=1e-6)
     assert _get(arrs, sfxs, 'surprise_dir') == pytest.approx([1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [20, 20, 20, 20, 20, 30]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_produces_distinct_suffixes():
+    values = [20, 999, 20, 999, 20, 999, 20, 999, 20, 999, 30]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert 'surprise_w6_d2' in sfxs
+    assert 'predictability_w6_d2' in sfxs
+    # non-windowed surprise_dir is unaffected by dilations -- appears exactly once
+    assert sfxs.count('surprise_dir') == 1

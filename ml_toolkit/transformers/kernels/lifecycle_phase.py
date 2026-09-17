@@ -27,6 +27,8 @@ Outputs:
 Preset entry:
     lifecycle_phase:
       windows: [12]
+      dilations: [1, 2]   # optional, default [1]; applies only to post_peak_slope_w*
+                          # (the other outputs are expanding/all-time, not windowed)
 
 Interpretation:
     phase_flag = 0, completeness = 0.6 — ряд ещё набирает обороты, не достиг пика.
@@ -70,11 +72,13 @@ def _kernel(
     product_values: np.ndarray,
     position_within_entity: np.ndarray,
     windows: np.ndarray,
+    dilations: np.ndarray,
     maturity_threshold: float,
     ramp_threshold: float,
 ):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
+    n_d = dilations.shape[0]
 
     out_peak_age_share = np.zeros(n_rows)
     out_post_peak_share = np.zeros(n_rows)
@@ -82,7 +86,7 @@ def _kernel(
     out_ramp_norm = np.zeros(n_rows)
     out_is_new_peak = np.zeros(n_rows)
     out_phase = np.zeros(n_rows)
-    out_post_peak_slope = np.zeros((n_w, n_rows))
+    out_post_peak_slope = np.zeros((n_w * n_d, n_rows))
 
     r_alltime_max = 0.0
     r_alltime_max_pos = 0
@@ -126,28 +130,38 @@ def _kernel(
         out_is_new_peak[row_idx] = is_new_peak
         out_phase[row_idx] = phase
 
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            s = fit_linear_trend_slope(product_values, row_idx, ws)
-            # post_peak_slope: скорость снижения от пика (>0 если падаем)
-            sign_val = -1.0 if v < r_alltime_max else 1.0
-            out_post_peak_slope[j, row_idx] = s * sign_val
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                s = fit_linear_trend_slope(product_values, row_idx, ws, dilation)
+                # post_peak_slope: скорость снижения от пика (>0 если падаем)
+                sign_val = -1.0 if v < r_alltime_max else 1.0
+                out_post_peak_slope[k, row_idx] = s * sign_val
+                k += 1
 
     return (out_peak_age_share, out_post_peak_share, out_completeness,
             out_ramp_norm, out_is_new_peak, out_phase, out_post_peak_slope)
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12], "maturity_threshold": 0.8, "ramp_threshold": 0.5 (опционально)}."""
+    """params: {"windows": [12], "dilations": [1, 2], "maturity_threshold": 0.8,
+    "ramp_threshold": 0.5 (опционально)}. "dilations" optional, default [1].
+    """
     windows = np.array(params['windows'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     maturity_threshold = float(params.get('maturity_threshold', 0.8))
     ramp_threshold = float(params.get('ramp_threshold', 0.5))
     peak_age, post_peak, compl, ramp, is_new, phase, pps = _kernel(
-        values, position, windows, maturity_threshold, ramp_threshold
+        values, position, windows, dilations, maturity_threshold, ramp_threshold
     )
     arrays = [peak_age, post_peak, compl, ramp, is_new, phase]
     suffixes = ['peak_age_share', 'post_peak_share', 'completeness', 'ramp_norm', 'is_new_peak', 'phase_flag']
-    for j, w in enumerate(params['windows']):
-        arrays.append(pps[j])
-        suffixes.append(f'post_peak_slope_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            arrays.append(pps[k])
+            suffixes.append(f'post_peak_slope_w{w}' if d == 1 else f'post_peak_slope_w{w}_d{d}')
+            k += 1
     return arrays, suffixes

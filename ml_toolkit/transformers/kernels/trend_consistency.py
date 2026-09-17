@@ -32,6 +32,8 @@ Outputs:
 Preset entry:
     trend_consistency:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart and
+                          # redefines "diff" as a d-step change instead of month-over-month
 
 Interpretation:
     dir_consistency = 1.0 — каждый шаг совпадает с общим трендом (идеальная монотонность).
@@ -68,100 +70,117 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}  # смесь
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_dir_consistency = np.zeros((n_w, n_rows))
-    out_noise_signal = np.zeros((n_w, n_rows))
-    out_clean_streak = np.zeros((n_w, n_rows))
-    out_sub_sign_consist = np.zeros((n_w, n_rows))
-    out_r_squared = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    n_k = n_w * n_d
+    out_dir_consistency = np.zeros((n_k, n_rows))
+    out_noise_signal = np.zeros((n_k, n_rows))
+    out_clean_streak = np.zeros((n_k, n_rows))
+    out_sub_sign_consist = np.zeros((n_k, n_rows))
+    out_r_squared = np.zeros((n_k, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            start = row_idx - ws + 1
-            slope = fit_linear_trend_slope(product_values, row_idx, ws)
-            slope_sign = 1 if slope > 0 else (-1 if slope < 0 else 0)
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                base = row_idx - (ws - 1) * dilation
+                slope = fit_linear_trend_slope(product_values, row_idx, ws, dilation)
+                slope_sign = 1 if slope > 0 else (-1 if slope < 0 else 0)
 
-            # direction_consistency: доля diff с тем же знаком, что и slope
-            consistent = 0
-            n_diffs = ws - 1
-            if n_diffs > 0:
+                # direction_consistency: доля diff с тем же знаком, что и slope
+                consistent = 0
+                n_diffs = ws - 1
+                if n_diffs > 0:
+                    for i in range(1, ws):
+                        idx = base + i * dilation
+                        d = product_values[idx] - product_values[idx - dilation]
+                        d_sign = 1 if d > 0.0 else (-1 if d < 0.0 else 0)
+                        if d_sign == slope_sign and slope_sign != 0:
+                            consistent += 1
+                    out_dir_consistency[k, row_idx] = consistent / n_diffs
+
+                # residuals: noise_to_signal and R²
+                mean = 0.0
+                for i in range(ws):
+                    mean += product_values[base + i * dilation]
+                mean /= ws
+                # intercept = mean - slope * (ws-1)/2
+                intercept = mean - slope * (ws - 1) / 2.0
+                ss_res = 0.0
+                ss_tot = 0.0
+                for i in range(ws):
+                    pred = intercept + slope * i
+                    res = product_values[base + i * dilation] - pred
+                    ss_res += res * res
+                    ss_tot += (product_values[base + i * dilation] - mean) ** 2
+                r2 = 1.0 - ss_res / (ss_tot + EPS)
+                out_r_squared[k, row_idx] = r2
+                # осциллирующий ряд с нулевым наклоном давал rmse/eps ~ 1e10
+                out_noise_signal[k, row_idx] = safe_ratio((ss_res / ws) ** 0.5, abs(slope) * ws)
+
+                # clean_trend_streak: longest run of diffs consistent with slope
+                best_run = 0
+                cur_run = 0
                 for i in range(1, ws):
-                    d = product_values[start + i] - product_values[start + i - 1]
+                    idx = base + i * dilation
+                    d = product_values[idx] - product_values[idx - dilation]
                     d_sign = 1 if d > 0.0 else (-1 if d < 0.0 else 0)
                     if d_sign == slope_sign and slope_sign != 0:
-                        consistent += 1
-                out_dir_consistency[j, row_idx] = consistent / n_diffs
+                        cur_run += 1
+                        best_run = max(best_run, cur_run)
+                    else:
+                        cur_run = 0
+                out_clean_streak[k, row_idx] = best_run
 
-            # residuals: noise_to_signal and R²
-            mean = 0.0
-            for i in range(ws):
-                mean += product_values[start + i]
-            mean /= ws
-            # intercept = mean - slope * (ws-1)/2
-            intercept = mean - slope * (ws - 1) / 2.0
-            ss_res = 0.0
-            ss_tot = 0.0
-            for i in range(ws):
-                pred = intercept + slope * i
-                res = product_values[start + i] - pred
-                ss_res += res * res
-                ss_tot += (product_values[start + i] - mean) ** 2
-            r2 = 1.0 - ss_res / (ss_tot + EPS)
-            out_r_squared[j, row_idx] = r2
-            # осциллирующий ряд с нулевым наклоном давал rmse/eps ~ 1e10
-            out_noise_signal[j, row_idx] = safe_ratio((ss_res / ws) ** 0.5, abs(slope) * ws)
-
-            # clean_trend_streak: longest run of diffs consistent with slope
-            best_run = 0
-            cur_run = 0
-            for i in range(1, ws):
-                d = product_values[start + i] - product_values[start + i - 1]
-                d_sign = 1 if d > 0.0 else (-1 if d < 0.0 else 0)
-                if d_sign == slope_sign and slope_sign != 0:
-                    cur_run += 1
-                    best_run = max(best_run, cur_run)
-                else:
-                    cur_run = 0
-            out_clean_streak[j, row_idx] = best_run
-
-            # sub_slope_sign_consistency: доля sub-slopes с тем же знаком
-            sub_len = 3
-            n_subs = ws // sub_len
-            if n_subs >= 2:
-                same_sign = 0
-                for s in range(n_subs):
-                    sub_end = (s + 1) * sub_len
-                    if sub_end > ws:
-                        break
-                    # под-окно заканчивается на абсолютном индексе start + sub_end - 1
-                    sub_slope = fit_linear_trend_slope(product_values, start + sub_end - 1, sub_len)
-                    ss = 1 if sub_slope > 0 else (-1 if sub_slope < 0 else 0)
-                    if ss == slope_sign and slope_sign != 0:
-                        same_sign += 1
-                out_sub_sign_consist[j, row_idx] = same_sign / n_subs
+                # sub_slope_sign_consistency: доля sub-slopes с тем же знаком
+                sub_len = 3
+                n_subs = ws // sub_len
+                if n_subs >= 2:
+                    same_sign = 0
+                    for s in range(n_subs):
+                        sub_end = (s + 1) * sub_len
+                        if sub_end > ws:
+                            break
+                        # под-окно заканчивается на абсолютном индексе base + (sub_end-1)*dilation
+                        sub_slope = fit_linear_trend_slope(
+                            product_values, base + (sub_end - 1) * dilation, sub_len, dilation
+                        )
+                        ss = 1 if sub_slope > 0 else (-1 if sub_slope < 0 else 0)
+                        if ss == slope_sign and slope_sign != 0:
+                            same_sign += 1
+                    out_sub_sign_consist[k, row_idx] = same_sign / n_subs
+                k += 1
 
     return out_dir_consistency, out_noise_signal, out_clean_streak, out_sub_sign_consist, out_r_squared
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}."""
+    """params: {"windows": [6, 12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    dc, ns, cs, ssc, r2 = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    dc, ns, cs, ssc, r2 = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(dc[j])
-        suffixes.append(f'dir_consistency_w{w}')
-        arrays.append(ns[j])
-        suffixes.append(f'noise_signal_w{w}')
-        arrays.append(cs[j])
-        suffixes.append(f'clean_streak_w{w}')
-        arrays.append(ssc[j])
-        suffixes.append(f'sub_sign_consist_w{w}')
-        arrays.append(r2[j])
-        suffixes.append(f'r_squared_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(dc[k])
+            suffixes.append(f'dir_consistency_{w_tag}')
+            arrays.append(ns[k])
+            suffixes.append(f'noise_signal_{w_tag}')
+            arrays.append(cs[k])
+            suffixes.append(f'clean_streak_{w_tag}')
+            arrays.append(ssc[k])
+            suffixes.append(f'sub_sign_consist_{w_tag}')
+            arrays.append(r2[k])
+            suffixes.append(f'r_squared_{w_tag}')
+            k += 1
     return arrays, suffixes

@@ -16,6 +16,7 @@ Outputs:
 Preset entry:
     active_months:
       windows: [6, 12, 24]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     active_months_w12 = 12 — ряд активен (ненулевой) каждый месяц.
@@ -43,24 +44,34 @@ FILL_NAN: dict[str | None, float] = {}  # трансформер NaN не про
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            count = 0
-            for offset in range(ws):
-                if product_values[row_idx - ws + 1 + offset] != 0.0:
-                    count += 1
-            out[j, row_idx] = count
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                base = row_idx - (ws - 1) * dilation
+                count = 0
+                for offset in range(ws):
+                    if product_values[base + offset * dilation] != 0.0:
+                        count += 1
+                out[k, row_idx] = count
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12, 24]}."""
+    """params: {"windows": [12, 24], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    out = _kernel(values, position, windows)
-    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out = _kernel(values, position, windows, dilations)
+    suffixes = [f'w{w}' if d == 1 else f'w{w}_d{d}' for w in params['windows'] for d in params.get('dilations', [1])]
+    return [out[k] for k in range(len(suffixes))], suffixes

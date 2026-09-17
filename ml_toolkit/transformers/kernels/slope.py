@@ -16,10 +16,13 @@ Outputs:
     {product}__slope__w6   — OLS-наклон за 6 мес
     {product}__slope__w12  — OLS-наклон за 12 мес
     {product}__slope__w24  — OLS-наклон за 24 мес
+    {product}__slope__w6_d2 — OLS-наклон, окно 6 точек с шагом 2 (при dilations=[1,2])
 
 Preset entry:
     slope:
       windows: [6, 12, 24]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
+                          # (ROCKET-style) -- receptive field becomes (w-1)*d+1
 
 Interpretation:
     = +5.0 — рост +5 единиц в месяц (пример ряда G, slope_w6).
@@ -49,27 +52,37 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}  # накло
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            out[j, row_idx] = fit_linear_trend_slope(product_values, row_idx, ws)
+            for d in range(n_d):
+                ws = resolve_window_size(pos, windows[j], dilations[d])
+                out[k, row_idx] = fit_linear_trend_slope(product_values, row_idx, ws, dilations[d])
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12, 24]}.
+    """params: {"windows": [6, 12, 24], "dilations": [1, 2]}. "dilations" is optional,
+    default [1] (plain contiguous window, unchanged from before dilation support existed).
 
     Returns:
-        (arrays, suffixes) — по одному массиву и суффиксу на каждое окно.
+        (arrays, suffixes) — по одному массиву и суффиксу на каждую пару (окно, дилатация).
 
     """
     windows = np.array(params['windows'], dtype=np.int64)
-    out = _kernel(values, position, windows)
-    arrays = [out[j] for j in range(len(windows))]
-    suffixes = [f'w{w}' for w in params['windows']]
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out = _kernel(values, position, windows, dilations)
+    arrays = [out[k] for k in range(len(windows) * len(dilations))]
+    suffixes = [
+        f'w{w}' if d == 1 else f'w{w}_d{d}' for w in params['windows'] for d in params.get('dilations', [1])
+    ]
     return arrays, suffixes

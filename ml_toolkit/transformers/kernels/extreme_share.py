@@ -19,6 +19,7 @@ Outputs:
 Preset entry:
     extreme_share:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     extreme_w12 > 0.3 — более 30% месяцев выходят за 1.5σ: нестабильный ряд.
@@ -54,41 +55,53 @@ def _kernel(
     product_values: np.ndarray,
     position_within_entity: np.ndarray,
     windows: np.ndarray,
+    dilations: np.ndarray,
     sigma_threshold: float,
 ):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_extreme = np.zeros((n_w, n_rows))
-    out_balance = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_extreme = np.zeros((n_w * n_d, n_rows))
+    out_balance = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            mean, std = compute_window_mean_and_std(product_values, row_idx, ws)
-            threshold = sigma_threshold * std
-            extreme_count = 0
-            above_count = 0
-            for offset in range(ws):
-                v = product_values[row_idx - ws + 1 + offset]
-                if abs(v - mean) > threshold:
-                    extreme_count += 1
-                if v > mean:
-                    above_count += 1
-            out_extreme[j, row_idx] = extreme_count / ws
-            out_balance[j, row_idx] = above_count / ws - 0.5
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                mean, std = compute_window_mean_and_std(product_values, row_idx, ws, dilation)
+                threshold = sigma_threshold * std
+                base = row_idx - (ws - 1) * dilation
+                extreme_count = 0
+                above_count = 0
+                for offset in range(ws):
+                    v = product_values[base + offset * dilation]
+                    if abs(v - mean) > threshold:
+                        extreme_count += 1
+                    if v > mean:
+                        above_count += 1
+                out_extreme[k, row_idx] = extreme_count / ws
+                out_balance[k, row_idx] = above_count / ws - 0.5
+                k += 1
     return out_extreme, out_balance
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12], "sigma_threshold": 1.5 (опционально)}."""
+    """params: {"windows": [12], "dilations": [1, 2], "sigma_threshold": 1.5 (опционально)}."""
     windows = np.array(params['windows'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     sigma_threshold = float(params.get('sigma_threshold', 1.5))
-    out_extreme, out_balance = _kernel(values, position, windows, sigma_threshold)
+    out_extreme, out_balance = _kernel(values, position, windows, dilations, sigma_threshold)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(out_extreme[j])
-        suffixes.append(f'extreme_w{w}')
-        arrays.append(out_balance[j])
-        suffixes.append(f'balance_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(out_extreme[k])
+            suffixes.append(f'extreme_{w_tag}')
+            arrays.append(out_balance[k])
+            suffixes.append(f'balance_{w_tag}')
+            k += 1
     return arrays, suffixes

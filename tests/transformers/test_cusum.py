@@ -58,3 +58,21 @@ def test_full_output_vector():
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'pos_w4') == pytest.approx([0.0, 3.0, 6.0, 7.5, 10.5, 9.0, 10.0, 10.25, 15.5], abs=1e-6)
     assert _get(arrs, sfxs, 'neg_w4') == pytest.approx([0.0, -3.0, -6.0, -7.5, -10.5, -9.0, -10.0, -10.25, -15.5], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 40, 20, 30]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [4]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [4], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['pos_w4', 'neg_w4']
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [10,40,20,30] -> known cusum pos=20, neg=-20
+    values = [10, 999, 40, 999, 20, 999, 30]
+    arrs, sfxs = _run(values, {'windows': [4], 'dilations': [1, 2]})
+    assert sfxs == ['pos_w4', 'neg_w4', 'pos_w4_d2', 'neg_w4_d2']
+    assert _get(arrs, sfxs, 'pos_w4_d2')[-1] == pytest.approx(20.0, abs=1e-6)
+    assert _get(arrs, sfxs, 'neg_w4_d2')[-1] == pytest.approx(-20.0, abs=1e-6)

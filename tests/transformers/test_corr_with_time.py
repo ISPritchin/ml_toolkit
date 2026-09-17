@@ -57,3 +57,20 @@ def test_full_output_vector():
     values = [6, 0, 12, 9, 0, 15, 4, 0, 20]
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'w4') == pytest.approx([0.0, 0.0, 0.5, 0.52915, -0.062622, 0.0, 0.0, -0.200331, 0.152323], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 20, 30, 40, 50, 60]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['w6']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_dilation_2_picks_up_strided_linear_trend():
+    # every-other-point sub-series [10,30,50,70] is perfectly linear -> r=1.0, even though
+    # the contiguous window (with the interleaved noise) is not
+    values = [10, -999, 30, -999, 50, -999, 70]
+    arrs, sfxs = _run(values, {'windows': [4], 'dilations': [1, 2]})
+    assert sfxs == ['w4', 'w4_d2']
+    assert _get(arrs, sfxs, 'w4_d2')[-1] == pytest.approx(1.0, abs=1e-4)

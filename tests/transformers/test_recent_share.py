@@ -40,3 +40,18 @@ def test_full_output_vector():
     values = [6, 0, 12, 9, 0, 15, 4, 0, 20, 11]
     arrs, sfxs = _run(values, {'pairs': [[3, 6]]})
     assert _get(arrs, sfxs, 'r3_w6') == pytest.approx([1.0, 1.0, 1.0, 0.777778, 0.777778, 0.571429, 0.475, 0.475, 0.5, 0.62], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_pairs():
+    values = [10, 20, 30, 40, 50, 60]
+    arrs_plain, sfxs_plain = _run(values, {'pairs': [[3, 6]]})
+    arrs_explicit, sfxs_explicit = _run(values, {'pairs': [[3, 6]], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['r3_w6']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_dilation_2_produces_a_distinct_suffix():
+    values = [10, 999, 20, 999, 30, 999, 40, 999, 50, 999, 60]
+    arrs, sfxs = _run(values, {'pairs': [[3, 6]], 'dilations': [1, 2]})
+    assert sfxs == ['r3_w6', 'r3_w6_d2']
+    assert _get(arrs, sfxs, 'r3_w6_d2')[-1] == pytest.approx(0.714, abs=0.01)

@@ -60,3 +60,28 @@ def test_full_output_vector():
     arrs, sfxs = _run(values, {'half_windows': [2, 4]})
     assert _get(arrs, sfxs, 'h2') == pytest.approx([0.0, 0.0, 0.0, 2.5, -0.25, -0.285714, 1.111111, -0.733333, 0.052632, 6.75], abs=1e-6)
     assert _get(arrs, sfxs, 'h4') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.296296, 0.857143, -0.027778], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_half_windows():
+    values = [10, 20, 30, 40, 50, 60]
+    arrs_plain, sfxs_plain = _run(values, {'half_windows': [3]})
+    arrs_explicit, sfxs_explicit = _run(values, {'half_windows': [3], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['h3']
+    assert arrs_plain[0].tolist() == arrs_explicit[0].tolist()
+
+
+def test_dilation_2_reads_strided_blocks():
+    # even indices are [10,20,30,40,50,60] (same series as test_known_value_from_docstring),
+    # odd indices are noise the dilation=2 gate must skip entirely
+    values = [10, -999, 20, -999, 30, -999, 40, -999, 50, -999, 60]
+    arrs, sfxs = _run(values, {'half_windows': [3], 'dilations': [1, 2]})
+    assert sfxs == ['h3', 'h3_d2']
+    assert _get(arrs, sfxs, 'h3_d2')[-1] == pytest.approx(1.5, abs=1e-4)
+
+
+def test_dilation_gate_requires_more_history_than_dilation_1():
+    # h=3, dilation=2 needs pos >= (2*3-1)*2 = 10 -> first 10 rows (idx 0..9) must stay 0
+    values = [10, -999, 20, -999, 30, -999, 40, -999, 50, -999, 60]
+    arrs, sfxs = _run(values, {'half_windows': [3], 'dilations': [2]})
+    for i in range(10):
+        assert _get(arrs, sfxs, 'h3_d2')[i] == pytest.approx(0.0)

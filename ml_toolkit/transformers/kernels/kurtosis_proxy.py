@@ -24,6 +24,7 @@ Outputs:
 Preset entry:
     kurtosis_proxy:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     kurt_w12 > 3 — тяжёлые хвосты (редкие экстремальные месяцы на фоне ровного фона).
@@ -62,64 +63,77 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_kurt = np.zeros((n_w, n_rows))
-    out_p75_p25 = np.zeros((n_w, n_rows))
-    out_p90_p10 = np.zeros((n_w, n_rows))
-    out_upper = np.zeros((n_w, n_rows))
-    out_lower = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_kurt = np.zeros((n_w * n_d, n_rows))
+    out_p75_p25 = np.zeros((n_w * n_d, n_rows))
+    out_p90_p10 = np.zeros((n_w * n_d, n_rows))
+    out_upper = np.zeros((n_w * n_d, n_rows))
+    out_lower = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            mean, std = compute_window_mean_and_std(product_values, row_idx, ws)
-            # эксцесс
-            if std > EPS:
-                fourth = 0.0
-                for offset in range(ws):
-                    z = (product_values[row_idx - ws + 1 + offset] - mean) / std
-                    fourth += z * z * z * z
-                out_kurt[j, row_idx] = fourth / ws - 3.0
-            # персентили через sorted buffer (единая конвенция sorted[int(q*(ws-1))])
-            sorted_buf = compute_window_sorted_buffer(product_values, row_idx, ws)
-            p10 = sorted_quantile(sorted_buf, ws, 0.10)
-            p25 = sorted_quantile(sorted_buf, ws, 0.25)
-            p75 = sorted_quantile(sorted_buf, ws, 0.75)
-            p90 = sorted_quantile(sorted_buf, ws, 0.90)
-            out_p75_p25[j, row_idx] = safe_ratio(p75, p25)
-            out_p90_p10[j, row_idx] = safe_ratio(p90, p10)
-            win_sum = compute_window_sum(product_values, row_idx, ws)
-            if abs(win_sum) > EPS:
-                upper_sum = 0.0
-                lower_sum = 0.0
-                for offset in range(ws):
-                    v = product_values[row_idx - ws + 1 + offset]
-                    if v > p75:
-                        upper_sum += v
-                    elif v < p25:
-                        lower_sum += v
-                out_upper[j, row_idx] = safe_ratio(upper_sum, win_sum)
-                out_lower[j, row_idx] = safe_ratio(lower_sum, win_sum)
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                base = row_idx - (ws - 1) * dilation
+                mean, std = compute_window_mean_and_std(product_values, row_idx, ws, dilation)
+                # эксцесс
+                if std > EPS:
+                    fourth = 0.0
+                    for offset in range(ws):
+                        z = (product_values[base + offset * dilation] - mean) / std
+                        fourth += z * z * z * z
+                    out_kurt[k, row_idx] = fourth / ws - 3.0
+                # персентили через sorted buffer (единая конвенция sorted[int(q*(ws-1))])
+                sorted_buf = compute_window_sorted_buffer(product_values, row_idx, ws, dilation)
+                p10 = sorted_quantile(sorted_buf, ws, 0.10)
+                p25 = sorted_quantile(sorted_buf, ws, 0.25)
+                p75 = sorted_quantile(sorted_buf, ws, 0.75)
+                p90 = sorted_quantile(sorted_buf, ws, 0.90)
+                out_p75_p25[k, row_idx] = safe_ratio(p75, p25)
+                out_p90_p10[k, row_idx] = safe_ratio(p90, p10)
+                win_sum = compute_window_sum(product_values, row_idx, ws, dilation)
+                if abs(win_sum) > EPS:
+                    upper_sum = 0.0
+                    lower_sum = 0.0
+                    for offset in range(ws):
+                        v = product_values[base + offset * dilation]
+                        if v > p75:
+                            upper_sum += v
+                        elif v < p25:
+                            lower_sum += v
+                    out_upper[k, row_idx] = safe_ratio(upper_sum, win_sum)
+                    out_lower[k, row_idx] = safe_ratio(lower_sum, win_sum)
+                k += 1
     return out_kurt, out_p75_p25, out_p90_p10, out_upper, out_lower
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}."""
+    """params: {"windows": [6, 12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    out_kurt, out_p75p25, out_p90p10, out_upper, out_lower = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out_kurt, out_p75p25, out_p90p10, out_upper, out_lower = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(out_kurt[j])
-        suffixes.append(f'kurt_w{w}')
-        arrays.append(out_p75p25[j])
-        suffixes.append(f'p75_p25_w{w}')
-        arrays.append(out_p90p10[j])
-        suffixes.append(f'p90_p10_w{w}')
-        arrays.append(out_upper[j])
-        suffixes.append(f'upper_tail_w{w}')
-        arrays.append(out_lower[j])
-        suffixes.append(f'lower_tail_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(out_kurt[k])
+            suffixes.append(f'kurt_{w_tag}')
+            arrays.append(out_p75p25[k])
+            suffixes.append(f'p75_p25_{w_tag}')
+            arrays.append(out_p90p10[k])
+            suffixes.append(f'p90_p10_{w_tag}')
+            arrays.append(out_upper[k])
+            suffixes.append(f'upper_tail_{w_tag}')
+            arrays.append(out_lower[k])
+            suffixes.append(f'lower_tail_{w_tag}')
+            k += 1
     return arrays, suffixes

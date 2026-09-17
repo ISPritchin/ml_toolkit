@@ -75,3 +75,21 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'recency_w4') == pytest.approx([1.0, 0.0, 1.0, 2.0, 0.0, 1.0, 0.0, 0.0, 1.0], abs=1e-6)
     assert _get(arrs, sfxs, 'balance_w4') == pytest.approx([0.0, -1.0, -1.0, -1.0, -1.0, -1.0, -2.0, -2.0, -2.0], abs=1e-6)
     assert _get(arrs, sfxs, 'is_spike_now') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 10, 10, 10, 10, 10, 100]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [7]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [7], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [10,10,10,10,10,10,100] -> known spike (z=2.449) at dilation=2
+    values = [10, 999, 10, 999, 10, 999, 10, 999, 10, 999, 10, 999, 100]
+    arrs, sfxs = _run(values, {'windows': [7], 'dilations': [1, 2]})
+    assert 'spike_count_w7_d2' in sfxs
+    assert _get(arrs, sfxs, 'spike_count_w7_d2')[-1] == pytest.approx(1.0)
+    assert _get(arrs, sfxs, 'max_spike_z_w7_d2')[-1] == pytest.approx(2.449, abs=0.01)

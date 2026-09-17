@@ -15,6 +15,7 @@ Outputs:
 Preset entry:
     window_median:
       windows: [3, 6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     median_w12 = 80 — половина месяцев за год были ≤80, половина ≥80.
@@ -47,10 +48,13 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_median = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_median = np.zeros((n_w * n_d, n_rows))
     max_w = 1
     for j in range(n_w):
         max_w = max(max_w, windows[j])
@@ -58,21 +62,28 @@ def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, wind
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            fill_window_sorted(sorted_buf, product_values, row_idx, ws)
-            out_median[j, row_idx] = sorted_median(sorted_buf, ws)
+            for d in range(n_d):
+                ws = resolve_window_size(pos, windows[j], dilations[d])
+                fill_window_sorted(sorted_buf, product_values, row_idx, ws, dilations[d])
+                out_median[k, row_idx] = sorted_median(sorted_buf, ws)
+                k += 1
 
     return (out_median,)
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [3, 6, 12]}."""
+    """params: {"windows": [3, 6, 12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    (median,) = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    (median,) = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(median[j])
-        suffixes.append(f'w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            arrays.append(median[k])
+            suffixes.append(f'w{w}' if d == 1 else f'w{w}_d{d}')
+            k += 1
     return arrays, suffixes

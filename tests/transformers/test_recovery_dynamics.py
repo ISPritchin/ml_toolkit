@@ -70,3 +70,23 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'trough_is_recent_w4') == pytest.approx([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], abs=1e-6)
     assert _get(arrs, sfxs, 'speed_w4') == pytest.approx([0.0, 0.0, 6.0, 3.0, 0.0, 7.5, 1.333333, 0.0, 10.0], abs=1e-6)
     assert _get(arrs, sfxs, 'is_recovering_now') == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 80, 40, 20, 5, 30]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [10,80,40,20,5,30] -> known completeness_w6=0.333, speed_w6=12.5
+    values = [10, 999, 80, 999, 40, 999, 20, 999, 5, 999, 30]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert 'completeness_w6_d2' in sfxs
+    assert _get(arrs, sfxs, 'completeness_w6_d2')[-1] == pytest.approx(0.333, abs=0.01)
+    assert _get(arrs, sfxs, 'speed_w6_d2')[-1] == pytest.approx(12.5, abs=0.01)
+    # is_recovering_now is unaffected by dilations -- appears exactly once
+    assert sfxs.count('is_recovering_now') == 1

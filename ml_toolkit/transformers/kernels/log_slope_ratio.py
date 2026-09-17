@@ -17,6 +17,7 @@ Preset entry:
     log_slope_ratio:
       pairs:
         - [6, 12]
+      dilations: [1, 2]   # optional, default [1]; applies to both windows of every pair
 
 Interpretation:
     > 1 — краткосрочный log-темп роста выше долгосрочного (ускорение).
@@ -50,26 +51,36 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, pairs: np.ndarray):
+def _kernel(
+    log_values: np.ndarray, position_within_entity: np.ndarray, pairs: np.ndarray, dilations: np.ndarray
+):
     n_rows = log_values.shape[0]
     n_p = pairs.shape[0]
-    out = np.zeros((n_p, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_p * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_p):
-            ws_short = resolve_window_size(pos, pairs[j, 0])
-            ws_long = resolve_window_size(pos, pairs[j, 1])
-            s_short = fit_linear_trend_slope(log_values, row_idx, ws_short)
-            s_long = fit_linear_trend_slope(log_values, row_idx, ws_long)
-            out[j, row_idx] = safe_ratio(s_short, s_long)
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws_short = resolve_window_size(pos, pairs[j, 0], dilation)
+                ws_long = resolve_window_size(pos, pairs[j, 1], dilation)
+                s_short = fit_linear_trend_slope(log_values, row_idx, ws_short, dilation)
+                s_long = fit_linear_trend_slope(log_values, row_idx, ws_long, dilation)
+                out[k, row_idx] = safe_ratio(s_short, s_long)
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"pairs": [[6, 12]]}."""
+    """params: {"pairs": [[6, 12]], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     pairs = np.array(params['pairs'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     # log1p считается один раз на колонку, без буфера на каждое окно
     log_values = np.log1p(np.abs(values))
-    out = _kernel(log_values, position, pairs)
-    p = params['pairs']
-    return [out[j] for j in range(len(p))], [f'w{a}_w{b}' for a, b in p]
+    out = _kernel(log_values, position, pairs, dilations)
+    suffixes = [
+        f'w{a}_w{b}' if d == 1 else f'w{a}_w{b}_d{d}' for a, b in params['pairs'] for d in params.get('dilations', [1])
+    ]
+    return [out[k] for k in range(len(suffixes))], suffixes

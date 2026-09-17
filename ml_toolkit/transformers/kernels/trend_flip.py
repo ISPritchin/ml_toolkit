@@ -26,6 +26,9 @@ Preset entry:
       lag_window_pairs:
         - [6, 6]
         - [12, 12]
+      dilations: [1, 2]   # optional, default [1]; applies to each pair's window AND its lag
+                          # (lag is itself expressed in dilated steps, so d=2/lag=6 looks
+                          # 12 raw rows back -- same "6 dilated steps" as the window itself)
 
 Interpretation:
     flag = 1 — тренд поменял знак относительно полугода/года назад (разворот рынка).
@@ -63,41 +66,54 @@ def _kernel(
     position_within_entity: np.ndarray,
     lags: np.ndarray,
     windows: np.ndarray,
+    dilations: np.ndarray,
 ):
     """lags[j] и windows[j] определяют пару: наклон сейчас vs lag[j] назад за windows[j]."""
     n_rows = product_values.shape[0]
     n_p = lags.shape[0]
+    n_d = dilations.shape[0]
     flip_flag = np.zeros(n_rows)
-    slope_change = np.zeros((n_p, n_rows))
+    slope_change = np.zeros((n_p * n_d, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_p):
             lag = lags[j]
             w = windows[j]
-            if pos >= lag:
-                ws_now = resolve_window_size(pos, w)
-                slope_now = fit_linear_trend_slope(product_values, row_idx, ws_now)
-                pos_ago = position_within_entity[row_idx - lag]
-                ws_ago = resolve_window_size(pos_ago, w)
-                slope_ago = fit_linear_trend_slope(product_values, row_idx - lag, ws_ago)
-                slope_change[j, row_idx] = slope_now - slope_ago
-                # flip flag: только для первой пары; требуем оба наклона явно ненулевые
-                if j == 0:
-                    if (slope_now > EPS and slope_ago < -EPS) or (slope_now < -EPS and slope_ago > EPS):
-                        flip_flag[row_idx] = 1.0
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                lag_rows = lag * dilation  # lag is expressed in dilated steps, like the window itself
+                if pos >= lag_rows:
+                    ws_now = resolve_window_size(pos, w, dilation)
+                    slope_now = fit_linear_trend_slope(product_values, row_idx, ws_now, dilation)
+                    pos_ago = position_within_entity[row_idx - lag_rows]
+                    ws_ago = resolve_window_size(pos_ago, w, dilation)
+                    slope_ago = fit_linear_trend_slope(product_values, row_idx - lag_rows, ws_ago, dilation)
+                    slope_change[k, row_idx] = slope_now - slope_ago
+                    # flip flag: только для первого (pair, dilation); требуем оба наклона явно ненулевые
+                    if k == 0:
+                        if (slope_now > EPS and slope_ago < -EPS) or (slope_now < -EPS and slope_ago > EPS):
+                            flip_flag[row_idx] = 1.0
+                k += 1
     return flip_flag, slope_change
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"lag_window_pairs": [[6, 6], [12, 12]]} — ключ обязателен."""
+    """params: {"lag_window_pairs": [[6, 6], [12, 12]], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     pairs = params['lag_window_pairs']
+    dilations_list = params.get('dilations', [1])
     lags = np.array([p[0] for p in pairs], dtype=np.int64)
     windows = np.array([p[1] for p in pairs], dtype=np.int64)
-    flip, slope_ch = _kernel(values, position, lags, windows)
+    dilations = np.array(dilations_list, dtype=np.int64)
+    flip, slope_ch = _kernel(values, position, lags, windows, dilations)
     arrays = [flip]
     suffixes = ['flag']
-    for j, p in enumerate(pairs):
-        arrays.append(slope_ch[j])
-        suffixes.append(f'slope_change_lag{p[0]}_w{p[1]}')
+    k = 0
+    for p in pairs:
+        for d in dilations_list:
+            tag = f'lag{p[0]}_w{p[1]}' if d == 1 else f'lag{p[0]}_w{p[1]}_d{d}'
+            arrays.append(slope_ch[k])
+            suffixes.append(f'slope_change_{tag}')
+            k += 1
     return arrays, suffixes

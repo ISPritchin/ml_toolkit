@@ -27,6 +27,7 @@ Outputs:
 Preset entry:
     energy_ratio_by_chunks:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     last_share >> first_share — энергия (крупные значения) сконцентрирована в конце
@@ -59,53 +60,66 @@ FILL_NAN: dict[str | None, float] = {None: -1.0}  # все доли энерги
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_first = np.zeros((n_w, n_rows))
-    out_mid = np.zeros((n_w, n_rows))
-    out_last = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out_first = np.zeros((n_w * n_d, n_rows))
+    out_mid = np.zeros((n_w * n_d, n_rows))
+    out_last = np.zeros((n_w * n_d, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            third = ws // 3
-            if third < 1:
-                continue
-            start = row_idx - ws + 1
-            total_energy = 0.0
-            for offset in range(ws):
-                v = product_values[start + offset]
-                total_energy += v * v
-            e1 = 0.0
-            e2 = 0.0
-            e3 = 0.0
-            for i in range(third):
-                v1 = product_values[start + i]
-                v2 = product_values[start + third + i]
-                v3 = product_values[start + 2 * third + i]
-                e1 += v1 * v1
-                e2 += v2 * v2
-                e3 += v3 * v3
-            out_first[j, row_idx] = safe_ratio(e1, total_energy)
-            out_mid[j, row_idx] = safe_ratio(e2, total_energy)
-            out_last[j, row_idx] = safe_ratio(e3, total_energy)
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                third = ws // 3
+                if third < 1:
+                    k += 1
+                    continue
+                base = row_idx - (ws - 1) * dilation
+                total_energy = 0.0
+                for offset in range(ws):
+                    v = product_values[base + offset * dilation]
+                    total_energy += v * v
+                e1 = 0.0
+                e2 = 0.0
+                e3 = 0.0
+                for i in range(third):
+                    v1 = product_values[base + i * dilation]
+                    v2 = product_values[base + (third + i) * dilation]
+                    v3 = product_values[base + (2 * third + i) * dilation]
+                    e1 += v1 * v1
+                    e2 += v2 * v2
+                    e3 += v3 * v3
+                out_first[k, row_idx] = safe_ratio(e1, total_energy)
+                out_mid[k, row_idx] = safe_ratio(e2, total_energy)
+                out_last[k, row_idx] = safe_ratio(e3, total_energy)
+                k += 1
 
     return out_first, out_mid, out_last
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}."""
+    """params: {"windows": [6, 12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    first, mid, last = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    first, mid, last = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(first[j])
-        suffixes.append(f'first_w{w}')
-        arrays.append(mid[j])
-        suffixes.append(f'mid_w{w}')
-        arrays.append(last[j])
-        suffixes.append(f'last_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(first[k])
+            suffixes.append(f'first_{w_tag}')
+            arrays.append(mid[k])
+            suffixes.append(f'mid_{w_tag}')
+            arrays.append(last[k])
+            suffixes.append(f'last_{w_tag}')
+            k += 1
     return arrays, suffixes

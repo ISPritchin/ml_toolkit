@@ -19,6 +19,8 @@ Outputs:
 Preset entry:
     log_volatility:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 measures volatility of d-step log
+                          # growth (log_values[t]-log_values[t-d]) instead of month-over-month
 
 Interpretation:
     ≈ 0 — темп роста стабилен месяц к месяцу в log-шкале.
@@ -47,37 +49,46 @@ FILL_NAN: dict[str | None, float] = {None: -1.0}  # std log-разностей >
 
 
 @nb.njit(cache=True)
-def _log_vol(log_values: np.ndarray, row_idx: int, ws: int) -> float:
+def _log_vol(log_values: np.ndarray, row_idx: int, ws: int, dilation: int) -> float:
     n_diffs = ws - 1
     if n_diffs < 1:
         return 0.0
-    # сумма лог-разностей телескопируется: lv[t] - lv[t-ws+1]
-    ld_mean = (log_values[row_idx] - log_values[row_idx - ws + 1]) / n_diffs
+    base = row_idx - (ws - 1) * dilation
+    # сумма лог-разностей телескопируется: lv[t] - lv[base], независимо от dilation
+    ld_mean = (log_values[row_idx] - log_values[base]) / n_diffs
     ld_sq = 0.0
     for offset in range(1, ws):
-        abs_idx = row_idx - ws + 1 + offset
-        ld = log_values[abs_idx] - log_values[abs_idx - 1]
+        abs_idx = base + offset * dilation
+        ld = log_values[abs_idx] - log_values[abs_idx - dilation]
         ld_sq += (ld - ld_mean) ** 2
     return (ld_sq / n_diffs) ** 0.5
 
 
 @nb.njit(cache=True)
-def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    log_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = log_values.shape[0]
     n_w = windows.shape[0]
-    out = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            out[j, row_idx] = _log_vol(log_values, row_idx, ws)
+            for d in range(n_d):
+                ws = resolve_window_size(pos, windows[j], dilations[d])
+                out[k, row_idx] = _log_vol(log_values, row_idx, ws, dilations[d])
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6, 12]}."""
+    """params: {"windows": [6, 12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     # log1p считается один раз на колонку (векторно)
     log_values = np.log1p(np.abs(values))
-    out = _kernel(log_values, position, windows)
-    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]
+    out = _kernel(log_values, position, windows, dilations)
+    suffixes = [f'w{w}' if d == 1 else f'w{w}_d{d}' for w in params['windows'] for d in params.get('dilations', [1])]
+    return [out[k] for k in range(len(suffixes))], suffixes

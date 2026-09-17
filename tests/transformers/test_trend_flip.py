@@ -60,3 +60,22 @@ def test_full_output_vector():
     assert _get(arrs, sfxs, 'flag') == pytest.approx([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'slope_change_lag2_w2') == pytest.approx([0.0, 0.0, 12.0, 3.0, -21.0, 18.0, -2.0, -19.0, 31.0, -5.0], abs=1e-6)
     assert _get(arrs, sfxs, 'slope_change_lag4_w4') == pytest.approx([0.0, 0.0, 0.0, 0.0, -0.3, 6.0, -3.0, -3.2, 1.4, 4.1], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_pairs():
+    values = [10, 20, 30, 40, 50, 60, 55, 45, 35, 25, 15, 5]
+    arrs_plain, sfxs_plain = _run(values, {'lag_window_pairs': [[6, 6]]})
+    arrs_explicit, sfxs_explicit = _run(values, {'lag_window_pairs': [[6, 6]], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['flag', 'slope_change_lag6_w6']
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry the docstring's [10,20,...,60,55,...,5] series (lag=6*2 rows -> same
+    # 6-months-apart comparison as the base example, just spaced by dilation=2)
+    values = [10, 999, 20, 999, 30, 999, 40, 999, 50, 999, 60, 999,
+              55, 999, 45, 999, 35, 999, 25, 999, 15, 999, 5]
+    arrs, sfxs = _run(values, {'lag_window_pairs': [[6, 6]], 'dilations': [1, 2]})
+    assert sfxs == ['flag', 'slope_change_lag6_w6', 'slope_change_lag6_w6_d2']
+    assert _get(arrs, sfxs, 'slope_change_lag6_w6_d2')[-1] == pytest.approx(-20.0, abs=1e-4)

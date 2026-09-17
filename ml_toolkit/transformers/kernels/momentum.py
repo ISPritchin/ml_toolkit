@@ -15,10 +15,13 @@ Formula:
 Outputs:
     {product}__momentum__h3  — моментум 3/3 мес (квартальный)
     {product}__momentum__h6  — моментум 6/6 мес (полугодовой)
+    {product}__momentum__h3_d2 — моментум 3/3 с шагом 2 (при dilations=[1,2])
 
 Preset entry:
     momentum:
       half_windows: [3, 6]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces the recent/prior blocks' taps
+                          # d rows apart (each block's own span becomes (h-1)*d+1)
 
 Interpretation:
     momentum_h6 = +1.33 — последнее полугодие в 2.33× выше предыдущего (пример ряда G).
@@ -50,34 +53,39 @@ def _kernel(
     product_values: np.ndarray,
     position_within_entity: np.ndarray,
     half_windows: np.ndarray,
+    dilations: np.ndarray,
 ):
     n_rows = product_values.shape[0]
     n_h = half_windows.shape[0]
-    out = np.zeros((n_h, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_h * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_h):
             h = half_windows[j]
-            if pos < 2 * h - 1:
-                continue
-            recent_sum = 0.0
-            prior_sum = 0.0
-            for offset in range(h):
-                recent_sum += product_values[row_idx - offset]
-                prior_sum += product_values[row_idx - h - offset]
-            prior_mean = prior_sum / h
-            # при нулевой базе (prior_mean ~ 0) моментум не определён -> 0, а не -1
-            if abs(prior_mean) > EPS:
-                out[j, row_idx] = safe_ratio(recent_sum / h, prior_mean) - 1.0
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                if pos >= (2 * h - 1) * dilation:
+                    recent_sum = 0.0
+                    prior_sum = 0.0
+                    for offset in range(h):
+                        recent_sum += product_values[row_idx - offset * dilation]
+                        prior_sum += product_values[row_idx - h * dilation - offset * dilation]
+                    prior_mean = prior_sum / h
+                    # при нулевой базе (prior_mean ~ 0) моментум не определён -> 0, а не -1
+                    if abs(prior_mean) > EPS:
+                        out[k, row_idx] = safe_ratio(recent_sum / h, prior_mean) - 1.0
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"half_windows": [3, 6]}.
-
-    """
+    """params: {"half_windows": [3, 6], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     half_windows = np.array(params['half_windows'], dtype=np.int64)
-    out = _kernel(values, position, half_windows)
-    arrays = [out[j] for j in range(len(half_windows))]
-    suffixes = [f'h{h}' for h in params['half_windows']]
-    return arrays, suffixes
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    out = _kernel(values, position, half_windows, dilations)
+    suffixes = [
+        f'h{h}' if d == 1 else f'h{h}_d{d}' for h in params['half_windows'] for d in params.get('dilations', [1])
+    ]
+    return [out[k] for k in range(len(suffixes))], suffixes

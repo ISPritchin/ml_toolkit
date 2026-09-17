@@ -64,3 +64,21 @@ def test_full_output_vector():
     arrs, sfxs = _run(values, {'windows': [4]})
     assert _get(arrs, sfxs, 'peak_w4') == pytest.approx([0.0, 1.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0], abs=1e-6)
     assert _get(arrs, sfxs, 'trough_w4') == pytest.approx([0.0, 0.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0], abs=1e-6)
+
+
+def test_dilations_defaults_to_1_and_matches_plain_windows():
+    values = [10, 80, 40, 20, 5, 30]
+    arrs_plain, sfxs_plain = _run(values, {'windows': [6]})
+    arrs_explicit, sfxs_explicit = _run(values, {'windows': [6], 'dilations': [1]})
+    assert sfxs_plain == sfxs_explicit == ['peak_w6', 'trough_w6']
+    for a, b in zip(arrs_plain, arrs_explicit, strict=True):
+        assert a.tolist() == b.tolist()
+
+
+def test_dilation_2_reads_every_other_point():
+    # even indices carry [10,80,40,20,5,30] -> known peak_w6=4, trough_w6=1
+    values = [10, 999, 80, 999, 40, 999, 20, 999, 5, 999, 30]
+    arrs, sfxs = _run(values, {'windows': [6], 'dilations': [1, 2]})
+    assert sfxs == ['peak_w6', 'trough_w6', 'peak_w6_d2', 'trough_w6_d2']
+    assert _get(arrs, sfxs, 'peak_w6_d2')[-1] == pytest.approx(4.0)
+    assert _get(arrs, sfxs, 'trough_w6_d2')[-1] == pytest.approx(1.0)

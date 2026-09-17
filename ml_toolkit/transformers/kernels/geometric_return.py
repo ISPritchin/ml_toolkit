@@ -18,6 +18,7 @@ Outputs:
 Preset entry:
     geometric_return:
       windows: [6, 12]
+      dilations: [1, 2]   # optional, default [1]; d>1 measures d-step geometric growth
 
 Interpretation:
     ≈ +0.19 — рост ≈ 19% в месяц (экспоненциальный разгон, как в лог-примере).
@@ -46,26 +47,36 @@ FILL_NAN: dict[str | None, float] = {None: -2.0}  # exp(mean(log_diff))-1 > -1 �
 
 
 @nb.njit(cache=True)
-def _kernel(log_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    log_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = log_values.shape[0]
     n_w = windows.shape[0]
-    out = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    out = np.zeros((n_w * n_d, n_rows))
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            n_diffs = ws - 1
-            if n_diffs >= 1:
-                # сумма лог-разностей телескопируется: lv[t] - lv[t-ws+1] — O(1) на окно
-                ld_sum = log_values[row_idx] - log_values[row_idx - ws + 1]
-                out[j, row_idx] = np.exp(ld_sum / n_diffs) - 1.0
+            for d in range(n_d):
+                dilation = dilations[d]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                n_diffs = ws - 1
+                if n_diffs >= 1:
+                    base = row_idx - (ws - 1) * dilation
+                    # сумма лог-разностей телескопируется: lv[t] - lv[base] — O(1) на окно
+                    ld_sum = log_values[row_idx] - log_values[base]
+                    out[k, row_idx] = np.exp(ld_sum / n_diffs) - 1.0
+                k += 1
     return out
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [6]}."""
+    """params: {"windows": [6], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     # log1p считается один раз на колонку (векторно)
     log_values = np.log1p(np.abs(values))
-    out = _kernel(log_values, position, windows)
-    return [out[j] for j in range(len(windows))], [f'w{w}' for w in params['windows']]
+    out = _kernel(log_values, position, windows, dilations)
+    suffixes = [f'w{w}' if d == 1 else f'w{w}_d{d}' for w in params['windows'] for d in params.get('dilations', [1])]
+    return [out[k] for k in range(len(suffixes))], suffixes

@@ -28,6 +28,8 @@ Outputs:
 Preset entry:
     recovery_dynamics:
       windows: [12]
+      dilations: [1, 2]   # optional, default [1]; applies to the windowed outputs only
+                          # (is_recovering_now uses a fixed 2-step lag, unaffected)
 
 Interpretation:
     completeness = 1.0 — полностью восстановился от минимума до максимума окна.
@@ -60,87 +62,103 @@ def _kernel(
     product_values: np.ndarray,
     position_within_entity: np.ndarray,
     windows: np.ndarray,
+    dilations: np.ndarray,
     trough_recent_months: int,
 ):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_completeness = np.zeros((n_w, n_rows))
-    out_drawdown_dur = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    n_k = n_w * n_d
+    out_completeness = np.zeros((n_k, n_rows))
+    out_drawdown_dur = np.zeros((n_k, n_rows))
     out_is_recovering = np.zeros(n_rows)
-    out_post_trough_gain = np.zeros((n_w, n_rows))
-    out_trough_is_recent = np.zeros((n_w, n_rows))
-    out_recovery_speed = np.zeros((n_w, n_rows))
+    out_post_trough_gain = np.zeros((n_k, n_rows))
+    out_trough_is_recent = np.zeros((n_k, n_rows))
+    out_recovery_speed = np.zeros((n_k, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
         v = product_values[row_idx]
         mean_all = compute_window_mean(product_values, row_idx, min(pos + 1, 12))
 
-        # is_recovering_now: растём 2 периода подряд, но ещё ниже среднего
+        # is_recovering_now: растём 2 периода подряд, но ещё ниже среднего (фиксированный
+        # лаг 1/2, не зависит от windows/dilations)
         if pos >= 2:
             if v > product_values[row_idx - 1] > product_values[row_idx - 2] and v < mean_all:
                 out_is_recovering[row_idx] = 1.0
 
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            w_max = product_values[row_idx - ws + 1]
-            w_min = product_values[row_idx - ws + 1]
-            trough_pos_in_window = 0
-            peak_val = w_max
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                base = row_idx - (ws - 1) * dilation
+                w_max = product_values[base]
+                w_min = product_values[base]
+                trough_pos_in_window = 0
+                peak_val = w_max
 
-            for offset in range(1, ws):
-                abs_idx = row_idx - ws + 1 + offset
-                vv = product_values[abs_idx]
-                if vv > w_max:
-                    w_max = vv
-                    peak_val = vv
-                if vv < w_min:
-                    w_min = vv
-                    trough_pos_in_window = offset
+                for offset in range(1, ws):
+                    abs_idx = base + offset * dilation
+                    vv = product_values[abs_idx]
+                    if vv > w_max:
+                        w_max = vv
+                        peak_val = vv
+                    if vv < w_min:
+                        w_min = vv
+                        trough_pos_in_window = offset
 
-            months_since_trough = ws - 1 - trough_pos_in_window
+                months_since_trough = ws - 1 - trough_pos_in_window
 
-            # completeness: (v - min) / (max - min)
-            out_completeness[j, row_idx] = safe_ratio(v - w_min, w_max - w_min)
+                # completeness: (v - min) / (max - min)
+                out_completeness[k, row_idx] = safe_ratio(v - w_min, w_max - w_min)
 
-            # drawdown_duration: число месяцев ниже peak_val
-            dd_dur = 0
-            for offset in range(ws):
-                if product_values[row_idx - ws + 1 + offset] < peak_val:
-                    dd_dur += 1
-            out_drawdown_dur[j, row_idx] = dd_dur
+                # drawdown_duration: число месяцев ниже peak_val
+                dd_dur = 0
+                for offset in range(ws):
+                    if product_values[base + offset * dilation] < peak_val:
+                        dd_dur += 1
+                out_drawdown_dur[k, row_idx] = dd_dur
 
-            # post_trough_gain
-            mean_w = compute_window_mean(product_values, row_idx, ws)
-            out_post_trough_gain[j, row_idx] = safe_ratio(v - w_min, mean_w)
+                # post_trough_gain
+                mean_w = compute_window_mean(product_values, row_idx, ws, dilation)
+                out_post_trough_gain[k, row_idx] = safe_ratio(v - w_min, mean_w)
 
-            # trough_is_recent: дно в пределах последних trough_recent_months месяцев
-            out_trough_is_recent[j, row_idx] = 1.0 if months_since_trough <= trough_recent_months else 0.0
+                # trough_is_recent: дно в пределах последних trough_recent_months шагов
+                out_trough_is_recent[k, row_idx] = 1.0 if months_since_trough <= trough_recent_months else 0.0
 
-            # recovery_speed: gain from trough / time since trough
-            out_recovery_speed[j, row_idx] = (v - w_min) / (months_since_trough + 1)
+                # recovery_speed: gain from trough / time since trough
+                out_recovery_speed[k, row_idx] = (v - w_min) / (months_since_trough + 1)
+                k += 1
 
     return out_completeness, out_drawdown_dur, out_is_recovering, out_post_trough_gain, out_trough_is_recent, out_recovery_speed
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12], "trough_recent_months": 3 (опционально)}."""
+    """params: {"windows": [12], "dilations": [1, 2], "trough_recent_months": 3 (опционально)}.
+    "dilations" optional, default [1].
+    """
     windows = np.array(params['windows'], dtype=np.int64)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
     trough_recent_months = int(params.get('trough_recent_months', 3))
-    compl, dd_dur, isr, ptg, tir, rs = _kernel(values, position, windows, trough_recent_months)
+    compl, dd_dur, isr, ptg, tir, rs = _kernel(values, position, windows, dilations, trough_recent_months)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(compl[j])
-        suffixes.append(f'completeness_w{w}')
-        arrays.append(dd_dur[j])
-        suffixes.append(f'drawdown_dur_w{w}')
-        arrays.append(ptg[j])
-        suffixes.append(f'post_trough_gain_w{w}')
-        arrays.append(tir[j])
-        suffixes.append(f'trough_is_recent_w{w}')
-        arrays.append(rs[j])
-        suffixes.append(f'speed_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(compl[k])
+            suffixes.append(f'completeness_{w_tag}')
+            arrays.append(dd_dur[k])
+            suffixes.append(f'drawdown_dur_{w_tag}')
+            arrays.append(ptg[k])
+            suffixes.append(f'post_trough_gain_{w_tag}')
+            arrays.append(tir[k])
+            suffixes.append(f'trough_is_recent_{w_tag}')
+            arrays.append(rs[k])
+            suffixes.append(f'speed_{w_tag}')
+            k += 1
     arrays.append(isr)
     suffixes.append('is_recovering_now')
     return arrays, suffixes

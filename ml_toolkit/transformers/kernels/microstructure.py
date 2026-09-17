@@ -25,6 +25,7 @@ Outputs:
 Preset entry:
     microstructure:
       windows: [12]
+      dilations: [1, 2]   # optional, default [1]; d>1 spaces window taps d rows apart
 
 Interpretation:
     predictability ≈ 0.99 — почти идеально предсказуемый ряд (плоский, CV≈0).
@@ -62,65 +63,79 @@ FILL_NAN: dict[str | None, float] = {None: FILL_NAN_UNBOUNDED_LOW}
 
 
 @nb.njit(cache=True)
-def _kernel(product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray):
+def _kernel(
+    product_values: np.ndarray, position_within_entity: np.ndarray, windows: np.ndarray, dilations: np.ndarray
+):
     n_rows = product_values.shape[0]
     n_w = windows.shape[0]
-    out_snr = np.zeros((n_w, n_rows))
-    out_surprise = np.zeros((n_w, n_rows))
+    n_d = dilations.shape[0]
+    n_k = n_w * n_d
+    out_snr = np.zeros((n_k, n_rows))
+    out_surprise = np.zeros((n_k, n_rows))
     out_surprise_dir = np.zeros(n_rows)
-    out_predictability = np.zeros((n_w, n_rows))
-    out_cond_mean = np.zeros((n_w, n_rows))
-    out_vs_cond = np.zeros((n_w, n_rows))
+    out_predictability = np.zeros((n_k, n_rows))
+    out_cond_mean = np.zeros((n_k, n_rows))
+    out_vs_cond = np.zeros((n_k, n_rows))
 
     for row_idx in range(n_rows):
         pos = position_within_entity[row_idx]
         v = product_values[row_idx]
 
+        k = 0
         for j in range(n_w):
-            ws = resolve_window_size(pos, windows[j])
-            ws_short = resolve_window_size(pos, max(windows[j] // 4, 1))
+            for d_idx in range(n_d):
+                dilation = dilations[d_idx]
+                ws = resolve_window_size(pos, windows[j], dilation)
+                ws_short = resolve_window_size(pos, max(windows[j] // 4, 1), dilation)
+                base = row_idx - (ws - 1) * dilation
 
-            mean, std = compute_window_mean_and_std(product_values, row_idx, ws)
-            _, std_short = compute_window_mean_and_std(product_values, row_idx, ws_short)
+                mean, std = compute_window_mean_and_std(product_values, row_idx, ws, dilation)
+                _, std_short = compute_window_mean_and_std(product_values, row_idx, ws_short, dilation)
 
-            out_snr[j, row_idx] = safe_ratio(std_short, std)
-            out_surprise[j, row_idx] = safe_ratio(abs(v - mean), std)
-            # predictability = 1/(1+CV) ограничена (0,1] — деление с eps здесь
-            # намеренно: CV -> inf корректно даёт predictability -> 0
-            out_predictability[j, row_idx] = 1.0 / (1.0 + std / (abs(mean) + EPS))
+                out_snr[k, row_idx] = safe_ratio(std_short, std)
+                out_surprise[k, row_idx] = safe_ratio(abs(v - mean), std)
+                # predictability = 1/(1+CV) ограничена (0,1] — деление с eps здесь
+                # намеренно: CV -> inf корректно даёт predictability -> 0
+                out_predictability[k, row_idx] = 1.0 / (1.0 + std / (abs(mean) + EPS))
 
-            # conditional mean given active: mean/active_rate = window_sum/active_count
-            active_count = 0
-            for offset in range(ws):
-                if product_values[row_idx - ws + 1 + offset] != 0.0:
-                    active_count += 1
-            cond_mean = mean * ws / active_count if active_count > 0 else 0.0
-            out_cond_mean[j, row_idx] = cond_mean
-            out_vs_cond[j, row_idx] = safe_ratio(v, cond_mean)
+                # conditional mean given active: mean/active_rate = window_sum/active_count
+                active_count = 0
+                for offset in range(ws):
+                    if product_values[base + offset * dilation] != 0.0:
+                        active_count += 1
+                cond_mean = mean * ws / active_count if active_count > 0 else 0.0
+                out_cond_mean[k, row_idx] = cond_mean
+                out_vs_cond[k, row_idx] = safe_ratio(v, cond_mean)
 
-            if j == 0:
-                out_surprise_dir[row_idx] = 1.0 if v >= mean else -1.0
+                if k == 0:
+                    out_surprise_dir[row_idx] = 1.0 if v >= mean else -1.0
+                k += 1
 
     return out_snr, out_surprise, out_surprise_dir, out_predictability, out_cond_mean, out_vs_cond
 
 
 def compute(values: np.ndarray, position: np.ndarray, params: dict):
-    """params: {"windows": [12]}."""
+    """params: {"windows": [12], "dilations": [1, 2]}. "dilations" optional, default [1]."""
     windows = np.array(params['windows'], dtype=np.int64)
-    snr, surp, sdir, pred, cm, vsc = _kernel(values, position, windows)
+    dilations = np.array(params.get('dilations', [1]), dtype=np.int64)
+    snr, surp, sdir, pred, cm, vsc = _kernel(values, position, windows, dilations)
     arrays = []
     suffixes = []
-    for j, w in enumerate(params['windows']):
-        arrays.append(snr[j])
-        suffixes.append(f'snr_w{w}')
-        arrays.append(surp[j])
-        suffixes.append(f'surprise_w{w}')
-        arrays.append(pred[j])
-        suffixes.append(f'predictability_w{w}')
-        arrays.append(cm[j])
-        suffixes.append(f'cond_mean_w{w}')
-        arrays.append(vsc[j])
-        suffixes.append(f'vs_cond_mean_w{w}')
+    k = 0
+    for w in params['windows']:
+        for d in params.get('dilations', [1]):
+            w_tag = f'w{w}' if d == 1 else f'w{w}_d{d}'
+            arrays.append(snr[k])
+            suffixes.append(f'snr_{w_tag}')
+            arrays.append(surp[k])
+            suffixes.append(f'surprise_{w_tag}')
+            arrays.append(pred[k])
+            suffixes.append(f'predictability_{w_tag}')
+            arrays.append(cm[k])
+            suffixes.append(f'cond_mean_{w_tag}')
+            arrays.append(vsc[k])
+            suffixes.append(f'vs_cond_mean_{w_tag}')
+            k += 1
     arrays.append(sdir)
     suffixes.append('surprise_dir')
     return arrays, suffixes

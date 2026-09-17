@@ -60,8 +60,15 @@ def compute_position_within_entity(entity_codes: np.ndarray) -> np.ndarray:
 
 
 @nb.njit(cache=True)
-def resolve_window_size(position_in_entity: int, requested: int) -> int:
-    available = position_in_entity + 1
+def resolve_window_size(position_in_entity: int, requested: int, dilation: int = 1) -> int:
+    """Effective window length, shrunk near an entity's start.
+
+    `dilation` spaces window taps `dilation` rows apart (ROCKET-style): the window reads
+    `product_values[row_idx], [row_idx-dilation], ..., [row_idx-(window_size-1)*dilation]`
+    instead of a contiguous run. `dilation=1` (default) is byte-identical to the plain
+    contiguous window this function has always computed.
+    """
+    available = position_in_entity // dilation + 1
     return min(requested, available)
 
 
@@ -85,11 +92,12 @@ def safe_ratio(num: float, den: float) -> float:
 
 
 @nb.njit(cache=True)
-def fit_linear_trend_slope(product_values: np.ndarray, row_idx: int, window_size: int) -> float:
-    """OLS-наклон по равноотстоящим точкам окна [row_idx-window_size+1, row_idx].
+def fit_linear_trend_slope(product_values: np.ndarray, row_idx: int, window_size: int, dilation: int = 1) -> float:
+    """OLS-наклон по точкам окна [row_idx-(window_size-1)*dilation, row_idx], с шагом dilation.
 
     sum(i) и sum(i^2) для i in [0..n-1] считаются замкнутыми формулами —
-    n(n-1)/2 и (n-1)n(2n-1)/6 (точны в float64 для месячных окон).
+    n(n-1)/2 и (n-1)n(2n-1)/6 (точны в float64 для месячных окон). dilation=1 (default)
+    воспроизводит прежнее непрерывное окно байт-в-байт.
     """
     if window_size < 2:
         return 0.0
@@ -98,8 +106,9 @@ def fit_linear_trend_slope(product_values: np.ndarray, row_idx: int, window_size
     sxx = (n - 1.0) * n * (2.0 * n - 1.0) / 6.0
     sy = 0.0
     sxy = 0.0
+    base = row_idx - (window_size - 1) * dilation
     for offset in range(window_size):
-        y = product_values[row_idx - window_size + 1 + offset]
+        y = product_values[base + offset * dilation]
         sy += y
         sxy += offset * y
     denom = n * sxx - sx * sx
@@ -109,60 +118,67 @@ def fit_linear_trend_slope(product_values: np.ndarray, row_idx: int, window_size
 
 
 @nb.njit(cache=True)
-def compute_window_mean_and_std(product_values: np.ndarray, row_idx: int, window_size: int):
+def compute_window_mean_and_std(product_values: np.ndarray, row_idx: int, window_size: int, dilation: int = 1):
+    base = row_idx - (window_size - 1) * dilation
     s = 0.0
     for offset in range(window_size):
-        s += product_values[row_idx - window_size + 1 + offset]
+        s += product_values[base + offset * dilation]
     mean = s / window_size
     sq = 0.0
     for offset in range(window_size):
-        d = product_values[row_idx - window_size + 1 + offset] - mean
+        d = product_values[base + offset * dilation] - mean
         sq += d * d
     return mean, (sq / window_size) ** 0.5
 
 
 @nb.njit(cache=True)
-def compute_window_sum(product_values: np.ndarray, row_idx: int, window_size: int) -> float:
+def compute_window_sum(product_values: np.ndarray, row_idx: int, window_size: int, dilation: int = 1) -> float:
+    base = row_idx - (window_size - 1) * dilation
     s = 0.0
     for offset in range(window_size):
-        s += product_values[row_idx - window_size + 1 + offset]
+        s += product_values[base + offset * dilation]
     return s
 
 
 @nb.njit(cache=True)
-def compute_window_mean(product_values: np.ndarray, row_idx: int, window_size: int) -> float:
+def compute_window_mean(product_values: np.ndarray, row_idx: int, window_size: int, dilation: int = 1) -> float:
     """Среднее окна без вычисления std (один проход вместо двух)."""
-    return compute_window_sum(product_values, row_idx, window_size) / window_size
+    return compute_window_sum(product_values, row_idx, window_size, dilation) / window_size
 
 
 @nb.njit(cache=True)
-def compute_window_min_and_max(product_values: np.ndarray, row_idx: int, window_size: int):
-    lo = product_values[row_idx - window_size + 1]
+def compute_window_min_and_max(product_values: np.ndarray, row_idx: int, window_size: int, dilation: int = 1):
+    base = row_idx - (window_size - 1) * dilation
+    lo = product_values[base]
     hi = lo
     for offset in range(1, window_size):
-        v = product_values[row_idx - window_size + 1 + offset]
+        v = product_values[base + offset * dilation]
         lo = min(lo, v)
         hi = max(hi, v)
     return lo, hi
 
 
 @nb.njit(cache=True)
-def compute_window_sorted_buffer(product_values: np.ndarray, row_idx: int, window_size: int) -> np.ndarray:
+def compute_window_sorted_buffer(product_values: np.ndarray, row_idx: int, window_size: int, dilation: int = 1) -> np.ndarray:
+    base = row_idx - (window_size - 1) * dilation
     buf = np.empty(window_size)
     for offset in range(window_size):
-        buf[offset] = product_values[row_idx - window_size + 1 + offset]
+        buf[offset] = product_values[base + offset * dilation]
     buf.sort()
     return buf
 
 
 @nb.njit(cache=True)
-def fill_window_sorted(buf: np.ndarray, product_values: np.ndarray, row_idx: int, window_size: int) -> None:
+def fill_window_sorted(
+    buf: np.ndarray, product_values: np.ndarray, row_idx: int, window_size: int, dilation: int = 1
+) -> None:
     """Как compute_window_sorted_buffer, но в предвыделенный buf (без аллокации).
 
     Использует buf[:window_size]; buf должен иметь длину >= window_size.
     """
+    base = row_idx - (window_size - 1) * dilation
     for offset in range(window_size):
-        buf[offset] = product_values[row_idx - window_size + 1 + offset]
+        buf[offset] = product_values[base + offset * dilation]
     sub = buf[:window_size]
     sub.sort()
 
