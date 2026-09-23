@@ -1,6 +1,8 @@
 # ml_toolkit/feature_selection/genetic.py
 
 from collections.abc import Callable
+from dataclasses import dataclass
+import difflib
 import logging
 import random
 from typing import Any
@@ -269,6 +271,96 @@ def mut_flip_bit_with_repair(
     return (individual,)
 
 
+# Значения по умолчанию совпадают с тем, что раньше было зашито в код: без новых ключей
+# в gen_params поведение (и результат при том же seed) не меняется.
+DEFAULT_MUTATION_GENE_PROBABILITY = 0.05
+DEFAULT_CROSSOVER_GENE_PROBABILITY = 0.5
+DEFAULT_TOURNAMENT_SIZE = 3
+DEFAULT_ELITE_SIZE = 1
+
+_REQUIRED_KEYS = frozenset({
+    'max_features', 'population_size', 'n_generations', 'cross_probability', 'mutation_probability',
+})
+_INIT_KEYS = frozenset({'start_probability_to_include_feature', 'start_n_features'})
+_OPTIONAL_KEYS = frozenset({
+    'n_features_without_penalty', 'penalty_for_extra_feature',
+    'min_improvement', 'min_improvement_in_percents', 'n_epoch_for_min_improvement',
+    'must_be_included', 'seed',
+    'mutation_gene_probability', 'mutation_flips', 'crossover_gene_probability',
+    'tournament_size', 'elite_size',
+})
+KNOWN_GEN_PARAMS = _REQUIRED_KEYS | _INIT_KEYS | _OPTIONAL_KEYS
+
+
+@dataclass(frozen=True)
+class _OperatorParams:
+    """Разобранные настройки операторов: значения по умолчанию + то, что задано в gen_params."""
+
+    mutation_gene_probability: float
+    crossover_gene_probability: float
+    tournament_size: int
+    elite_size: int
+
+
+def _check_known_keys(gen_params: dict[str, Any]) -> None:
+    """Ловит опечатки: неизвестный ключ раньше молча игнорировался (кроме обязательных, которые падали с KeyError)."""
+    unknown = sorted(set(gen_params) - KNOWN_GEN_PARAMS)
+    if not unknown:
+        return
+    hints = []
+    for key in unknown:
+        close = difflib.get_close_matches(key, sorted(KNOWN_GEN_PARAMS), n=1)
+        hints.append(f"'{key}'" + (f" (возможно, '{close[0]}')" if close else ''))
+    raise ValueError(
+        f'Неизвестные ключи gen_params: {", ".join(hints)}. Допустимые: {sorted(KNOWN_GEN_PARAMS)}'
+    )
+
+
+def _resolve_operator_params(gen_params: dict[str, Any], n_features: int, population_size: int) -> _OperatorParams:
+    """Разбирает и валидирует настройки операторов (мутация, скрещивание, турнир, элитизм)."""
+    has_gene_prob = 'mutation_gene_probability' in gen_params
+    has_flips = 'mutation_flips' in gen_params
+    if has_gene_prob and has_flips:
+        raise ValueError('Нельзя указывать одновременно mutation_gene_probability и mutation_flips')
+
+    if has_flips:
+        flips = gen_params['mutation_flips']
+        if not flips > 0:
+            raise ValueError(f'mutation_flips должен быть > 0, получено {flips!r}')
+        # ожидаемое число флипов на одну мутирующую особь = indpb * N
+        mutation_gene_probability = min(1.0, float(flips) / n_features)
+    else:
+        mutation_gene_probability = float(
+            gen_params.get('mutation_gene_probability', DEFAULT_MUTATION_GENE_PROBABILITY)
+        )
+        if not 0.0 <= mutation_gene_probability <= 1.0:
+            raise ValueError(f'mutation_gene_probability должен быть в [0, 1], получено {mutation_gene_probability!r}')
+
+    crossover_gene_probability = float(
+        gen_params.get('crossover_gene_probability', DEFAULT_CROSSOVER_GENE_PROBABILITY)
+    )
+    if not 0.0 <= crossover_gene_probability <= 1.0:
+        raise ValueError(f'crossover_gene_probability должен быть в [0, 1], получено {crossover_gene_probability!r}')
+
+    tournament_size = gen_params.get('tournament_size', DEFAULT_TOURNAMENT_SIZE)
+    if int(tournament_size) != tournament_size or tournament_size < 1:
+        raise ValueError(f'tournament_size должен быть целым >= 1, получено {tournament_size!r}')
+
+    elite_size = gen_params.get('elite_size', DEFAULT_ELITE_SIZE)
+    if int(elite_size) != elite_size or not 0 <= elite_size < population_size:
+        raise ValueError(
+            f'elite_size должен быть целым в [0, population_size), получено {elite_size!r} '
+            f'при population_size={population_size}'
+        )
+
+    return _OperatorParams(
+        mutation_gene_probability=mutation_gene_probability,
+        crossover_gene_probability=crossover_gene_probability,
+        tournament_size=int(tournament_size),
+        elite_size=int(elite_size),
+    )
+
+
 def select_features_genetic(
     X_train: pd.DataFrame,
     y_train: pd.Series,
@@ -313,37 +405,62 @@ def select_features_genetic(
             Удобно для сбора статистики и построения графиков эволюции.
             ``best_score`` и ``mean_score`` — сырые значения фитнеса
             (для метрик «выше — лучше» они отрицательны). ``None`` — отключено.
-        gen_params: Словарь параметров алгоритма. Обязательные ключи:
-            ``max_features``, ``population_size``, ``n_generations``,
+        gen_params: Словарь параметров алгоритма. Неизвестные ключи вызывают
+            ``ValueError`` (с подсказкой при опечатке).
+
+            Обязательные ключи: ``max_features``, ``population_size``, ``n_generations``,
             ``cross_probability``, ``mutation_probability``.
-            Ровно один из двух ключей инициализации начальной популяции:
-                ``start_probability_to_include_feature`` — вероятность включить
-                признак; ``start_n_features`` — фиксированное число случайно
-                выбранных признаков.
-            Опциональные:
-                ``n_features_without_penalty`` — признаки без штрафа;
-                ``penalty_for_extra_feature`` — штраф за каждый лишний признак;
-                ``min_improvement``, ``min_improvement_in_percents``,
-                ``n_epoch_for_min_improvement`` — early stopping;
-                ``must_be_included`` (list[int | str]) — обязательные признаки:
-                    целые числа интерпретируются как индексы, строки — как имена;
-                ``seed`` (int) — фиксация random state.
+
+            Инициализация начальной популяции — ровно один из двух ключей:
+
+            * ``start_probability_to_include_feature`` — вероятность включить признак;
+            * ``start_n_features`` — фиксированное число случайно выбранных признаков.
+
+            Штраф и early stopping:
+
+            * ``n_features_without_penalty`` — признаки без штрафа;
+            * ``penalty_for_extra_feature`` — штраф за каждый лишний признак;
+            * ``min_improvement``, ``min_improvement_in_percents``,
+              ``n_epoch_for_min_improvement`` — early stopping.
+
+            Ограничения и воспроизводимость:
+
+            * ``must_be_included`` (``list[int | str]``) — обязательные признаки: целые числа
+              интерпретируются как индексы, строки — как имена;
+            * ``seed`` (``int``) — фиксация random state.
+
+            Операторы (значения по умолчанию совпадают с прежним зашитым поведением):
+
+            * ``mutation_gene_probability`` (``float``, по умолчанию 0.05) — вероятность флипа
+              каждого гена внутри мутирующей особи;
+            * ``mutation_flips`` (``float > 0``) — то же через ожидаемое число флипов на мутацию:
+              ``mutation_gene_probability = mutation_flips / N``. Взаимоисключающ с
+              ``mutation_gene_probability``;
+            * ``crossover_gene_probability`` (``float``, по умолчанию 0.5) — вероятность обмена
+              гена между родителями при uniform crossover;
+            * ``tournament_size`` (``int >= 1``, по умолчанию 3) — размер турнира;
+            * ``elite_size`` (``int`` в ``[0, population_size)``, по умолчанию 1) — сколько лучших
+              особей за всю историю переходит в следующее поколение (0 — без элитизма; лучшая
+              особь всё равно возвращается в результате).
 
     Returns:
         Список имён признаков из глобально лучшей особи.
 
     Raises:
-        ValueError: Если ``feature_names`` пуст или параметры некорректны.
+        ValueError: Если ``feature_names`` пуст, параметры некорректны или в
+            ``gen_params`` есть неизвестные ключи.
 
     """
     if not feature_names:
         raise ValueError('feature_names must not be empty')
+    _check_known_keys(gen_params)
     if gen_params['max_features'] < 1:
         raise ValueError('max_features must be at least 1')
     if gen_params['population_size'] < 2:
         raise ValueError('population_size must be at least 2')
     if gen_params['n_generations'] < 1:
         raise ValueError('ngen must be at least 1')
+    ops = _resolve_operator_params(gen_params, n_features=len(feature_names), population_size=gen_params['population_size'])
 
     has_prob = 'start_probability_to_include_feature' in gen_params
     has_n = 'start_n_features' in gen_params
@@ -406,7 +523,7 @@ def select_features_genetic(
         for idx in must:
             if 0 <= idx < len(ind):
                 ind[idx] = 1
-        return repair_individual(ind, upper_bound)
+        return repair_individual(ind, upper_bound, must)
 
     ctx: dict[str, Any] = {
         'X_train': X_train,
@@ -427,16 +544,20 @@ def select_features_genetic(
             _cache[key] = _compute_fitness(individual, ctx)
         return _cache[key]
 
-    hof = tools.HallOfFame(1)
+    hof = tools.HallOfFame(max(1, ops.elite_size))
 
     try:
         toolbox = base.Toolbox()
         toolbox.register('individual', tools.initIterate, IndividualClass, create_valid_individual)
         toolbox.register('population', tools.initRepeat, list, toolbox.individual)
         toolbox.register('evaluate', _evaluate_cached)
-        toolbox.register('mate', cx_uniform_with_repair, upper_bound=upper_bound, must=must, prob=0.5)
-        toolbox.register('mutate', mut_flip_bit_with_repair, upper_bound=upper_bound, indpb=0.05, must=must)
-        toolbox.register('select', tools.selTournament, tournsize=3)
+        toolbox.register(
+            'mate', cx_uniform_with_repair, upper_bound=upper_bound, must=must, prob=ops.crossover_gene_probability,
+        )
+        toolbox.register(
+            'mutate', mut_flip_bit_with_repair, upper_bound=upper_bound, indpb=ops.mutation_gene_probability, must=must,
+        )
+        toolbox.register('select', tools.selTournament, tournsize=ops.tournament_size)
 
         pop = toolbox.population(n=gen_params['population_size'])
         stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -475,9 +596,12 @@ def select_features_genetic(
 
             hof.update(offspring)
 
-            elite = IndividualClass(hof[0][:])
-            elite.fitness.values = hof[0].fitness.values
-            pop = [elite] + toolbox.select(offspring, k=len(pop) - 1)
+            elites = []
+            for best_ind in list(hof)[:ops.elite_size]:
+                elite = IndividualClass(best_ind[:])
+                elite.fitness.values = best_ind.fitness.values
+                elites.append(elite)
+            pop = elites + toolbox.select(offspring, k=gen_params['population_size'] - len(elites))
 
             best_fitness = hof[0].fitness.values[0]
             best_fitness_history.append(best_fitness)
