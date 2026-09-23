@@ -16,6 +16,19 @@ quantile — не тюнящийся Optuna параметр: он опреде�
 Objective — pinball loss на фиксированном quantile (ml_toolkit.models._utils.
 quantile_loss), а не MAE — иначе отбор trial не соответствовал бы тому, что
 реально требуется от модели.
+
+Масштаб kappa: конструкторский/тюнящийся `kappa` — БЕЗРАЗМЕРНАЯ доля
+`std(y_train)`, не абсолютная величина в единицах остатка. `_build_loss`
+домножает его на `std(y_train)` перед передачей в QuantileHuberLoss (которая
+сама остаётся y-агностичной и трактует kappa буквально, в единицах остатка —
+см. её докстринг и тесты в _losses.py/test_quantile_huber.py). Без этого
+масштабирования дефолтный диапазон тюнинга (0.01–5.0) — абсолютные единицы
+остатка — вырожден на таргетах с std(y) на порядки больше (например, денежные
+величины: std ~ 10^3-10^5): Newton-шаг листа в линейной зоне ограничен
+`~kappa/1e-2`, и при kappa из [0.01, 5.0] модель физически не успевает
+дотянуться до нужного масштаба за разумное число итераций — сходится, но
+линейно медленно, требуя на порядки больше итераций, чем даёт дефолтный
+диапазон архитектуры (300-1000).
 """
 
 from __future__ import annotations
@@ -47,8 +60,9 @@ class QuantileHuberRegressor(_CustomLossRegressorBase):
         Целевой квантиль ∈ (0, 1). Фиксированный параметр постановки задачи —
         не тюнится Optuna (см. докстринг модуля).
     kappa:
-        Ширина квадратичного (сглаживающего) участка вокруг r=0. Тюнится
-        Optuna при n_optuna_trials > 0.
+        Ширина квадратичного (сглаживающего) участка вокруг r=0, как ДОЛЯ
+        std(y_train) (не абсолютные единицы остатка — см. докстринг модуля).
+        Тюнится Optuna при n_optuna_trials > 0.
     base_params:
         Параметры CatBoost для прямого режима (n_optuna_trials == 0).
     n_optuna_trials:
@@ -103,8 +117,16 @@ class QuantileHuberRegressor(_CustomLossRegressorBase):
         self.quantile = quantile
         self.kappa = kappa
 
+    def _pool_baseline(self, y_tr: np.ndarray) -> float | None:
+        # quantile(y_tr, self.quantile) — минимум pinball-поверхности для
+        # данного quantile; без него модель стартует с f=0 (см. докстринг
+        # _pool_baseline в _custom_loss_base.py).
+        return float(np.quantile(y_tr, self.quantile))
+
     def _build_loss(self, loss_params: dict[str, float], *, tr_pool: Pool) -> _CalcDersRangeLoss:
-        return QuantileHuberLoss(quantile=self.quantile, kappa=loss_params['kappa'])
+        y_tr = np.asarray(tr_pool.get_label(), dtype=np.float64)
+        y_scale = max(float(np.std(y_tr)), 1e-6)
+        return QuantileHuberLoss(quantile=self.quantile, kappa=loss_params['kappa'] * y_scale)
 
     def _trial_score(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         return quantile_loss(y_true, y_pred, q=self.quantile)

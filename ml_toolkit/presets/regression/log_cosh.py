@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from ml_toolkit.presets.regression._custom_loss_base import (
     _CustomLossRegressorBase,
     _LossSpec,
@@ -44,6 +46,13 @@ class LogCoshRegressor(_CustomLossRegressorBase):
     """
 
     _loss_spec = _LossSpec(name='LogCosh', param_bounds={}, loss_cls=LogCoshLoss)
+
+    def _pool_baseline(self, y_tr: np.ndarray) -> float | None:
+        # Python calc_ders_range-лосс — CatBoost не поддерживает
+        # boost_from_average для него в принципе (см. докстринг
+        # _pool_baseline в _custom_loss_base.py); median(y_tr) как робастная
+        # стартовая точка (log(cosh) ведёт себя как MAE на больших остатках).
+        return float(np.median(y_tr))
 
     def __init__(
         self,

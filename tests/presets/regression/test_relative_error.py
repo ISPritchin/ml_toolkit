@@ -14,12 +14,22 @@ from ml_toolkit.presets.regression.relative_error import _relative_score
 from tests.presets.regression.conftest import BASE_PARAMS
 
 
-def _loss_value(metric: str, f: np.ndarray, y: np.ndarray, floor: float, global_denom: float | None) -> np.ndarray:
+def _loss_value(
+    metric: str, f: np.ndarray, y: np.ndarray, floor: float, global_denom: float | None,
+    kappa_frac: float = 0.15,
+) -> np.ndarray:
+    """Учитывает kappa_frac-сглаживание mape/wape (см. RelativeErrorLoss); smape не сглажен."""
     e = np.abs(f - y)
     if metric == 'mape':
-        return e / np.maximum(np.abs(y), floor)
+        d = np.maximum(np.abs(y), floor)
+        w = np.maximum(kappa_frac * d, 1e-8)
+        r = f - y
+        return np.where(np.abs(r) <= w, r * r / (2 * w * d), e / d - w / (2 * d))
     if metric == 'wape':
-        return e / global_denom
+        d = global_denom
+        w = max(kappa_frac * d, 1e-8)
+        r = f - y
+        return np.where(np.abs(r) <= w, r * r / (2 * w * d), e / d - w / (2 * d))
     return 2.0 * e / (np.abs(y) + np.abs(f) + floor)
 
 
@@ -32,8 +42,9 @@ def test_gradient_matches_numeric_finite_difference(metric):
     y = rng.uniform(1.0, 20.0, size=n)
     f = y + rng.normal(scale=2.0, size=n)
     floor = 1.0
+    kappa_frac = 1.0
 
-    loss = RelativeErrorLoss(metric=metric, denom_floor=floor)
+    loss = RelativeErrorLoss(metric=metric, denom_floor=floor, kappa_frac=kappa_frac)
     if metric == 'wape':
         loss.global_denom = max(float(np.mean(np.abs(y))), floor)
     der1, _der2 = zip(*loss.calc_ders_range(f, y, None), strict=False)
@@ -41,13 +52,20 @@ def test_gradient_matches_numeric_finite_difference(metric):
 
     eps = 1e-4
     gd = loss.global_denom if metric == 'wape' else None
-    l_plus = _loss_value(metric, f + eps, y, floor, gd)
-    l_minus = _loss_value(metric, f - eps, y, floor, gd)
+    l_plus = _loss_value(metric, f + eps, y, floor, gd, kappa_frac)
+    l_minus = _loss_value(metric, f - eps, y, floor, gd, kappa_frac)
     numeric_dL_df = (l_plus - l_minus) / (2 * eps)
     numeric_der1 = -numeric_dL_df
 
-    # |y-f| не гладкая в нуле — исключаем точки с |residual| < eps из сравнения
-    mask = np.abs(f - y) > 1e-2
+    # |y-f| не гладкая в нуле (mape/wape сглажены kappa_frac-зоной, но граница
+    # квадратичный/линейный участок — тоже излом второй производной) —
+    # исключаем точки вблизи r=0 и вблизи границы сглаживания из сравнения
+    r = f - y
+    mask = np.abs(r) > 1e-2
+    if metric in ('mape', 'wape'):
+        d = gd if metric == 'wape' else np.maximum(np.abs(y), floor)
+        w = np.maximum(kappa_frac * d, 1e-8)
+        mask &= np.abs(np.abs(r) - w) > 1e-2
     assert np.allclose(der1[mask], numeric_der1[mask], atol=1e-3), metric
 
 

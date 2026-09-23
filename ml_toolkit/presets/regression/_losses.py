@@ -126,15 +126,42 @@ class RelativeErrorLoss:
 
     denom_floor защищает от деления на ~0 при y около нуля (клиенты без
     оборота и т.п.) — без floor такие строки давали бы выбросы градиента.
+
+    kappa_frac — сглаживание излома в r=0 квадратичным участком шириной
+    `w = kappa_frac * d` (mape/wape; d — per-row или глобальный денаминатор,
+    см. выше), аналогично QuantileHuberLoss. Без него der1=-sign(r)/d и
+    der2=-1/d сокращают `d` при делении друг на друга: Newton-шаг листа
+    CatBoost (~der1/der2) вырождается в константу порядка ±1, НЕ зависящую от
+    масштаба таргета, — при денежных/счётных величинах (d ~ 10^3-10^5) модель
+    физически не успевает дотянуться до нужного масштаба за разумное число
+    итераций (проверено эмпирически: на таргете со std~10^4 прогноз не
+    сдвигается с ~0 даже за тысячи итераций). Квадратичная зона это чинит:
+    внутри |r|<=w der1/der2 = r (масштабо-независимо, как у обычного MSE —
+    почему сходится быстро вблизи оптимума), вне неё der1/der2 = ±w
+    (масштабируется вместе с d через w — почему быстро добирается до нужного
+    порядка величины издалека). Для smape аналогичное сглаживание не
+    реализовано (денаминатор зависит от f, что усложняет непрерывность на
+    границе) — там сохраняется прежнее поведение.
+
+    Дефолт kappa_frac=1.0 подобран эмпирически (величина der1/der2 в линейной
+    зоне равна `kappa_frac*d`, а сколько итераций/какой learning_rate
+    потребуется на конкретных данных — заранее не известно; аналитического
+    вывода нет) — на синтетике разного масштаба давал сходимость в пределах
+    ~2-6% от MAE-эталона за нормальный бюджет итераций (300 и выше), меньшие
+    значения (~0.1-0.15) сходились заметно хуже даже при верно
+    инициализированном baseline (см. `_pool_baseline` в _custom_loss_base.py).
     """
 
-    def __init__(self, metric: str = 'wape', denom_floor: float = 1.0) -> None:
+    def __init__(self, metric: str = 'wape', denom_floor: float = 1.0, kappa_frac: float = 1.0) -> None:
         if metric not in ('mape', 'smape', 'wape'):
             raise ValueError(f"metric должен быть 'mape'/'smape'/'wape', получено {metric!r}")
         if denom_floor <= 0:
             raise ValueError('denom_floor должен быть положительным')
+        if kappa_frac <= 0:
+            raise ValueError('kappa_frac должен быть положительным')
         self.metric = metric
         self.denom_floor = denom_floor
+        self.kappa_frac = kappa_frac
         self.global_denom: float | None = None  # для wape — проставляется извне перед fit
 
     def calc_ders_range(
@@ -147,21 +174,25 @@ class RelativeErrorLoss:
 
         if self.metric == 'mape':
             d = np.maximum(np.abs(y), self.denom_floor)
-            der1 = -sign_r / d
-            der2 = -1.0 / d
+            w = np.maximum(self.kappa_frac * d, 1e-8)
+            in_quad = np.abs(r) <= w
+            der1 = np.where(in_quad, -r / (w * d), -sign_r / d)
+            der2 = -1.0 / (w * d)
         elif self.metric == 'wape':
             if self.global_denom is None:
                 raise RuntimeError('RelativeErrorLoss(metric="wape"): global_denom не проставлен')
             d = self.global_denom
-            der1 = -sign_r / d
-            der2 = -np.full_like(f, 1.0 / d)
+            w = max(self.kappa_frac * d, 1e-8)
+            in_quad = np.abs(r) <= w
+            der1 = np.where(in_quad, -r / (w * d), -sign_r / d)
+            der2 = -np.full_like(f, 1.0 / (w * d))
         else:  # smape
             d = np.abs(y) + np.abs(f) + self.denom_floor
             der1 = -2.0 * sign_r / d + 2.0 * np.abs(r) * np.sign(f) / (d * d)
             der2 = -2.0 / (d * d)
 
         if weights is not None:
-            w = np.asarray(weights, dtype=np.float64)
-            der1 = der1 * w
-            der2 = der2 * w
+            w_arr = np.asarray(weights, dtype=np.float64)
+            der1 = der1 * w_arr
+            der2 = der2 * w_arr
         return list(zip(der1.tolist(), der2.tolist(), strict=False))

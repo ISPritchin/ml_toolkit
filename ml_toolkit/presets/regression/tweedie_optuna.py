@@ -62,6 +62,16 @@ class TweedieOptunaRegressor(_CustomLossRegressorBase):
         loss_function=lambda p: f"Tweedie:variance_power={p['power']}",
     )
 
+    # _pool_baseline НЕ переопределён (остаётся None из базового класса):
+    # 'Tweedie' тоже не в белом списке boost_from_average CatBoost, но
+    # эмпирическая проверка (insurance, iterations=300) показала обратный
+    # эффект — с baseline=log(mean(y_tr)) модель почти не варьирует прогноз
+    # по строкам (диапазон схлопывается на порядок при том же MAE-бюджете:
+    # ~[13000,13700] вместо ожидаемого разброса до ~32000 у курильщиков),
+    # MAE вырастает в ~4 раза (2340 → 9058) по сравнению с baseline=None.
+    # Похоже на взаимодействие log-link с механизмом сэмплирования/сплитов
+    # CatBoost, не разобранное до конца — трогать не стали.
+
     def __init__(
         self,
         power: float = 1.5,

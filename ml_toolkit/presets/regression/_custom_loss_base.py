@@ -143,6 +143,25 @@ class _CustomLossRegressorBase(BasePreset):
 
     _direction: str = 'minimize'
 
+    def _pool_baseline(self, y_tr: np.ndarray) -> float | None:
+        """Хук: константа для Pool(baseline=...). None (дефолт) — без baseline.
+
+        CatBoost не поддерживает `boost_from_average` для пользовательских
+        loss_function (ни Python calc_ders_range, ни даже параметризованных
+        встроенных строк вроде 'Huber:.../'Tweedie:...' — оба вне белого
+        списка 'RMSE, Logloss, ..., MAE, MAPE, ...'), поэтому без явного
+        baseline модель стартует с f=0 для каждой строки и должна «доехать»
+        до масштаба y исключительно бустингом — на таргетах с масштабом на
+        порядки больше единичного шага листа (типично для custom-лоссов) это
+        требует на порядки больше итераций, чем даёт дефолтный диапазон
+        архитектуры (300-1000). Подклассы, для которых это релевантно
+        (RelativeErrorRegressor, QuantileHuberRegressor — см. их переопределения),
+        возвращают содержательную константу (обычно median(y_tr) — оптимум
+        для MAE-подобной поверхности); остальные не переопределяют метод,
+        поведение не меняется.
+        """
+        return None
+
     # ── обучение одной модели ───────────────────────────────────────────────
 
     def _fit_model(
@@ -258,8 +277,11 @@ class _CustomLossRegressorBase(BasePreset):
 
         y_tr = y_train.values
         y_va = y_valid.values
-        tr_pool = Pool(X_train[feats], y_tr, cat_features=self.cat_features_)
-        va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_)
+        self._baseline_value_ = self._pool_baseline(y_tr)
+        baseline_tr = None if self._baseline_value_ is None else np.full(len(y_tr), self._baseline_value_)
+        baseline_va = None if self._baseline_value_ is None else np.full(len(y_va), self._baseline_value_)
+        tr_pool = Pool(X_train[feats], y_tr, cat_features=self.cat_features_, baseline=baseline_tr)
+        va_pool = Pool(X_valid[feats], y_va, cat_features=self.cat_features_, baseline=baseline_va)
 
         if self.n_optuna_trials > 0:
             self._model, best = self._tune(tr_pool, va_pool, y_va)
@@ -285,5 +307,13 @@ class _CustomLossRegressorBase(BasePreset):
     def _predict_impl(self, X: pd.DataFrame) -> np.ndarray:
         from catboost import Pool
 
-        pool = Pool(X[self.selected_features_], cat_features=self.cat_features_)
+        baseline = getattr(self, '_baseline_value_', None)
+        # CatBoost не запоминает baseline внутри модели (predict() на пуле
+        # без baseline вернул бы «сырую» сумму деревьев, т.е. residual
+        # относительно baseline обучения) — передаём baseline в Pool тем же
+        # способом, что и в fit(), а не прибавляем вручную в Python: два
+        # разных пути дают расхождение на уровне ~1e-7 (float-арифметика
+        # внутри CatBoost и снаружи не идентичны бит-в-бит).
+        baseline_arr = None if baseline is None else np.full(len(X), baseline)
+        pool = Pool(X[self.selected_features_], cat_features=self.cat_features_, baseline=baseline_arr)
         return self._model.predict(pool)

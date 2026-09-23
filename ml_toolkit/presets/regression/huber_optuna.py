@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from ml_toolkit.presets.regression._custom_loss_base import (
     _CustomLossRegressorBase,
     _LossSpec,
@@ -53,6 +55,12 @@ class HuberOptunaRegressor(_CustomLossRegressorBase):
         param_bounds={'delta': (0.01, 10.0)},
         loss_function=lambda p: f"Huber:delta={p['delta']}",
     )
+
+    def _pool_baseline(self, y_tr: np.ndarray) -> float | None:
+        # 'Huber' не в белом списке boost_from_average CatBoost (см. докстринг
+        # _pool_baseline в _custom_loss_base.py) — median(y_tr) как разумная
+        # робастная стартовая точка.
+        return float(np.median(y_tr))
 
     def __init__(
         self,

@@ -110,6 +110,12 @@ class RelativeErrorRegressor(_CustomLossRegressorBase):
         self.metric = metric
         self.denom_floor = denom_floor
 
+    def _pool_baseline(self, y_tr: np.ndarray) -> float | None:
+        # median(y_tr) — минимум MAE-подобной (относительной) поверхности;
+        # без него модель стартует с f=0 и не успевает дотянуться до масштаба
+        # y за разумное число итераций (см. докстринг _pool_baseline).
+        return float(np.median(y_tr))
+
     def _build_loss(self, loss_params: dict[str, float], *, tr_pool: Pool) -> _CalcDersRangeLoss:
         # loss_params игнорируется — metric/denom_floor не тюнятся Optuna, у
         # лосса нет записи в _loss_spec.param_bounds (см. докстринг класса).
