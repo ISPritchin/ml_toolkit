@@ -1941,10 +1941,11 @@ wheels = [
 
 [[package]]
 name = "ml-toolkit"
-version = "0.4.2"
+version = "0.4.8"
 source = { editable = "." }
 dependencies = [
     { name = "catboost" },
+    { name = "cloudpickle" },
     { name = "deap" },
     { name = "imbalanced-learn" },
     { name = "lightgbm" },
@@ -1984,6 +1985,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "catboost", specifier = ">=1.2" },
+    { name = "cloudpickle", specifier = ">=3.0" },
     { name = "deap", specifier = ">=1.4.4" },
     { name = "imbalanced-learn", specifier = ">=0.12" },
     { name = "lightgbm", specifier = ">=4.0" },

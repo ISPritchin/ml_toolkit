@@ -5,9 +5,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import logging
 from pathlib import Path
-import pickle
 from typing import Any
 
+import cloudpickle
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -129,24 +129,36 @@ class BaseModel(ABC):
             )
 
     def save(self, path: str | Path) -> None:
-        """Сериализует весь объект (адаптер вместе с обученной «сырой» моделью) через pickle.
+        """Сериализует весь объект (адаптер вместе с обученной «сырой» моделью) через cloudpickle.
 
         Общая реализация для каждого адаптера (`CatBoostRegressor`,
         `LightGBMClassifier`, ...) и каждого пресета (`BasePreset` в
         `ml_toolkit.presets.regression`/`classification` наследует её без
-        переопределения) — pickle всего `self` сохраняет `_model` (или
+        переопределения) — сериализация всего `self` сохраняет `_model` (или
         произвольное число подмоделей у пресетов — `models_` ансамбля,
         `model1_`/`model2_` каскада и т.п.) разом, без знания о внутренней
         структуре конкретного подкласса.
+
+        cloudpickle, а не стандартный `pickle`: многие пресеты/адаптеры (все
+        Optuna-based — `TargetTransformOptunaRegressor`, `HuberOptunaRegressor`,
+        CatBoost/LightGBM/XGBoost через `model_settings['param_space']`, ...)
+        хранят `param_space` — произвольный пользовательский callable,
+        передаваемый в конструктор для кастомизации Optuna search space.
+        Стандартный `pickle` не умеет сериализовать лямбды и функции,
+        объявленные не на уровне модуля (замыкания внутри `def main(): ...`,
+        внутри теста, в ячейке ноутбука) — а это подавляющее большинство
+        реального использования `param_space`. cloudpickle сериализует такие
+        функции по байткоду, а не по ссылке на модуль, поэтому save()/load()
+        работает независимо от того, где и как объявлен `param_space`.
         """
         with Path(path).open('wb') as f:
-            pickle.dump(self, f)
+            cloudpickle.dump(self, f)
 
     @classmethod
     def load(cls, path: str | Path) -> BaseModel:
         """Загружает объект, сохранённый через .save()."""
         with Path(path).open('rb') as f:
-            obj = pickle.load(f)
+            obj = cloudpickle.load(f)
         if not isinstance(obj, cls):
             raise TypeError(
                 f'Файл {path!r} содержит {type(obj).__name__}, ожидался {cls.__name__}.'
