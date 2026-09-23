@@ -1,12 +1,10 @@
 """Базовый класс для пресетов классификации.
 
-Подклассы наследуют _coerce_inputs, _resolve_features и тонкий predict().
+Подклассы наследуют _coerce_inputs, _resolve_features, тонкий predict() и
+save/load (общая реализация BaseModel — см. её докстринг).
 """
 
 from __future__ import annotations
-
-from pathlib import Path
-import pickle
 
 import numpy as np
 
@@ -28,25 +26,3 @@ class BasePreset(BaseModel):
             raise RuntimeError(
                 f'{type(self).__name__} не обучена — вызовите .fit() первым.'
             )
-
-    def save(self, path: str | Path) -> None:
-        """Сериализует весь объект пресета (включая обученные подмодели) через pickle.
-
-        Обученные пресеты держат произвольное число подмоделей в нестандартных
-        местах (model1_/model2_ каскада, models_ ансамбля, meta_model_ стекинга,
-        ...) — pickle всего `self` сохраняет их разом, без знания о внутренней
-        структуре конкретного подкласса.
-        """
-        with Path(path).open('wb') as f:
-            pickle.dump(self, f)
-
-    @classmethod
-    def load(cls, path: str | Path) -> BasePreset:
-        """Загружает пресет, сохранённый через .save()."""
-        with Path(path).open('rb') as f:
-            obj = pickle.load(f)
-        if not isinstance(obj, cls):
-            raise TypeError(
-                f'Файл {path!r} содержит {type(obj).__name__}, ожидался {cls.__name__}.'
-            )
-        return obj

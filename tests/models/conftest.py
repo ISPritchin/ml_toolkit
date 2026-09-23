@@ -129,3 +129,28 @@ def assert_valid_predictions(model, X_valid) -> np.ndarray:
     assert pred.shape == (len(X_valid),)
     assert np.all(np.isfinite(pred))
     return pred
+
+
+def assert_pickle_roundtrip(model, X_valid, tmp_path, proba: bool = False) -> None:
+    """fit()-нутая модель: save() -> load() -> predict тот же, что до сохранения.
+
+    Гоняет через реальный файл (Path(tmp_path)/'model.pkl'), а не pickle.dumps/
+    loads в памяти — так же, как будет использоваться save()/load() в проде.
+
+    allclose с очень маленьким допуском, а не точное равенство: у sklearn-ансамблей
+    с n_jobs=-1 (RandomForest/ExtraTrees/...) параллельное усреднение по деревьям
+    после unpickle может пересуммироваться в другом порядке (joblib заново
+    договаривается о воркерах у «свежего» объекта) — расхождение на уровне
+    ~1e-16 от неассоциативности float-сложения, не от порчи данных при
+    сериализации (проверено: с n_jobs=1 расхождение отсутствует полностью).
+    """
+    predict_fn = (lambda m: m.predict_proba(X_valid)) if proba else (lambda m: m.predict(X_valid))
+    pred_before = predict_fn(model)
+
+    path = tmp_path / 'model.pkl'
+    model.save(path)
+    loaded = type(model).load(path)
+
+    assert isinstance(loaded, type(model))
+    pred_after = predict_fn(loaded)
+    np.testing.assert_allclose(pred_before, pred_after, rtol=1e-9, atol=1e-12)

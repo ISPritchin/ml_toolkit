@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import logging
+from pathlib import Path
+import pickle
 from typing import Any
 
 import numpy as np
@@ -125,6 +127,31 @@ class BaseModel(ABC):
             raise RuntimeError(
                 f'{type(self).__name__} не обучена. Вызовите .fit() перед .predict().'
             )
+
+    def save(self, path: str | Path) -> None:
+        """Сериализует весь объект (адаптер вместе с обученной «сырой» моделью) через pickle.
+
+        Общая реализация для каждого адаптера (`CatBoostRegressor`,
+        `LightGBMClassifier`, ...) и каждого пресета (`BasePreset` в
+        `ml_toolkit.presets.regression`/`classification` наследует её без
+        переопределения) — pickle всего `self` сохраняет `_model` (или
+        произвольное число подмоделей у пресетов — `models_` ансамбля,
+        `model1_`/`model2_` каскада и т.п.) разом, без знания о внутренней
+        структуре конкретного подкласса.
+        """
+        with Path(path).open('wb') as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, path: str | Path) -> BaseModel:
+        """Загружает объект, сохранённый через .save()."""
+        with Path(path).open('rb') as f:
+            obj = pickle.load(f)
+        if not isinstance(obj, cls):
+            raise TypeError(
+                f'Файл {path!r} содержит {type(obj).__name__}, ожидался {cls.__name__}.'
+            )
+        return obj
 
     def _resolve_features(
         self, X: pd.DataFrame, selected_features: list[str] | None

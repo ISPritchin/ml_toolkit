@@ -39,6 +39,23 @@ if TYPE_CHECKING:
     from optuna.pruners import BasePruner
 
 
+class _PinballLossFunction:
+    """Строит имя лосса `'Quantile:alpha=q'` для фиксированного q.
+
+    Не лямбда: `_LossSpec.loss_function` здесь — атрибут ЭКЗЕМПЛЯРА (q считается
+    из over_cost/under_cost конкретного инстанса, в отличие от HuberOptunaRegressor/
+    TweedieOptunaRegressor, где `_loss_spec` — атрибут класса и не сериализуется
+    вместе с `self`) — лямбда-замыкание над q не пиклится (`pickle` не умеет
+    сериализовать локальные/замыкающие функции), обычный вызываемый объект — умеет.
+    """
+
+    def __init__(self, q: float) -> None:
+        self.q = q
+
+    def __call__(self, _params: dict[str, float]) -> str:
+        return f'Quantile:alpha={self.q}'
+
+
 def _asymmetric_cost(y_true: np.ndarray, y_pred: np.ndarray, over_cost: float, under_cost: float) -> float:
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
@@ -100,7 +117,7 @@ class AsymmetricCostRegressor(_CustomLossRegressorBase):
             q = under_cost / (over_cost + under_cost)
             self._loss_spec = _LossSpec(
                 name='AsymmetricCost[pinball]', param_bounds={},
-                loss_function=lambda _p, q=q: f'Quantile:alpha={q}',
+                loss_function=_PinballLossFunction(q),
             )
         else:
             self._loss_spec = _LossSpec(
