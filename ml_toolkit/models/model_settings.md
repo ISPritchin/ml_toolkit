@@ -180,6 +180,35 @@ model_settings = {'name': 'catboost', 'param_space': my_space}
 
 ---
 
+## Кастомный лосс с тюнингом параметров (`loss_spec`)
+
+Единый механизм для `catboost`/`lightgbm`/`xgboost` (регрессоры и классификаторы, включая мультикласс) — подменяет TRAINING loss на кастомный (`calc_ders_range`/`calc_ders_multi`-совместимый класс из `ml_toolkit.losses` или `ml_toolkit.presets.*`) и тюнит его собственные параметры через Optuna вместе с гиперпараметрами модели. Реализация — `ml_toolkit/models/_loss_spec.py`.
+
+```python
+from ml_toolkit.losses import FocalLoss
+from ml_toolkit.models._loss_spec import LossSpec
+
+model_settings = {
+    'loss_spec': LossSpec(
+        name='focal',                                          # для логов/best_params_
+        loss_cls=FocalLoss,                                    # calc_ders_range/calc_ders_multi-класс
+        param_bounds={'gamma': (1.0, 5.0), 'alpha': (0.1, 0.9)},  # trial.suggest_float по каждому ключу
+    ),
+}
+model = CatBoostClassifier(n_optuna_trials=50, model_settings=model_settings)   # то же — LightGBM*, XGBoost*, *Regressor
+```
+
+Правила:
+- `loss_cls` определяется по наличию `calc_ders_multi` (мультикласс) vs `calc_ders_range` (бинарная классификация/регрессия) — `is_multiclass_loss`, никакого отдельного флага передавать не нужно.
+- `param_bounds={}` — у лосса нет тюнящихся параметров, конструируется с дефолтами класса.
+- После `fit()` `best_params_['loss_name']`/`best_params_['loss_params']` — человекочитаемые имя и фактически выбранные параметры лосса лучшего trial (сам объект-лосс в `best_params_[...]` под ключом `loss_function`/`objective` — живой, нужен для реконструкции модели, но для логов неинформативен).
+- CatBoost принимает `calc_ders_range`/`calc_ders_multi`-объекты нативно; `eval_metric` при этом обязателен явно — адаптер подставляет дефолт по задаче (`'MAE'` для регрессии, `'PRAUC'`/`'AUC'` для бинарной/мультикласс классификации), переопределяется `model_settings['eval_metric']`; для мультикласса дополнительно передаётся `classes_count`.
+- LightGBM/XGBoost (sklearn-обёртки) используют свою объектную сигнатуру (`objective(y_true, y_pred) -> grad, hess`, см. `_loss_spec.py`); гессиан мультикласса там — только диагональ (ограничение custom objective API обоих фреймворков, не этого модуля). **Важно**: `predict_proba()` обоих фреймворков не умеет сам понять, что делать с кастомным objective, и для LightGBM документированно/эмпирически возвращает raw margins вместо вероятностей (с warning'ом) — адаптеры применяют sigmoid/softmax вручную поверх raw score, когда `loss_spec` задан, так что `predict_proba()` снаружи всегда возвращает корректную вероятность независимо от того, используется `loss_spec` или нет.
+- XGBoost-ветка реализована по документированному API sklearn-обёртки, но не верифицирована вживую (xgboost не входит в обязательные зависимости проекта, см. `tests/models/_tabular/_boosting/test_xgboost.py`) — особенно мультикласс, где форма `y_pred`, которую XGBoost передаёт в custom objective, зависит от версии.
+- Несовместим с явным `loss_function`/`objective` в `param_space` — `loss_spec`, если задан, имеет приоритет (переопределяет его).
+
+---
+
 ## Урезание мажоритарного класса внутри Optuna (`undersample_majority`)
 
 Классификаторы `catboost`/`lightgbm`/`xgboost` умеют урезать классы внутри Optuna-тюнинга (бинарный случай — `majority_fraction`, мультикласс, все три адаптера, — `balance_fraction`). Финальная модель всегда обучается на том же сэмпле, что и лучший trial (не на полных данных) — иначе гиперпараметры оценивались бы на одном объёме данных, а обучение шло бы на другом. По умолчанию отключено — Optuna тюнит гиперпараметры на полных данных.
@@ -245,6 +274,7 @@ model_settings = {
 | `cat_encoder` | `None \| str \| TransformerMixin` | все кроме нативных | `None` → ordinal |
 | `baseline_col` | `str \| None` | catboost, lightgbm, xgboost, lama (regressor), linear (regressor) | `None` → бейзлайн не используется |
 | `param_space` | `Callable[[optuna.Trial], dict] \| None` | catboost, lightgbm, xgboost | `None` → дефолтное пространство |
+| `loss_spec` | `LossSpec \| None` | catboost, lightgbm, xgboost | `None` → фиксированный training loss адаптера |
 | `undersample_majority` | `bool` | catboost, lightgbm, xgboost (классификаторы) | `False` для всех трёх |
 | `optuna_timeout` | `float \| None` (секунды) | все Optuna-адаптеры | `None` → без лимита времени |
 | `optuna_pruner` | `None \| str \| optuna.pruners.BasePruner` | все Optuna-адаптеры (реально отсекает trials только в catboost/lightgbm/xgboost/*_ranker/tabm) | `None` → `MedianPruner()` |

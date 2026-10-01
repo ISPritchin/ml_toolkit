@@ -10,6 +10,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, roc_auc_score
 
 from ml_toolkit.models._base import BaseModel
+from ml_toolkit.models._loss_spec import LossSpec, build_loss, suggest_loss_params, to_xgboost_objective
 from ml_toolkit.models._tabular._boosting._common import add_baseline, compute_residual
 from ml_toolkit.models._tabular._boosting._undersampling import UndersampleSampler
 from ml_toolkit.models._utils import (
@@ -29,6 +30,24 @@ from ml_toolkit.models._utils import (
 logger = logging.getLogger(__name__)
 
 _prep = prep_cat_features
+
+
+def _xgb_margins_to_proba(raw: np.ndarray, is_binary: bool) -> np.ndarray:
+    """Sigmoid/softmax поверх сырых маргиналов при кастомном objective (loss_spec).
+
+    В отличие от LightGBM (которое явно предупреждает и документированно отдаёт
+    raw score для custom objective, см. _lgb_margins_to_proba в _lightgbm.py),
+    поведение XGBoost's predict_proba() при кастомном objective НЕ верифицировано
+    вживую в этом окружении (xgboost не установлен) — трансформация применяется
+    по тому же принципу на основании документированного API (custom objective
+    не регистрирует link-функцию на C++ стороне, поэтому predict должен отдавать
+    raw score). Проверьте на реальных данных перед продакшн-использованием.
+    """
+    if is_binary:
+        p1 = 1.0 / (1.0 + np.exp(-raw))
+        return np.column_stack([1.0 - p1, p1])
+    ex = np.exp(raw - raw.max(axis=1, keepdims=True))
+    return ex / ex.sum(axis=1, keepdims=True)
 
 
 def _default_xgb_param_space(trial: optuna.Trial) -> dict[str, Any]:
@@ -157,12 +176,19 @@ class XGBoostRegressor(BaseModel):
             if X_valid is None:
                 raise ValueError('X_valid обязателен при params=None (режим Optuna)')
             param_space: Callable[[optuna.Trial], dict] | None = ms.get('param_space')
+            loss_spec: LossSpec | None = ms.get('loss_spec')
 
             def objective(trial: optuna.Trial) -> float:
                 tunable = param_space(trial) if param_space is not None else _default_xgb_param_space(trial)
+                if loss_spec is not None:
+                    loss_p = suggest_loss_params(loss_spec, trial, tunable)
+                    objective_val = to_xgboost_objective(build_loss(loss_spec, loss_p))
+                    trial.set_user_attr('loss_p', loss_p)
+                else:
+                    objective_val = 'reg:absoluteerror'
                 params = {
                     **tunable,
-                    'objective': 'reg:absoluteerror', 'eval_metric': 'mae',
+                    'objective': objective_val, 'eval_metric': 'mae',
                     'random_state': 42, 'enable_categorical': has_cat, 'early_stopping_rounds': 100,
                 }
                 trial.set_user_attr('xgb_params', params)
@@ -181,11 +207,17 @@ class XGBoostRegressor(BaseModel):
             study.optimize(
                 objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False,
             )
-            self.best_params_ = dict(study.best_trial.user_attrs['xgb_params'])
-            logger.info('[XGBoost Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
+            best_trial = study.best_trial
+            self.best_params_ = dict(best_trial.user_attrs['xgb_params'])
 
             self._model = xgb.XGBRegressor(**self.best_params_)
             self._model.fit(Xtr, resid_tr, eval_set=[(Xva, resid_va)], verbose=False)
+            if loss_spec is not None:
+                # objective в best_params_ — живой callable (нужен для реконструкции модели
+                # выше); для человекочитаемого best_params_/лога добавляем имя+параметры.
+                self.best_params_ = {**self.best_params_, 'loss_name': loss_spec.name,
+                                      'loss_params': dict(best_trial.user_attrs['loss_p'])}
+            logger.info('[XGBoost Reg] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
         self.train_pred_ = pp(X_train, add_baseline(self._model.predict(Xtr), baseline_tr))
         if X_valid is not None:
@@ -314,6 +346,7 @@ class XGBoostClassifier(BaseModel):
             y_va = y_valid.to_numpy(dtype=int)
             param_space: Callable[[optuna.Trial], dict] | None = ms.get('param_space')
             undersample_majority: bool = ms.get('undersample_majority', False)
+            loss_spec: LossSpec | None = ms.get('loss_spec')
 
             full_idx = np.arange(len(y_tr))
             sampler = UndersampleSampler(y_tr, is_binary=is_binary, log_prefix='[XGBoost Cls]') if undersample_majority else None
@@ -329,9 +362,15 @@ class XGBoostClassifier(BaseModel):
                 Xtr_trial, ytr_trial = Xtr.iloc[idx], y_tr[idx]
 
                 tunable = param_space(trial) if param_space is not None else _default_xgb_param_space(trial)
+                if loss_spec is not None:
+                    loss_p = suggest_loss_params(loss_spec, trial, tunable)
+                    objective_val = to_xgboost_objective(build_loss(loss_spec, loss_p))
+                    trial.set_user_attr('loss_p', loss_p)
+                else:
+                    objective_val = 'binary:logistic' if is_binary else 'multi:softprob'
                 params = {
                     **tunable,
-                    'objective': 'binary:logistic' if is_binary else 'multi:softprob',
+                    'objective': objective_val,
                     'eval_metric': 'aucpr' if is_binary else 'auc',
                     'random_state': 42, 'enable_categorical': has_cat, 'early_stopping_rounds': 100,
                 }
@@ -341,6 +380,8 @@ class XGBoostClassifier(BaseModel):
                 m = xgb.XGBClassifier(**params, callbacks=[make_xgb_pruning_callback(trial)])
                 m.fit(Xtr_trial, ytr_trial, eval_set=[(Xva, y_va)], verbose=False)
                 proba = m.predict_proba(Xva)
+                if loss_spec is not None:
+                    proba = _xgb_margins_to_proba(proba, is_binary)
                 return metric_fn(y_va, proba[:, 1] if is_binary else proba)
 
             logger.info(
@@ -358,24 +399,35 @@ class XGBoostClassifier(BaseModel):
             if sampler is not None:
                 fraction_value = best_trial.params[sampler.fraction_key]
                 idx = sampler.sample_idx(fraction_value, best_trial.number)
+            else:
+                idx = full_idx
+
+            Xtr_final, ytr_final = Xtr.iloc[idx], y_tr[idx]
+            self._model = xgb.XGBClassifier(**self.best_params_)
+            self._model.fit(Xtr_final, ytr_final, eval_set=[(Xva, y_va)], verbose=False)
+            if loss_spec is not None:
+                # objective в best_params_ — живой callable (нужен для реконструкции модели
+                # выше); для человекочитаемого best_params_/лога добавляем имя+параметры.
+                self.best_params_ = {**self.best_params_, 'loss_name': loss_spec.name,
+                                      'loss_params': dict(best_trial.user_attrs['loss_p'])}
+            if sampler is not None:
                 logger.info(
                     '[XGBoost Cls] Best score=%.4f | %s=%.3f (best trial #%d, n=%d/%d) | params=%s',
                     study.best_value, sampler.fraction_key, fraction_value, best_trial.number,
                     len(idx), len(y_tr), self.best_params_,
                 )
             else:
-                idx = full_idx
                 logger.info('[XGBoost Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
-            Xtr_final, ytr_final = Xtr.iloc[idx], y_tr[idx]
-            self._model = xgb.XGBClassifier(**self.best_params_)
-            self._model.fit(Xtr_final, ytr_final, eval_set=[(Xva, y_va)], verbose=False)
-
         full_tr = self._model.predict_proba(Xtr)
+        if ms.get('loss_spec') is not None:
+            full_tr = _xgb_margins_to_proba(full_tr, is_binary)
         self.train_pred_ = full_tr[:, 1] if is_binary else full_tr
         if X_valid is not None:
             Xva = _prep(X_valid, self.selected_features_, self.cat_features_)
             full_va = self._model.predict_proba(Xva)
+            if ms.get('loss_spec') is not None:
+                full_va = _xgb_margins_to_proba(full_va, is_binary)
             y_va_arr = y_valid.to_numpy(dtype=int)
             if is_binary:
                 self.valid_pred_ = full_va[:, 1]
@@ -390,6 +442,8 @@ class XGBoostClassifier(BaseModel):
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         raw = self._model.predict_proba(_prep(X, self.selected_features_, self.cat_features_))
+        if self.model_settings.get('loss_spec') is not None:
+            raw = _xgb_margins_to_proba(raw, self.n_classes_ == 2)
         if self.n_classes_ == 2:
             score = raw[:, 1]
             return self.calibrator_.predict(score) if self.calibrator_ is not None else score

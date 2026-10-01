@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ml_toolkit.losses import FocalLoss, LogitNormLoss
+from ml_toolkit.models._loss_spec import LossSpec
 from ml_toolkit.models._tabular._boosting._lightgbm import LightGBMClassifier, LightGBMRegressor
+from ml_toolkit.presets.regression._losses import AsymmetricMSELoss
 from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_LGB = {'n_estimators': 40, 'max_depth': 3, 'num_leaves': 7, 'verbose': -1}
@@ -254,6 +257,60 @@ class TestLightGBMMulticlass:
         model = LightGBMClassifier(n_optuna_trials=2, model_settings={'undersample_majority': True})
         model.fit(X_train, y_train, X_valid, y_valid)
         assert model.predict_proba(X_valid).shape == (len(X_valid), 3)
+
+
+class TestLightGBMLossSpec:
+    """model_settings['loss_spec'] — тюнинг кастомного лосса через Optuna, см. _loss_spec.py.
+
+    LightGBM, в отличие от CatBoost, не умеет сам применять sigmoid/softmax к
+    predict_proba() при кастомном objective (возвращает raw margins с warning'ом) —
+    адаптер делает это вручную (_lgb_margins_to_proba в _lightgbm.py), поэтому здесь
+    дополнительно проверяется, что proba остаётся корректной вероятностью, а не raw score.
+    """
+
+    @pytest.fixture
+    def multiclass_data(self):
+        rng = np.random.default_rng(23)
+        n_train, n_valid = 200, 60
+        cols = [f'f{i}' for i in range(5)]
+        X_train = pd.DataFrame(rng.normal(size=(n_train, 5)), columns=cols)
+        y_train = pd.Series(rng.integers(0, 3, size=n_train))
+        X_valid = pd.DataFrame(rng.normal(size=(n_valid, 5)), columns=cols)
+        y_valid = pd.Series(rng.integers(0, 3, size=n_valid))
+        return X_train, y_train, X_valid, y_valid
+
+    def test_regressor_tunable_loss(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
+                         param_bounds={'over_cost': (0.5, 2.0), 'under_cost': (0.5, 2.0)})
+        model = LightGBMRegressor(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert model.best_params_['loss_name'] == 'asym_mse'
+        assert set(model.best_params_['loss_params']) == {'over_cost', 'under_cost'}
+
+    def test_classifier_binary_tunable_loss_proba_in_unit_interval(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        spec = LossSpec(name='focal', loss_cls=FocalLoss, param_bounds={'gamma': (1.0, 3.0), 'alpha': (0.1, 0.9)})
+        model = LightGBMClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        proba = assert_valid_proba(model, X_valid)
+        # Raw margins (без sigmoid) почти наверняка вышли бы за [0, 1]
+        assert proba.std() > 0  # не константа — модель реально обучилась
+        assert model.best_params_['loss_name'] == 'focal'
+        assert 1.0 <= model.best_params_['loss_params']['gamma'] <= 3.0
+
+    def test_classifier_multiclass_tunable_loss_proba_sums_to_one(self, multiclass_data):
+        X_train, y_train, X_valid, y_valid = multiclass_data
+        spec = LossSpec(name='logitnorm', loss_cls=LogitNormLoss, param_bounds={'temperature': (0.02, 0.2)})
+        model = LightGBMClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert model.n_classes_ == 3
+        proba = model.predict_proba(X_valid)
+        assert proba.shape == (len(X_valid), 3)
+        np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-6)
+        assert np.all((proba >= 0) & (proba <= 1))
+        assert model.best_params_['loss_name'] == 'logitnorm'
 
 
 class TestLightGBMUndersampleMajority:

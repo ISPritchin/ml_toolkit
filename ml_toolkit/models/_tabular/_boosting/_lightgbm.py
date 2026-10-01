@@ -19,6 +19,7 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, mean_absolute_error, roc_auc_score
 
 from ml_toolkit.models._base import BaseModel, XInput, YInput
+from ml_toolkit.models._loss_spec import LossSpec, build_loss, suggest_loss_params, to_lightgbm_objective
 from ml_toolkit.models._tabular._boosting._common import add_baseline, compute_residual
 
 if TYPE_CHECKING:
@@ -68,6 +69,19 @@ def _detect_boosting_type(params: dict) -> str:
     if params.get('data_sample_strategy') == 'goss':
         return 'goss'
     return params.get('boosting_type', 'gbdt')
+
+
+def _lgb_margins_to_proba(raw: np.ndarray, is_binary: bool) -> np.ndarray:
+    """Sigmoid/softmax поверх сырых маргиналов, которые LightGBM.predict_proba() возвращает
+    при кастомном objective (см. ml_toolkit/models/_loss_spec.py — predict_proba не умеет
+    сам понять, что с объектом-лоссом делать, и отдаёт raw score без предупреждения о
+    некорректности итога). Бинарный raw — 1D (n,); возвращаем (n, 2) как обычный predict_proba.
+    """
+    if is_binary:
+        p1 = 1.0 / (1.0 + np.exp(-raw))
+        return np.column_stack([1.0 - p1, p1])
+    ex = np.exp(raw - raw.max(axis=1, keepdims=True))
+    return ex / ex.sum(axis=1, keepdims=True)
 
 
 def _default_lgb_param_space(trial: optuna.Trial) -> dict[str, Any]:
@@ -240,13 +254,20 @@ class LightGBMRegressor(BaseModel):
             self.model_settings, 'reg_metric', REG_METRICS['mae'][0], 'minimize', REG_METRICS,
         )
         param_space: Callable[[optuna.Trial], dict] | None = self.model_settings.get('param_space')
+        loss_spec: LossSpec | None = self.model_settings.get('loss_spec')
 
         def objective(trial: optuna.Trial) -> float:
             tunable = dict(param_space(trial) if param_space is not None else _default_lgb_param_space(trial))
             boosting_type = tunable.pop('boosting_type', 'gbdt')
+            if loss_spec is not None:
+                loss_p = suggest_loss_params(loss_spec, trial, tunable)
+                objective_val = to_lightgbm_objective(build_loss(loss_spec, loss_p))
+                trial.set_user_attr('loss_p', loss_p)
+            else:
+                objective_val = 'mae'
             params = {
                 **tunable,
-                'objective': 'mae',
+                'objective': objective_val,
                 'random_state': 42,
                 'verbose': -1,
                 'n_jobs': -1,
@@ -274,7 +295,6 @@ class LightGBMRegressor(BaseModel):
         best_trial = study.best_trial
         best_params = dict(best_trial.user_attrs['lgb_params'])
         best_bt = best_trial.user_attrs['boosting_type']
-        logger.info('[LGB Reg] Best: boosting=%s score=%.4f params=%s', best_bt, study.best_value, best_params)
 
         model = lgb.LGBMRegressor(**best_params)
         model.fit(
@@ -282,6 +302,12 @@ class LightGBMRegressor(BaseModel):
             categorical_feature=cat_in_sel or 'auto',
             callbacks=_lgb_callbacks(best_bt),
         )
+        if loss_spec is not None:
+            # objective в best_params — живой callable (нужен для реконструкции модели
+            # выше); для человекочитаемого best_params_/лога добавляем имя+параметры.
+            best_params = {**best_params, 'loss_name': loss_spec.name,
+                            'loss_params': dict(best_trial.user_attrs['loss_p'])}
+        logger.info('[LGB Reg] Best: boosting=%s score=%.4f params=%s', best_bt, study.best_value, best_params)
         return model, best_params
 
     def _fit_direct(
@@ -426,10 +452,15 @@ class LightGBMClassifier(BaseModel):
                 lgb, Xtr, y_train, Xva, y_valid, cat_in_sel,
             )
 
+        loss_spec: LossSpec | None = self.model_settings.get('loss_spec')
         full_tr = self._model.predict_proba(Xtr)
+        if loss_spec is not None:
+            full_tr = _lgb_margins_to_proba(full_tr, is_binary)
         self.train_pred_ = full_tr[:, 1] if is_binary else full_tr
         if Xva is not None:
             full_va = self._model.predict_proba(Xva)
+            if loss_spec is not None:
+                full_va = _lgb_margins_to_proba(full_va, is_binary)
             if is_binary:
                 self.valid_pred_ = full_va[:, 1]
                 logger.info('[LGB Cls] Final PR-AUC: %.3f', average_precision_score(y_valid, self.valid_pred_))
@@ -461,6 +492,7 @@ class LightGBMClassifier(BaseModel):
         )
         param_space: Callable[[optuna.Trial], dict] | None = self.model_settings.get('param_space')
         undersample_majority: bool = self.model_settings.get('undersample_majority', False)
+        loss_spec: LossSpec | None = self.model_settings.get('loss_spec')
 
         y_arr = np.asarray(y_train)
         full_idx = np.arange(len(y_arr))
@@ -478,9 +510,15 @@ class LightGBMClassifier(BaseModel):
 
             tunable = dict(param_space(trial) if param_space is not None else _default_lgb_param_space(trial))
             boosting_type = tunable.pop('boosting_type', 'gbdt')
+            if loss_spec is not None:
+                loss_p = suggest_loss_params(loss_spec, trial, tunable)
+                objective_val = to_lightgbm_objective(build_loss(loss_spec, loss_p))
+                trial.set_user_attr('loss_p', loss_p)
+            else:
+                objective_val = 'binary' if is_binary else 'multiclass'
             params = {
                 **tunable,
-                'objective': 'binary' if is_binary else 'multiclass',
+                'objective': objective_val,
                 'metric': 'average_precision' if is_binary else 'auc_mu',
                 'random_state': 42,
                 'verbose': -1,
@@ -492,8 +530,10 @@ class LightGBMClassifier(BaseModel):
                 # (внутреннее переваживание LightGBM) включаем только если сэмплирование выключено,
                 # чтобы не применять два механизма балансировки одновременно. Мультиклассовый
                 # objective этот параметр не поддерживает вовсе — балансировка там только
-                # через undersample_majority (balance_fraction в UndersampleSampler).
-                params['is_unbalance'] = not undersample_majority
+                # через undersample_majority (balance_fraction в UndersampleSampler). Кастомный
+                # loss_spec тоже не поддерживает is_unbalance — переваживание там делает сам лосс.
+                if loss_spec is None:
+                    params['is_unbalance'] = not undersample_majority
             else:
                 params['num_class'] = self.n_classes_
             trial.set_user_attr('lgb_params', params)
@@ -505,6 +545,8 @@ class LightGBMClassifier(BaseModel):
                 callbacks=[*_lgb_callbacks(boosting_type), make_lgb_pruning_callback(trial)],
             )
             proba = m.predict_proba(Xva)
+            if loss_spec is not None:
+                proba = _lgb_margins_to_proba(proba, is_binary)
             return metric_fn(y_valid.values, proba[:, 1] if is_binary else proba)
 
         logger.info(
@@ -522,14 +564,8 @@ class LightGBMClassifier(BaseModel):
         if sampler is not None:
             fraction_value = best_trial.params[sampler.fraction_key]
             idx = sampler.sample_idx(fraction_value, best_trial.number)
-            logger.info(
-                '[LGB Cls] Best: boosting=%s score=%.4f | %s=%.3f (best trial #%d, n=%d/%d) | params=%s',
-                best_bt, study.best_value, sampler.fraction_key, fraction_value, best_trial.number,
-                len(idx), len(y_arr), best_params,
-            )
         else:
             idx = full_idx
-            logger.info('[LGB Cls] Best: boosting=%s score=%.4f params=%s', best_bt, study.best_value, best_params)
 
         Xtr_final, ytr_final = Xtr.iloc[idx], y_arr[idx]
         model = lgb.LGBMClassifier(**best_params)
@@ -538,6 +574,19 @@ class LightGBMClassifier(BaseModel):
             categorical_feature=cat_in_sel or 'auto',
             callbacks=_lgb_callbacks(best_bt),
         )
+        if loss_spec is not None:
+            # objective в best_params — живой callable (нужен для реконструкции модели
+            # выше); для человекочитаемого best_params_/лога добавляем имя+параметры.
+            best_params = {**best_params, 'loss_name': loss_spec.name,
+                            'loss_params': dict(best_trial.user_attrs['loss_p'])}
+        if sampler is not None:
+            logger.info(
+                '[LGB Cls] Best: boosting=%s score=%.4f | %s=%.3f (best trial #%d, n=%d/%d) | params=%s',
+                best_bt, study.best_value, sampler.fraction_key, fraction_value, best_trial.number,
+                len(idx), len(y_arr), best_params,
+            )
+        else:
+            logger.info('[LGB Cls] Best: boosting=%s score=%.4f params=%s', best_bt, study.best_value, best_params)
         return model, best_params
 
     def _fit_direct(
@@ -564,6 +613,8 @@ class LightGBMClassifier(BaseModel):
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         Xp = _prep(X, self.selected_features_, self.cat_features_)
         raw = self._model.predict_proba(Xp)
+        if self.model_settings.get('loss_spec') is not None:
+            raw = _lgb_margins_to_proba(raw, self.n_classes_ == 2)
         if self.n_classes_ == 2:
             score = raw[:, 1]
             return self.calibrator_.predict(score) if self.calibrator_ is not None else score

@@ -41,6 +41,16 @@ ml_toolkit.model_evaluation.REGRESSION_PRESETS/CLASSIFICATION_PRESETS —
     None / 'ordinal' → OrdinalEncoder (по умолч.)
     'onehot'         → OneHotEncoder
 
+Кастомный training loss с тюнингом его параметров через Optuna
+(model_settings['loss_spec'], catboost/lightgbm/xgboost — регрессоры и
+классификаторы, включая мультикласс; см. ml_toolkit/models/model_settings.md
+и ml_toolkit/models/_loss_spec.py):
+    from ml_toolkit.losses import FocalLoss
+    from ml_toolkit.models._loss_spec import LossSpec
+    model_settings = {'loss_spec': LossSpec(name='focal', loss_cls=FocalLoss,
+                                             param_bounds={'gamma': (1.0, 5.0), 'alpha': (0.1, 0.9)})}
+    model = CatBoostClassifier(n_optuna_trials=50, model_settings=model_settings)
+
 Lazy imports: класс модели загружается только при первом обращении к нему.
 """
 

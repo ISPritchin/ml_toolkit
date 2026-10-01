@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ml_toolkit.losses import FocalLoss, LogitNormLoss
+from ml_toolkit.models._loss_spec import LossSpec
 from ml_toolkit.models._tabular._boosting._catboost import CatBoostClassifier, CatBoostRegressor
+from ml_toolkit.presets.regression._losses import AsymmetricMSELoss
 from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_predictions, assert_valid_proba
 
 FAST_CB = {'iterations': 40, 'max_depth': 3, 'learning_rate': 0.2, 'verbose': 0, 'random_seed': 42}
@@ -232,6 +235,54 @@ class TestCatBoostMulticlass:
         assert model.calibrators_ is None
         proba = model.predict_proba(X_train)
         assert proba.shape == (len(X_train), 3)
+
+
+class TestCatBoostLossSpec:
+    """model_settings['loss_spec'] — тюнинг кастомного лосса (и его параметров) через Optuna,
+    см. ml_toolkit/models/_loss_spec.py. CatBoost принимает calc_ders_range/calc_ders_multi
+    объекты нативно (to_catboost_loss — passthrough), в отличие от LightGBM/XGBoost.
+    """
+
+    @pytest.fixture
+    def multiclass_data(self):
+        rng = np.random.default_rng(21)
+        n_train, n_valid = 300, 90
+        cols = [f'f{i}' for i in range(5)]
+        X_train = pd.DataFrame(rng.normal(size=(n_train, 5)), columns=cols)
+        y_train = pd.Series(rng.integers(0, 3, size=n_train))
+        X_valid = pd.DataFrame(rng.normal(size=(n_valid, 5)), columns=cols)
+        y_valid = pd.Series(rng.integers(0, 3, size=n_valid))
+        return X_train, y_train, X_valid, y_valid
+
+    def test_regressor_tunable_loss(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
+                         param_bounds={'over_cost': (0.5, 2.0), 'under_cost': (0.5, 2.0)})
+        model = CatBoostRegressor(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert model.best_params_['loss_name'] == 'asym_mse'
+        assert set(model.best_params_['loss_params']) == {'over_cost', 'under_cost'}
+
+    def test_classifier_binary_tunable_loss(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        spec = LossSpec(name='focal', loss_cls=FocalLoss, param_bounds={'gamma': (1.0, 3.0), 'alpha': (0.1, 0.9)})
+        model = CatBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+        assert model.best_params_['loss_name'] == 'focal'
+        assert 1.0 <= model.best_params_['loss_params']['gamma'] <= 3.0
+
+    def test_classifier_multiclass_tunable_loss(self, multiclass_data):
+        X_train, y_train, X_valid, y_valid = multiclass_data
+        spec = LossSpec(name='logitnorm', loss_cls=LogitNormLoss, param_bounds={'temperature': (0.02, 0.2)})
+        model = CatBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert model.n_classes_ == 3
+        proba = model.predict_proba(X_valid)
+        assert proba.shape == (len(X_valid), 3)
+        np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-6)
+        assert model.best_params_['loss_name'] == 'logitnorm'
 
 
 class TestCatBoostUndersampleMajority:

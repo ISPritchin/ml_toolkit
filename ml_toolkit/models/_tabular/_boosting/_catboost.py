@@ -17,6 +17,7 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, mean_absolute_error, roc_auc_score
 
 from ml_toolkit.models._base import BaseModel, XInput, YInput
+from ml_toolkit.models._loss_spec import LossSpec, build_loss, suggest_loss_params, to_catboost_loss
 
 if TYPE_CHECKING:
     from catboost import Pool as _Pool
@@ -250,13 +251,20 @@ class CatBoostRegressor(BaseModel):
         param_space: Callable[[Any], dict] | None = self.model_settings.get('param_space')
         ms = self.model_settings
         task_type: str = ms.get('task_type', 'CPU')
+        loss_spec: LossSpec | None = ms.get('loss_spec')
 
         def objective(trial: optuna.Trial) -> float:
             tunable = param_space(trial) if param_space is not None else _default_reg_param_space(trial, task_type)
+            if loss_spec is not None:
+                loss_p = suggest_loss_params(loss_spec, trial, tunable)
+                loss_fn = to_catboost_loss(build_loss(loss_spec, loss_p))
+                trial.set_user_attr('loss_p', loss_p)
+            else:
+                loss_fn = 'MAE'
             params = {
                 **tunable,
-                'loss_function': 'MAE',
-                'eval_metric': 'MAE',
+                'loss_function': loss_fn,
+                'eval_metric': ms.get('eval_metric', 'MAE'),
                 'verbose': 0,
                 'early_stopping_rounds': 100,
                 'random_seed': 42,
@@ -289,10 +297,14 @@ class CatBoostRegressor(BaseModel):
         study.optimize(objective, n_trials=self.n_optuna_trials, timeout=resolve_timeout(ms), show_progress_bar=False)
 
         best_params = dict(study.best_trial.user_attrs['cb_params'])
-        logger.info('[CatBoost Reg] Best score=%.4f params=%s', study.best_value, best_params)
-
         model = _CB_Regressor(**best_params)
         model.fit(tr_pool, eval_set=va_pool, verbose=False)
+        if loss_spec is not None:
+            # loss_function в best_params — живой объект лосса (нужен для реконструкции
+            # модели выше); для человекочитаемого лога/best_params_ добавляем имя+параметры.
+            best_params = {**best_params, 'loss_name': loss_spec.name,
+                            'loss_params': dict(study.best_trial.user_attrs['loss_p'])}
+        logger.info('[CatBoost Reg] Best score=%.4f params=%s', study.best_value, best_params)
         return model, best_params
 
     def _fit_direct(self, _CB_Regressor: type, tr_pool: _Pool, va_pool: _Pool | None):
@@ -465,7 +477,8 @@ class CatBoostClassifier(BaseModel):
         is_binary = self.n_classes_ == 2
         full_idx = np.arange(len(y_arr))
 
-        cb_loss = ms.get('loss_function', 'Logloss' if is_binary else 'MultiClass')
+        loss_spec: LossSpec | None = ms.get('loss_spec')
+        cb_loss_fixed = ms.get('loss_function', 'Logloss' if is_binary else 'MultiClass')
         cb_eval = ms.get('eval_metric', 'PRAUC' if is_binary else 'AUC')
 
         # undersample_majority=True: урезаем мажоритарный класс, финальная модель
@@ -487,6 +500,12 @@ class CatBoostClassifier(BaseModel):
             trial_pool = _make_pool(Pool, X_train_feats.iloc[idx], y_arr[idx], self.cat_features_)
 
             tunable = param_space(trial) if param_space is not None else _default_cls_param_space(trial, task_type)
+            if loss_spec is not None:
+                loss_p = suggest_loss_params(loss_spec, trial, tunable)
+                cb_loss = to_catboost_loss(build_loss(loss_spec, loss_p))
+                trial.set_user_attr('loss_p', loss_p)
+            else:
+                cb_loss = cb_loss_fixed
             params = {
                 **tunable,
                 'loss_function': cb_loss,
@@ -496,6 +515,11 @@ class CatBoostClassifier(BaseModel):
                 'random_seed': 42,
                 'allow_writing_files': False,
             }
+            if loss_spec is not None and not is_binary:
+                # CatBoost не умеет сам определить число классов из calc_ders_multi-объекта
+                # (в отличие от строкового 'MultiClass') — нужно явно, см. _MulticlassLossSpec
+                # в ml_toolkit/presets/classification/multiclass_imbalance/_custom_loss_base.py.
+                params['classes_count'] = self.n_classes_
             trial.set_user_attr('cb_params', params)
 
             m = _CB_Classifier(**params)
@@ -546,6 +570,11 @@ class CatBoostClassifier(BaseModel):
         final_pool = _make_pool(Pool, X_train_feats.iloc[idx], y_arr[idx], self.cat_features_)
         model = _CB_Classifier(**best_params)
         model.fit(final_pool, eval_set=va_pool, verbose=False)
+        if loss_spec is not None:
+            # loss_function в best_params — живой объект лосса (нужен для реконструкции
+            # модели выше); для человекочитаемого best_params_ добавляем имя+параметры.
+            best_params = {**best_params, 'loss_name': loss_spec.name,
+                            'loss_params': dict(best_trial.user_attrs['loss_p'])}
         return model, best_params
 
     def _fit_direct(self, _CB_Classifier: type, tr_pool: _Pool, va_pool: _Pool | None):
