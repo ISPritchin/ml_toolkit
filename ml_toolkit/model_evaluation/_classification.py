@@ -189,6 +189,26 @@ def f1_at_threshold(t: float) -> Callable:
     return _fn
 
 
+def fbeta(beta: float) -> Callable:
+    """Returns (y_true, y_proba) → F-beta score (macro for multiclass, threshold 0.5 for binary).
+
+    beta > 1 weights recall higher than precision (beta=2 — типичный выбор для
+    imbalanced-задач, где пропуск позитива дороже ложного срабатывания); beta < 1
+    weights precision higher. beta=1 эквивалентен 'f1' из CLASSIFICATION_PRESETS.
+    """
+    from sklearn.metrics import fbeta_score
+
+    def _fn(y_true: np.ndarray, y_proba: np.ndarray) -> float:
+        y_proba = np.asarray(y_proba)
+        if y_proba.ndim > 1:
+            pred = y_proba.argmax(axis=1)
+            return float(fbeta_score(y_true, pred, beta=beta, average='macro', zero_division=0))
+        pred = (y_proba >= 0.5).astype(int)
+        return float(fbeta_score(y_true, pred, beta=beta, zero_division=0))
+
+    return _fn
+
+
 # ── ClassificationEvaluator ────────────────────────────────────────────────────
 
 class ClassificationEvaluator(BaseEvaluator):

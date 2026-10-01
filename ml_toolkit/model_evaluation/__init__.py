@@ -29,9 +29,11 @@ Regression::
 Available classification presets (add_metric str shorthand):
     roc_auc, pr_auc, log_loss, brier, ks, gini, mcc, ece,
     accuracy, balanced_accuracy, f1, precision, recall, cohen_kappa
+Plus factory functions for parametrized metrics: precision_at_k(k), recall_at_k(k),
+lift_at_k(k), f1_at_threshold(t), fbeta(beta).
 
 Available regression presets:
-    mae, mse, rmse, mape, smape, r2, medae, max_error
+    mae, mse, rmse, mape, smape, wape, r2, medae, max_error
 """
 
 from ._classification import (
@@ -39,6 +41,7 @@ from ._classification import (
     ClassificationEvaluator,
     ModelEvaluator,  # backward-compatible alias
     f1_at_threshold,
+    fbeta,
     lift_at_k,
     precision_at_k,
     recall_at_k,
@@ -64,6 +67,7 @@ __all__ = [
     'recall_at_k',
     'lift_at_k',
     'f1_at_threshold',
+    'fbeta',
     # Preset dicts (for introspection)
     'CLASSIFICATION_PRESETS',
     'REGRESSION_PRESETS',

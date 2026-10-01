@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
+
+from ml_toolkit.model_evaluation import CLASSIFICATION_PRESETS, REGRESSION_PRESETS, fbeta
 
 if TYPE_CHECKING:
     import lightgbm as lgb
@@ -16,36 +17,42 @@ if TYPE_CHECKING:
     import xgboost as xgb
 
 # ── Именованные метрики ────────────────────────────────────────────────────────
+#
+# Реализации — общие с ml_toolkit.model_evaluation (REGRESSION_PRESETS/
+# CLASSIFICATION_PRESETS): раньше здесь жили отдельные, более бедные копии
+# (mae/rmse/mape/smape/f1), из которых f1 (threshold>=0.5 поэлементно на всём
+# массиве) падал на мультиклассе (ValueError: mix of multiclass and
+# multilabel-indicator targets) — как и голый sklearn.roc_auc_score без
+# multi_class='ovr'/average_precision_score без average='macro', которые
+# раньше стояли тут напрямую. model_evaluation уже умеет и бинарный, и
+# мультиклассовый случай (ветвление по y_proba.ndim) — Optuna-objective
+# (cls_metric) и Evaluator-репортинг теперь используют одну и ту же математику,
+# не две параллельные версии одной метрики.
+#
+# direction ('minimize'/'maximize') — метаданные, нужные только для Optuna
+# (direction уже заложено в ClassificationEvaluator/RegressionEvaluator —
+# там просто репортят число, без выбора лучшего trial).
 
-def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    return float(np.abs(y_true - y_pred).mean())
+_REG_DIRECTIONS: dict[str, str] = {
+    'mae': 'minimize', 'mse': 'minimize', 'rmse': 'minimize', 'mape': 'minimize',
+    'smape': 'minimize', 'wape': 'minimize', 'r2': 'maximize', 'medae': 'minimize',
+    'max_error': 'minimize',
+}
 
-def _rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
-
-def _mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    denom = np.where(y_true == 0, 1.0, np.abs(y_true))
-    return float(np.mean(np.abs(y_true - y_pred) / denom))
-
-def _smape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    return float(np.mean(2 * np.abs(y_true - y_pred) / (np.abs(y_true) + np.abs(y_pred) + 1e-8)))
-
-def _f1(y_true: np.ndarray, y_score: np.ndarray) -> float:
-    return float(f1_score(y_true, (y_score >= 0.5).astype(int), zero_division=0))
-
+_CLS_DIRECTIONS: dict[str, str] = {
+    'roc_auc': 'maximize', 'pr_auc': 'maximize', 'log_loss': 'minimize', 'brier': 'minimize',
+    'ks': 'maximize', 'gini': 'maximize', 'mcc': 'maximize', 'ece': 'minimize',
+    'accuracy': 'maximize', 'balanced_accuracy': 'maximize', 'f1': 'maximize',
+    'precision': 'maximize', 'recall': 'maximize', 'cohen_kappa': 'maximize',
+}
 
 # (fn, direction) — 'minimize' или 'maximize'
 REG_METRICS: dict[str, tuple[Callable, str]] = {
-    'mae':   (_mae,   'minimize'),
-    'rmse':  (_rmse,  'minimize'),
-    'mape':  (_mape,  'minimize'),
-    'smape': (_smape, 'minimize'),
+    name: (fn, _REG_DIRECTIONS[name]) for name, fn in REGRESSION_PRESETS.items()
 }
 
 CLS_METRICS: dict[str, tuple[Callable, str]] = {
-    'pr_auc':  (average_precision_score, 'maximize'),
-    'roc_auc': (roc_auc_score,           'maximize'),
-    'f1':      (_f1,                     'maximize'),
+    name: (fn, _CLS_DIRECTIONS[name]) for name, fn in CLASSIFICATION_PRESETS.items()
 }
 
 
@@ -152,6 +159,23 @@ def make_quantile_loss(q: float) -> tuple[Callable, str]:
     """
     import functools
     return (functools.partial(quantile_loss, q=q), 'minimize')
+
+
+def make_fbeta(beta: float) -> tuple[Callable, str]:
+    """Возвращает (fn, 'maximize') для использования в model_settings['cls_metric'].
+
+    beta > 1 весит recall выше precision (beta=2 — типичный выбор, когда пропуск
+    позитива дороже ложного срабатывания); beta < 1 весит precision выше.
+    beta=1 эквивалентен встроенному пресету 'f1'. Бинарный (порог 0.5) и
+    мультикласс (macro-average по argmax) — автоматически, по форме y_score
+    (см. ml_toolkit.model_evaluation.fbeta).
+
+    Example::
+
+        model_settings = {'name': 'catboost', 'cls_metric': make_fbeta(2.0)}
+
+    """
+    return (fbeta(beta), 'maximize')
 
 
 def build_cat_encoder(

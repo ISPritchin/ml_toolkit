@@ -1,4 +1,4 @@
-"""Тесты для ml_toolkit/models/_utils.py — общих хелперов калибровки.
+"""Тесты для ml_toolkit/models/_utils.py — общих хелперов калибровки и метрик.
 
 fit_multiclass_calibrators/apply_multiclass_calibrators — единственный код,
 формирующий multiclass predict_proba и в CatBoostClassifier, и в LAMAClassifier
@@ -8,6 +8,14 @@ _tabular/_automl/_lama.py) — поэтому контракт результа�
 у обоих адаптеров «по построению», без необходимости прогонять реальный LAMA
 fit() (который в этом окружении не тестируется end-to-end — см. докстринг
 test_lama.py про SIGSEGV в multiprocessing LightAutoML на macOS).
+
+REG_METRICS/CLS_METRICS — regression-тест на баг: до фикса roc_auc/f1 в
+CLS_METRICS были независимыми от model_evaluation реализациями, которые
+падали на мультиклассе (roc_auc_score без multi_class='ovr', f1 через
+поэлементный порог 0.5 на всей (n,K)-матрице). Теперь REG_METRICS/CLS_METRICS
+строятся из ml_toolkit.model_evaluation.REGRESSION_PRESETS/CLASSIFICATION_PRESETS
+— тесты ниже закрепляют (1) что они реально одна и та же функция (не копия),
+и (2) что мультикласс больше не падает.
 """
 
 from __future__ import annotations
@@ -97,3 +105,88 @@ class TestSameContractRegardlessOfSourceAdapter:
         proba = calibrator.predict(raw)
         assert proba.shape == (300,)
         assert np.all((proba >= 0) & (proba <= 1))
+
+
+class TestRegMetricsSharedWithModelEvaluation:
+    def test_keys_match_regression_presets(self):
+        from ml_toolkit.model_evaluation import REGRESSION_PRESETS
+        from ml_toolkit.models._utils import REG_METRICS
+        assert set(REG_METRICS) == set(REGRESSION_PRESETS)
+
+    def test_functions_are_the_same_object_not_a_copy(self):
+        """REG_METRICS не переизобретает математику — берёт ту же функцию, что Evaluator."""
+        from ml_toolkit.model_evaluation import REGRESSION_PRESETS
+        from ml_toolkit.models._utils import REG_METRICS
+        for name in REGRESSION_PRESETS:
+            fn, _direction = REG_METRICS[name]
+            assert fn is REGRESSION_PRESETS[name]
+
+    @pytest.mark.parametrize('name,direction', [
+        ('mae', 'minimize'), ('mse', 'minimize'), ('rmse', 'minimize'), ('mape', 'minimize'),
+        ('smape', 'minimize'), ('wape', 'minimize'), ('r2', 'maximize'), ('medae', 'minimize'),
+        ('max_error', 'minimize'),
+    ])
+    def test_direction(self, name, direction):
+        from ml_toolkit.models._utils import REG_METRICS
+        assert REG_METRICS[name][1] == direction
+
+
+class TestClsMetricsSharedWithModelEvaluation:
+    def test_keys_match_classification_presets(self):
+        from ml_toolkit.model_evaluation import CLASSIFICATION_PRESETS
+        from ml_toolkit.models._utils import CLS_METRICS
+        assert set(CLS_METRICS) == set(CLASSIFICATION_PRESETS)
+
+    def test_functions_are_the_same_object_not_a_copy(self):
+        from ml_toolkit.model_evaluation import CLASSIFICATION_PRESETS
+        from ml_toolkit.models._utils import CLS_METRICS
+        for name in CLASSIFICATION_PRESETS:
+            fn, _direction = CLS_METRICS[name]
+            assert fn is CLASSIFICATION_PRESETS[name]
+
+    @pytest.mark.parametrize('name', ['roc_auc', 'pr_auc', 'f1', 'accuracy', 'balanced_accuracy', 'mcc'])
+    def test_multiclass_no_longer_crashes(self, name):
+        """Regression-тест: до фикса roc_auc/f1 падали на мультиклассе (см. докстринг модуля)."""
+        from ml_toolkit.models._utils import CLS_METRICS
+        rng = np.random.default_rng(0)
+        y_true = rng.integers(0, 3, size=200)
+        proba = rng.dirichlet(np.ones(3), size=200)
+        fn, _direction = CLS_METRICS[name]
+        v = fn(y_true, proba)
+        assert np.isfinite(v)
+
+    def test_default_cls_metric_still_works_binary(self):
+        from ml_toolkit.models._utils import CLS_METRICS
+        rng = np.random.default_rng(0)
+        y_true = rng.integers(0, 2, size=200)
+        proba = rng.random(200)
+        fn, direction = CLS_METRICS['pr_auc']
+        assert direction == 'maximize'
+        assert 0.0 <= fn(y_true, proba) <= 1.0
+
+
+class TestMakeFbeta:
+    def test_returns_maximize_direction(self):
+        from ml_toolkit.models._utils import make_fbeta
+        fn, direction = make_fbeta(2.0)
+        assert direction == 'maximize'
+        assert callable(fn)
+
+    def test_beta_1_matches_f1_preset(self):
+        from ml_toolkit.models._utils import CLS_METRICS, make_fbeta
+        rng = np.random.default_rng(0)
+        y_true = rng.integers(0, 2, size=200)
+        proba = rng.random(200)
+        fn, _ = make_fbeta(1.0)
+        f1_fn, _ = CLS_METRICS['f1']
+        assert fn(y_true, proba) == pytest.approx(f1_fn(y_true, proba))
+
+    def test_works_as_cls_metric_in_optuna_fit(self, classification_data):
+        """End-to-end: make_fbeta в model_settings['cls_metric'] реально доезжает до Optuna."""
+        from ml_toolkit.models import LightGBMClassifier
+        from ml_toolkit.models._utils import make_fbeta
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = LightGBMClassifier(n_optuna_trials=2, model_settings={'cls_metric': make_fbeta(2.0)})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        proba = model.predict_proba(X_valid)
+        assert proba.shape == (len(X_valid),)

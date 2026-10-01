@@ -22,12 +22,20 @@
     model.train_pred_         — предсказания на train
     model.valid_pred_         — предсказания на valid (None если не передан)
 
-Кастомные метрики (передаются через model_settings):
-    reg_metric  — 'mae' (по умолч.) / 'rmse' / 'mape' / 'smape' / callable / (callable, direction)
-    cls_metric  — 'pr_auc' (по умолч.) / 'roc_auc' / 'f1' / callable / (callable, direction)
+Кастомные метрики (передаются через model_settings; реализации общие с
+ml_toolkit.model_evaluation.REGRESSION_PRESETS/CLASSIFICATION_PRESETS —
+бинарный и мультикласс (по форме y_score) обрабатываются автоматически):
+    reg_metric  — 'mae' (по умолч.) / 'mse' / 'rmse' / 'mape' / 'smape' / 'wape' /
+                  'r2' / 'medae' / 'max_error' / callable / (callable, direction)
+    cls_metric  — 'pr_auc' (по умолч.) / 'roc_auc' / 'log_loss' / 'brier' / 'ks' /
+                  'gini' / 'mcc' / 'ece' / 'accuracy' / 'balanced_accuracy' / 'f1' /
+                  'precision' / 'recall' / 'cohen_kappa' / callable / (callable, direction)
+                  ('ks' определена только для бинарной классификации)
 
 Параметризованные метрики:
-    from ml_toolkit.models._utils import make_precision_at_k, make_recall_at_k, make_quantile_loss
+    from ml_toolkit.models._utils import (
+        make_precision_at_k, make_recall_at_k, make_quantile_loss, make_fbeta,
+    )
 
 Кодирование категорий (model_settings['cat_encoder']):
     None / 'ordinal' → OrdinalEncoder (по умолч.)

@@ -51,12 +51,24 @@ def _max_error(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.abs(y_true - y_pred).max())
 
 
+def _wape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Weighted Absolute Percentage Error: sum|e| / sum|y| — агрегатный, не поэлементный MAPE.
+
+    В отличие от MAPE (среднее поэлементных |e|/|y|, которое взрывается при y≈0),
+    WAPE делит суммарную ошибку на суммарный |y| — устойчив к отдельным нулевым/
+    маленьким значениям, стандартная метрика в прогнозировании спроса/продаж.
+    """
+    denom = float(np.sum(np.abs(y_true)))
+    return float(np.sum(np.abs(y_true - y_pred)) / denom) if denom > 0 else 0.0
+
+
 REGRESSION_PRESETS: dict[str, Callable] = {
     'mae':       _mae,
     'mse':       _mse,
     'rmse':      _rmse,
     'mape':      _mape,
     'smape':     _smape,
+    'wape':      _wape,
     'r2':        _r2,
     'medae':     _medae,
     'max_error': _max_error,
