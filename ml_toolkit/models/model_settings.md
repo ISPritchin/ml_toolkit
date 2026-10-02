@@ -333,7 +333,7 @@ model.fit(X_train, y_train, X_valid, y_valid)
 proba = model.predict_proba(X_valid)
 ```
 
-`params` — готовый словарь, уходит в CatBoost как есть, Optuna не запускается; `model.best_params_ == params`.
+Сами гиперпараметры дерева (`params`) уходят в CatBoost как есть, без Optuna — `model.best_params_ == params`. Но это не то же самое, что вызвать `catboost.CatBoostClassifier` напрямую: адаптер всё равно сам определяет binary/multiclass по `y_train`, собирает `Pool` из `cat_features` за вас, после `fit()` фитит изотоническую калибровку вероятностей на валидации (`predict_proba()` уже калиброван — сырой CatBoost вероятности не калибрует) и даёт тот же `.fit()`/`.predict_proba()`/`.save()`/`.load()` контракт, что у `LightGBMClassifier`/`XGBoostClassifier`/прочих адаптеров. Разница с примерами 2–5 ниже — только в том, что `params` фиксирован и Optuna не участвует; разница с самим CatBoost — во всём перечисленном.
 
 ### 2. Бустинг с Optuna — тюнинг гиперпараметров дерева
 
