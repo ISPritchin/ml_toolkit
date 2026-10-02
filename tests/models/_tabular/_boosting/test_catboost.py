@@ -369,6 +369,30 @@ class TestCatBoostParamSpace:
         assert 20 <= model.best_params_['iterations'] <= 40
         assert model.best_params_['max_depth'] == 3
 
+    def test_param_space_key_colliding_with_loss_param_name_does_not_crash(self, regression_data):
+        """Регрессионный тест: param_space, вернувшая ключ 'over_cost' (как у AsymmetricMSELoss),
+        раньше протаскивала его в params конструктора CatBoost как есть и падала TypeError
+        ('unexpected keyword argument') — suggest_loss_params теперь .pop()-ает совпавшие
+        ключи из tunable перед тем, как тот мёрджится в params модели."""
+        X_train, y_train, X_valid, y_valid = regression_data
+
+        def my_space(trial):
+            return {
+                'iterations': trial.suggest_int('iterations', 20, 40, step=10),
+                'over_cost': trial.suggest_float('over_cost', 1.2, 1.4),
+            }
+
+        spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
+                         param_bounds={'over_cost': (0.5, 2.0), 'under_cost': (0.5, 2.0)})
+        model = CatBoostRegressor(
+            n_optuna_trials=2,
+            model_settings={'param_space': my_space, 'loss_spec': spec, 'eval_metric': 'MAE'},
+        )
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert 1.2 <= model.best_params_['loss_params']['over_cost'] <= 1.4
+        assert 'over_cost' not in model.best_params_  # не просочился как top-level ключ params
+
 
 class TestCatBoostOptunaPruner:
     def test_named_pruner_alias(self, regression_data):

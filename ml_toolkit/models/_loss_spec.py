@@ -121,10 +121,19 @@ def suggest_loss_params(
 
     ``custom`` — то, что вернула пользовательская ``param_space`` (см. другие
     Optuna-адаптеры пакета): ключи, уже заданные там явно, не тюнятся заново.
+
+    Совпавшие ключи ``.pop()``-аются из ``custom`` (мутирует переданный словарь) —
+    иначе вызывающий код, который обычно сразу после этого вызова мёрджит тот же
+    ``custom``/``tunable`` в params конструктора модели, молча протащил бы туда и
+    параметр лосса как будто это гиперпараметр модели. Для CatBoost это падает
+    TypeError («unexpected keyword argument»); для XGBoost — тихо (и некорректно)
+    подменяет одноимённый РЕАЛЬНЫЙ гиперпараметр (у XGBoost `gamma`/`alpha` —
+    собственные встроенные параметры дерева/регуляризации, не только имена из
+    FocalLoss) — баг воспроизведён и исправлен вживую на всех трёх адаптерах.
     """
-    custom = custom or {}
+    custom = custom if custom is not None else {}
     return {
-        k: (custom[k] if k in custom else trial.suggest_float(k, *bounds))
+        k: (custom.pop(k) if k in custom else trial.suggest_float(k, *bounds))
         for k, bounds in spec.param_bounds.items()
     }
 

@@ -56,6 +56,24 @@ class TestLossSpecAndSuggestParams:
         spec = LossSpec(name='fixed', loss_cls=FocalLoss, param_bounds={})
         assert suggest_loss_params(spec, _FakeTrial({})) == {}
 
+    def test_suggest_loss_params_pops_matched_keys_from_custom(self):
+        """Регрессионный тест: совпавшие по имени ключи .pop()-аются из custom (мутирует словарь).
+
+        custom обычно — это tunable из param_space адаптера, который сразу после этого вызова
+        мёрджится в params конструктора модели. Если имя параметра лосса ('gamma') совпадает
+        с именем, которое пользователь дал в своей param_space, и ключ НЕ убрать из custom —
+        он просочится в params как будто это гиперпараметр модели: для CatBoost это падает
+        TypeError («unexpected keyword argument»), для XGBoost — тихо подменяет одноимённый
+        РЕАЛЬНЫЙ гиперпараметр (gamma/alpha — родные параметры дерева/регуляризации XGBoost).
+        Воспроизведено и исправлено вживую на всех трёх адаптерах (CatBoost/LightGBM/XGBoost).
+        """
+        spec = LossSpec(name='focal', loss_cls=FocalLoss, param_bounds={'gamma': (1.0, 3.0), 'alpha': (0.1, 0.9)})
+        tunable = {'n_estimators': 500, 'gamma': 2.0}  # 'gamma' здесь — "чужой" ключ из param_space
+        trial = _FakeTrial({'alpha': 0.5})
+        result = suggest_loss_params(spec, trial, custom=tunable)
+        assert result == {'gamma': 2.0, 'alpha': 0.5}
+        assert tunable == {'n_estimators': 500}  # 'gamma' изъят — безопасно мёрджить в params модели
+
     def test_build_loss_constructs_instance(self):
         spec = LossSpec(name='focal', loss_cls=FocalLoss, param_bounds={})
         loss = build_loss(spec, {'gamma': 2.0, 'alpha': 0.25})

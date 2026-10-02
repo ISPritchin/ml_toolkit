@@ -236,11 +236,20 @@ class TestXGBoostMulticlass:
 class TestXGBoostLossSpec:
     """model_settings['loss_spec'] — тюнинг кастомного лосса через Optuna, см. _loss_spec.py.
 
-    Мультиклассовая ветка (XGBoost custom objective + multi:softprob) не
-    верифицирована вживую нигде в разработке этого механизма (xgboost не
-    установлен в dev-окружении) — если форма y_pred, которую sklearn-обёртка
-    XGBoost реально передаёт в custom objective, окажется не 2D (n, n_classes),
-    этот тест первым укажет на расхождение, когда xgboost появится в CI.
+    Мультиклассовая форма y_pred в custom objective (2D (n, n_classes), без
+    флэттенинга) верифицирована вживую на xgboost==3.2.0 через `uv run --with
+    xgboost` (пакет не входит в обязательные зависимости проекта, см. ниже).
+
+    Регрессионный тест на реальный баг: predict_proba() у XGBoost, В ОТЛИЧИЕ
+    ОТ LightGBM, уже возвращает настоящие вероятности даже при кастомном
+    objective (Booster помнит 'multi:softprob'/аналог на уровне learner config
+    независимо от Python-функции градиентов) — изначальная реализация ошибочно
+    копировала LightGBM-паттерн и применяла sigmoid/softmax ПОВЕРХ уже готовых
+    вероятностей, что на бинарной задаче схлопывало predict_proba() почти в
+    константу (все строки ~0.525) после калибровки. `proba.std() > 0` один
+    это не ловил (флоат-шум даёт ненулевой std даже у сломанной реализации) —
+    тесты ниже проверяют реальную различающую способность (AUC), не просто
+    «что-то не NaN».
     """
 
     @pytest.fixture
@@ -254,6 +263,26 @@ class TestXGBoostLossSpec:
         y_valid = pd.Series(rng.integers(0, 3, size=n_valid))
         return X_train, y_train, X_valid, y_valid
 
+    @pytest.fixture
+    def separable_multiclass_data(self):
+        """В отличие от multiclass_data (случайные метки) — здесь есть реальный сигнал,
+        нужный для проверки discriminative power (accuracy), а не только формы/суммы proba.
+        """
+        rng = np.random.default_rng(24)
+        n_train, n_valid = 240, 90
+        cols = [f'f{i}' for i in range(5)]
+
+        def _make(n, seed):
+            r = np.random.default_rng(seed)
+            X = pd.DataFrame(r.normal(size=(n, 5)), columns=cols)
+            logits = np.stack([X['f0'] + X['f1'], X['f2'] - X['f1'], X['f3'] * 0.5], axis=1)
+            y = pd.Series(logits.argmax(axis=1))
+            return X, y
+
+        X_train, y_train = _make(n_train, 240)
+        X_valid, y_valid = _make(n_valid, 241)
+        return X_train, y_train, X_valid, y_valid
+
     def test_regressor_tunable_loss(self, regression_data):
         X_train, y_train, X_valid, y_valid = regression_data
         spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
@@ -264,18 +293,22 @@ class TestXGBoostLossSpec:
         assert model.best_params_['loss_name'] == 'asym_mse'
         assert set(model.best_params_['loss_params']) == {'over_cost', 'under_cost'}
 
-    def test_classifier_binary_tunable_loss_proba_in_unit_interval(self, classification_data):
+    def test_classifier_binary_tunable_loss_has_real_discriminative_power(self, classification_data):
+        from sklearn.metrics import roc_auc_score
+
         X_train, y_train, X_valid, y_valid = classification_data
         spec = LossSpec(name='focal', loss_cls=FocalLoss, param_bounds={'gamma': (1.0, 3.0), 'alpha': (0.1, 0.9)})
         model = XGBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
         model.fit(X_train, y_train, X_valid, y_valid)
         proba = assert_valid_proba(model, X_valid)
-        assert proba.std() > 0
+        # classification_data — чисто разделимая задача (f0+f1+noise > 0); сломанная
+        # (двойной sigmoid) реализация давала почти константу на этих же данных, AUC~0.5.
+        assert roc_auc_score(y_valid, proba) > 0.7
         assert model.best_params_['loss_name'] == 'focal'
         assert 1.0 <= model.best_params_['loss_params']['gamma'] <= 3.0
 
-    def test_classifier_multiclass_tunable_loss_proba_sums_to_one(self, multiclass_data):
-        X_train, y_train, X_valid, y_valid = multiclass_data
+    def test_classifier_multiclass_tunable_loss_has_real_discriminative_power(self, separable_multiclass_data):
+        X_train, y_train, X_valid, y_valid = separable_multiclass_data
         spec = LossSpec(name='logitnorm', loss_cls=LogitNormLoss, param_bounds={'temperature': (0.02, 0.2)})
         model = XGBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
         model.fit(X_train, y_train, X_valid, y_valid)
@@ -284,14 +317,24 @@ class TestXGBoostLossSpec:
         assert proba.shape == (len(X_valid), 3)
         np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-6)
         assert np.all((proba >= 0) & (proba <= 1))
+        acc = (proba.argmax(axis=1) == y_valid.to_numpy()).mean()
+        assert acc > 0.7
         assert model.best_params_['loss_name'] == 'logitnorm'
 
 
 class TestXGBoostEvalMetric:
     """model_settings['eval_metric'] — без дефолта в адаптере (см. model_settings.md):
     не задан — ключ не попадает в params, XGBoost сам выводит метрику из objective;
-    задан — полностью заменяет её (строка или sklearn-конвенции callable, не верифицировано
-    вживую — xgboost не установлен в dev-окружении, см. docstring TestXGBoostLossSpec).
+    задан строкой — полностью заменяет её; задан callable'ом — ТОЛЬКО как
+    (callable, direction), голый callable запрещён явной ValueError.
+
+    Регрессионный тест на реальный баг (верифицировано вживую на xgboost==3.2.0, см.
+    _resolve_xgb_eval_metric): XGBoost'овский шорткат early_stopping_rounds=<int>
+    угадывает maximize/minimize по ИМЕНИ метрики через вайтлист префиксов ('auc',
+    'aucpr', 'pre', 'map', 'ndcg') — для произвольного callable вроде sklearn
+    roc_auc_score имя не матчится, и direction тихо считается 'minimize', из-за чего
+    best_iteration схлопывается в 0 (полностью сломанная модель, без единой ошибки).
+    Поэтому голый callable отклоняется явно — только (callable, 'maximize'/'minimize').
     """
 
     def test_regressor_string_eval_metric_used(self, regression_data):
@@ -314,6 +357,46 @@ class TestXGBoostEvalMetric:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_proba(model, X_valid)
         assert model.best_params_['eval_metric'] == 'logloss'
+
+    def test_classifier_bare_callable_eval_metric_raises(self, classification_data):
+        from sklearn.metrics import roc_auc_score
+
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = XGBoostClassifier(n_optuna_trials=1, model_settings={'eval_metric': roc_auc_score})
+        with pytest.raises(ValueError, match='голый callable'):
+            model.fit(X_train, y_train, X_valid, y_valid)
+
+    def test_classifier_callable_with_maximize_direction_has_real_discriminative_power(self, classification_data):
+        """(callable, 'maximize') — не схлопывается в best_iteration=0, в отличие от голого callable."""
+        from sklearn.metrics import roc_auc_score
+
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = XGBoostClassifier(
+            n_optuna_trials=2, model_settings={'eval_metric': (roc_auc_score, 'maximize')},
+        )
+        model.fit(X_train, y_train, X_valid, y_valid)
+        proba = assert_valid_proba(model, X_valid)
+        assert roc_auc_score(y_valid, proba) > 0.7
+
+    def test_regressor_callable_with_minimize_direction_works(self, regression_data):
+        from sklearn.metrics import mean_absolute_error
+
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = XGBoostRegressor(
+            n_optuna_trials=2, model_settings={'eval_metric': (mean_absolute_error, 'minimize')},
+        )
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+
+    def test_invalid_direction_raises(self, regression_data):
+        from sklearn.metrics import mean_absolute_error
+
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = XGBoostRegressor(
+            n_optuna_trials=1, model_settings={'eval_metric': (mean_absolute_error, 'not_a_direction')},
+        )
+        with pytest.raises(ValueError, match='minimize'):
+            model.fit(X_train, y_train, X_valid, y_valid)
 
 
 class TestXGBoostUndersampleMajority:
@@ -347,6 +430,31 @@ class TestXGBoostParamSpace:
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_predictions(model, X_valid)
         assert 20 <= model.best_params_['n_estimators'] <= 40
+
+    def test_param_space_key_colliding_with_loss_param_name_does_not_leak(self, regression_data):
+        """Регрессионный тест: param_space, вернувшая ключ 'over_cost' (как у AsymmetricMSELoss),
+        раньше просачивалась в params конструктора как будто это гиперпараметр модели — у
+        XGBoost это особенно опасно, т.к. 'gamma'/'alpha' там РЕАЛЬНЫЕ встроенные гиперпараметры
+        (min_split_loss / L1 reg), и коллизия тихо подменяла бы их значением лосса. Здесь имя
+        не встроенное ('over_cost'), поэтому раньше падало бы TypeError, как и у CatBoost.
+        suggest_loss_params теперь .pop()-ает совпавшие ключи из tunable перед мёрджем в params."""
+        X_train, y_train, X_valid, y_valid = regression_data
+
+        def my_space(trial):
+            return {
+                'n_estimators': trial.suggest_int('n_estimators', 30, 60, step=10),
+                'over_cost': trial.suggest_float('over_cost', 1.2, 1.4),
+            }
+
+        spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
+                         param_bounds={'over_cost': (0.5, 2.0), 'under_cost': (0.5, 2.0)})
+        model = XGBoostRegressor(
+            n_optuna_trials=2, model_settings={'param_space': my_space, 'loss_spec': spec},
+        )
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert 1.2 <= model.best_params_['loss_params']['over_cost'] <= 1.4
+        assert 'over_cost' not in model.best_params_
 
 
 class TestXGBoostOptunaPruner:

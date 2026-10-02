@@ -32,22 +32,44 @@ logger = logging.getLogger(__name__)
 _prep = prep_cat_features
 
 
-def _xgb_margins_to_proba(raw: np.ndarray, is_binary: bool) -> np.ndarray:
-    """Sigmoid/softmax поверх сырых маргиналов при кастомном objective (loss_spec).
+def _resolve_xgb_eval_metric(
+    xgb: Any, custom_eval_metric: str | Callable | tuple[Callable, str] | None,
+) -> tuple[dict[str, Any], int | None, list]:
+    """model_settings['eval_metric'] -> (доп. ключи params, early_stopping_rounds, доп. callbacks).
 
-    В отличие от LightGBM (которое явно предупреждает и документированно отдаёт
-    raw score для custom objective, см. _lgb_margins_to_proba в _lightgbm.py),
-    поведение XGBoost's predict_proba() при кастомном objective НЕ верифицировано
-    вживую в этом окружении (xgboost не установлен) — трансформация применяется
-    по тому же принципу на основании документированного API (custom objective
-    не регистрирует link-функцию на C++ стороне, поэтому predict должен отдавать
-    raw score). Проверьте на реальных данных перед продакшн-использованием.
+    XGBoost'овский шорткат ``early_stopping_rounds=<int>`` сам угадывает maximize/minimize
+    по ИМЕНИ метрики через маленький вайтлист префиксов (``'auc'``, ``'aucpr'``, ``'pre'``,
+    ``'map'``, ``'ndcg'`` — см. ``xgboost.callback.EarlyStopping._update_rounds``) — корректно
+    для встроенных строковых метрик XGBoost, но НЕ для произвольных callable: имя
+    ``sklearn.metrics.roc_auc_score`` не матчится ни под один префикс и тихо считается
+    minimize, из-за чего `best_iteration` схлопывается в 0 (верифицировано вживую на
+    xgboost==3.2.0 — без этого фикса кастомная "чем больше, тем лучше" метрика ломает модель
+    молча). Поэтому голый callable здесь не принимается — только `(callable, direction)`,
+    направление явное, и early stopping идёт через `xgboost.callback.EarlyStopping(maximize=...)`
+    вместо шортката. Строки проходят как раньше — встроенные имена XGBoost'овский вайтлист
+    матчит корректно.
     """
-    if is_binary:
-        p1 = 1.0 / (1.0 + np.exp(-raw))
-        return np.column_stack([1.0 - p1, p1])
-    ex = np.exp(raw - raw.max(axis=1, keepdims=True))
-    return ex / ex.sum(axis=1, keepdims=True)
+    if custom_eval_metric is None or isinstance(custom_eval_metric, str):
+        params = {'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}
+        return params, 100, []
+    if isinstance(custom_eval_metric, tuple):
+        metric_fn, direction = custom_eval_metric
+        if direction not in ('minimize', 'maximize'):
+            raise ValueError(
+                f"model_settings['eval_metric'] = (callable, direction) — direction должен быть "
+                f"'minimize' или 'maximize', получено {direction!r}"
+            )
+        es = xgb.callback.EarlyStopping(
+            rounds=100, maximize=(direction == 'maximize'),
+            metric_name=getattr(metric_fn, '__name__', None), save_best=True,
+        )
+        return {'eval_metric': metric_fn}, None, [es]
+    raise ValueError(
+        "model_settings['eval_metric'] для XGBoost: голый callable неоднозначен по направлению "
+        "оптимизации — XGBoost угадывает его по имени функции (см. model_settings.md), что для "
+        "произвольных функций (например sklearn.metrics.roc_auc_score) даёт неверный результат. "
+        "Передайте (callable, 'maximize'|'minimize'), например (roc_auc_score, 'maximize')."
+    )
 
 
 def _default_xgb_param_space(trial: optuna.Trial) -> dict[str, Any]:
@@ -88,11 +110,16 @@ class XGBoostRegressor(BaseModel):
       прибавляется; train и predict должны получать один и тот же столбец.
     - ``reg_metric`` / ``reg_metric_direction`` — метрика Optuna-objective,
       дефолт `'mae'`.
-    - ``eval_metric`` (`str | callable | None`, без дефолта) — метрика раннего
-      останова/Optuna-пруинга, независима от `loss_spec`/`reg_metric`; не
-      задана — ключ не попадает в params, XGBoost сам выводит её из `objective`;
-      задана — полностью заменяет. См. `model_settings.md`, раздел «Метрика
-      раннего останова».
+    - ``eval_metric`` (`str | tuple[callable, Literal['minimize', 'maximize']] | None`,
+      без дефолта) — метрика раннего останова/Optuna-пруинга, независима от
+      `loss_spec`/`reg_metric`; не задана — ключ не попадает в params, XGBoost
+      сам выводит её из `objective`; строка — полностью заменяет. Голый
+      callable **не принимается** (`ValueError`) — XGBoost угадывает
+      maximize/minimize по имени функции, что для произвольных callable
+      (например `sklearn.metrics.roc_auc_score`) даёт неверный результат
+      молча (`best_iteration` схлопывается в 0); используйте
+      `(callable, 'maximize' | 'minimize')`. См. `model_settings.md`, раздел
+      «Метрика раннего останова».
     - ``param_space`` (`Callable[[trial], dict] | None`) — переопределяет
       дефолтный search space (`n_estimators`/`max_depth`/`learning_rate`/
       `subsample`/`colsample_bytree`/`reg_alpha`/`reg_lambda`). `objective`/
@@ -184,12 +211,17 @@ class XGBoostRegressor(BaseModel):
             param_space: Callable[[optuna.Trial], dict] | None = ms.get('param_space')
             loss_spec: LossSpec | None = ms.get('loss_spec')
             # Без дефолта: не задан — ключ eval_metric не попадает в params, XGBoost сам выводит
-            # его из objective (см. model_settings.md). Задан (строка или callable sklearn-конвенции
-            # (y_true, y_pred) -> (name, value)) — полностью заменяет вывод XGBoost.
+            # его из objective (см. model_settings.md). Строка или (callable, direction) —
+            # полностью заменяет вывод XGBoost; см. _resolve_xgb_eval_metric про то, почему
+            # голый callable не принимается.
             custom_eval_metric = ms.get('eval_metric')
+            eval_metric_params, es_rounds, _ = _resolve_xgb_eval_metric(xgb, custom_eval_metric)
 
             def objective(trial: optuna.Trial) -> float:
-                tunable = param_space(trial) if param_space is not None else _default_xgb_param_space(trial)
+                # dict(...) — защитная копия: suggest_loss_params ниже может .pop() совпавшие
+                # по имени ключи из tunable, мутировать объект, который вернула пользовательская
+                # param_space, не нужно.
+                tunable = dict(param_space(trial) if param_space is not None else _default_xgb_param_space(trial))
                 if loss_spec is not None:
                     loss_p = suggest_loss_params(loss_spec, trial, tunable)
                     objective_val = to_xgboost_objective(build_loss(loss_spec, loss_p))
@@ -199,13 +231,17 @@ class XGBoostRegressor(BaseModel):
                 params = {
                     **tunable,
                     'objective': objective_val,
-                    **({'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}),
-                    'random_state': 42, 'enable_categorical': has_cat, 'early_stopping_rounds': 100,
+                    **eval_metric_params,
+                    'random_state': 42, 'enable_categorical': has_cat,
+                    **({'early_stopping_rounds': es_rounds} if es_rounds is not None else {}),
                 }
                 trial.set_user_attr('xgb_params', params)
                 # xgboost >= 2.x: callbacks — параметр конструктора, не .fit() (в отличие
-                # от early_stopping_rounds, который остаётся валиден и там, и там).
-                m = xgb.XGBRegressor(**params, callbacks=[make_xgb_pruning_callback(trial)])
+                # от early_stopping_rounds, который остаётся валиден и там, и там). Свежий
+                # EarlyStopping-колбэк на каждый trial — объект хранит состояние между итерациями,
+                # переиспользовать один и тот же экземпляр между trial'ами нельзя.
+                _, _, extra_cb = _resolve_xgb_eval_metric(xgb, custom_eval_metric)
+                m = xgb.XGBRegressor(**params, callbacks=[make_xgb_pruning_callback(trial), *extra_cb])
                 m.fit(Xtr, resid_tr, eval_set=[(Xva, resid_va)], verbose=False)
                 pred = pp(X_valid, add_baseline(m.predict(Xva), baseline_va))
                 return metric_fn(y_valid.values, pred)
@@ -221,7 +257,8 @@ class XGBoostRegressor(BaseModel):
             best_trial = study.best_trial
             self.best_params_ = dict(best_trial.user_attrs['xgb_params'])
 
-            self._model = xgb.XGBRegressor(**self.best_params_)
+            _, _, extra_cb_final = _resolve_xgb_eval_metric(xgb, custom_eval_metric)
+            self._model = xgb.XGBRegressor(**self.best_params_, callbacks=extra_cb_final)
             self._model.fit(Xtr, resid_tr, eval_set=[(Xva, resid_va)], verbose=False)
             if loss_spec is not None:
                 # objective в best_params_ — живой callable (нужен для реконструкции модели
@@ -263,11 +300,14 @@ class XGBoostClassifier(BaseModel):
       нормированы к 1. Optuna: `objective='multi:softprob'` + `num_class=K`.
       Калибраторы — `self.calibrators_`, список из `K` `IsotonicRegression`
       (OvR); бинарный `self.calibrator_` в этом случае остаётся `None`.
-    - ``eval_metric`` (`str | callable | None`, без дефолта) — метрика раннего
-      останова/Optuna-пруинга; не задана — XGBoost сам выводит её из `objective`
-      (`'aucpr'`-подобную для бинарного, `'auc'`/multiclass-AUC OvR для
-      мультикласса, по документации); задана — полностью заменяет. См.
-      `model_settings.md`, раздел «Метрика раннего останова».
+    - ``eval_metric`` (`str | tuple[callable, Literal['minimize', 'maximize']] | None`,
+      без дефолта) — метрика раннего останова/Optuna-пруинга; не задана —
+      XGBoost сам выводит её из `objective` (`'logloss'` для бинарного,
+      `'mlogloss'` для мультикласса — верифицировано вживую на xgboost==3.2.0);
+      строка — полностью заменяет. Голый callable **не принимается**
+      (`ValueError`) — см. тот же пункт в докстринге `XGBoostRegressor` про
+      `(callable, 'maximize' | 'minimize')`. См. `model_settings.md`, раздел
+      «Метрика раннего останова».
 
     Калибратор(ы) обучаются только если передана валидационная выборка.
 
@@ -362,8 +402,10 @@ class XGBoostClassifier(BaseModel):
             undersample_majority: bool = ms.get('undersample_majority', False)
             loss_spec: LossSpec | None = ms.get('loss_spec')
             # Без дефолта: не задан — ключ eval_metric не попадает в params, XGBoost сам выводит
-            # его из objective. Задан — полностью заменяет вывод XGBoost (строка или callable).
+            # его из objective. Строка или (callable, direction) — полностью заменяет вывод
+            # XGBoost; см. _resolve_xgb_eval_metric про то, почему голый callable не принимается.
             custom_eval_metric = ms.get('eval_metric')
+            eval_metric_params, es_rounds, _ = _resolve_xgb_eval_metric(xgb, custom_eval_metric)
 
             full_idx = np.arange(len(y_tr))
             sampler = UndersampleSampler(y_tr, is_binary=is_binary, log_prefix='[XGBoost Cls]') if undersample_majority else None
@@ -378,7 +420,10 @@ class XGBoostClassifier(BaseModel):
                     idx = full_idx
                 Xtr_trial, ytr_trial = Xtr.iloc[idx], y_tr[idx]
 
-                tunable = param_space(trial) if param_space is not None else _default_xgb_param_space(trial)
+                # dict(...) — защитная копия: suggest_loss_params ниже может .pop() совпавшие
+                # по имени ключи из tunable, мутировать объект, который вернула пользовательская
+                # param_space, не нужно.
+                tunable = dict(param_space(trial) if param_space is not None else _default_xgb_param_space(trial))
                 if loss_spec is not None:
                     loss_p = suggest_loss_params(loss_spec, trial, tunable)
                     objective_val = to_xgboost_objective(build_loss(loss_spec, loss_p))
@@ -388,17 +433,23 @@ class XGBoostClassifier(BaseModel):
                 params = {
                     **tunable,
                     'objective': objective_val,
-                    **({'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}),
-                    'random_state': 42, 'enable_categorical': has_cat, 'early_stopping_rounds': 100,
+                    **eval_metric_params,
+                    'random_state': 42, 'enable_categorical': has_cat,
+                    **({'early_stopping_rounds': es_rounds} if es_rounds is not None else {}),
                 }
                 if not is_binary:
                     params['num_class'] = self.n_classes_
                 trial.set_user_attr('xgb_params', params)
-                m = xgb.XGBClassifier(**params, callbacks=[make_xgb_pruning_callback(trial)])
+                # Свежий EarlyStopping-колбэк на каждый trial — объект хранит состояние
+                # между итерациями, переиспользовать один и тот же экземпляр нельзя.
+                _, _, extra_cb = _resolve_xgb_eval_metric(xgb, custom_eval_metric)
+                m = xgb.XGBClassifier(**params, callbacks=[make_xgb_pruning_callback(trial), *extra_cb])
                 m.fit(Xtr_trial, ytr_trial, eval_set=[(Xva, y_va)], verbose=False)
+                # predict_proba() у XGBoost уже возвращает настоящие вероятности даже при
+                # кастомном objective (в отличие от LightGBM) — Booster помнит objective
+                # 'multi:softprob'/аналог для бинарного на уровне learner config независимо
+                # от Python-функции, считавшей градиенты; верифицировано вживую (xgboost 3.2.0).
                 proba = m.predict_proba(Xva)
-                if loss_spec is not None:
-                    proba = _xgb_margins_to_proba(proba, is_binary)
                 return metric_fn(y_va, proba[:, 1] if is_binary else proba)
 
             logger.info(
@@ -420,7 +471,8 @@ class XGBoostClassifier(BaseModel):
                 idx = full_idx
 
             Xtr_final, ytr_final = Xtr.iloc[idx], y_tr[idx]
-            self._model = xgb.XGBClassifier(**self.best_params_)
+            _, _, extra_cb_final = _resolve_xgb_eval_metric(xgb, custom_eval_metric)
+            self._model = xgb.XGBClassifier(**self.best_params_, callbacks=extra_cb_final)
             self._model.fit(Xtr_final, ytr_final, eval_set=[(Xva, y_va)], verbose=False)
             if loss_spec is not None:
                 # objective в best_params_ — живой callable (нужен для реконструкции модели
@@ -437,14 +489,10 @@ class XGBoostClassifier(BaseModel):
                 logger.info('[XGBoost Cls] Best score=%.4f params=%s', study.best_value, self.best_params_)
 
         full_tr = self._model.predict_proba(Xtr)
-        if ms.get('loss_spec') is not None:
-            full_tr = _xgb_margins_to_proba(full_tr, is_binary)
         self.train_pred_ = full_tr[:, 1] if is_binary else full_tr
         if X_valid is not None:
             Xva = _prep(X_valid, self.selected_features_, self.cat_features_)
             full_va = self._model.predict_proba(Xva)
-            if ms.get('loss_spec') is not None:
-                full_va = _xgb_margins_to_proba(full_va, is_binary)
             y_va_arr = y_valid.to_numpy(dtype=int)
             if is_binary:
                 self.valid_pred_ = full_va[:, 1]
@@ -458,9 +506,10 @@ class XGBoostClassifier(BaseModel):
         return self
 
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
+        # В отличие от LightGBM, predict_proba() у XGBoost уже возвращает настоящие
+        # вероятности даже при кастомном objective (loss_spec) — см. комментарий в
+        # _fit_with_optuna выше; никакой дополнительной трансформации здесь не нужно.
         raw = self._model.predict_proba(_prep(X, self.selected_features_, self.cat_features_))
-        if self.model_settings.get('loss_spec') is not None:
-            raw = _xgb_margins_to_proba(raw, self.n_classes_ == 2)
         if self.n_classes_ == 2:
             score = raw[:, 1]
             return self.calibrator_.predict(score) if self.calibrator_ is not None else score

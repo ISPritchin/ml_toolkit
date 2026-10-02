@@ -264,7 +264,10 @@ class CatBoostRegressor(BaseModel):
         custom_eval_metric = ms.get('eval_metric')
 
         def objective(trial: optuna.Trial) -> float:
-            tunable = param_space(trial) if param_space is not None else _default_reg_param_space(trial, task_type)
+            # dict(...) — защитная копия: suggest_loss_params ниже может .pop() совпавшие
+            # по имени ключи из tunable, мутировать объект, который вернула пользовательская
+            # param_space, не нужно.
+            tunable = dict(param_space(trial) if param_space is not None else _default_reg_param_space(trial, task_type))
             if loss_spec is not None:
                 loss_p = suggest_loss_params(loss_spec, trial, tunable)
                 loss_fn = to_catboost_loss(build_loss(loss_spec, loss_p))
@@ -517,7 +520,10 @@ class CatBoostClassifier(BaseModel):
 
             trial_pool = _make_pool(Pool, X_train_feats.iloc[idx], y_arr[idx], self.cat_features_)
 
-            tunable = param_space(trial) if param_space is not None else _default_cls_param_space(trial, task_type)
+            # dict(...) — защитная копия: suggest_loss_params ниже может .pop() совпавшие
+            # по имени ключи из tunable, мутировать объект, который вернула пользовательская
+            # param_space, не нужно.
+            tunable = dict(param_space(trial) if param_space is not None else _default_cls_param_space(trial, task_type))
             if loss_spec is not None:
                 loss_p = suggest_loss_params(loss_spec, trial, tunable)
                 cb_loss = to_catboost_loss(build_loss(loss_spec, loss_p))

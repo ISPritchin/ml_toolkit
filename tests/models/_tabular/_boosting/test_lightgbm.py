@@ -403,6 +403,29 @@ class TestLightGBMParamSpace:
         assert_valid_proba(model, X_valid)
         assert 20 <= model.best_params_['n_estimators'] <= 40
 
+    def test_param_space_key_colliding_with_loss_param_name_does_not_leak(self, classification_data):
+        """Регрессионный тест: param_space, вернувшая ключ 'gamma' (как у FocalLoss), раньше
+        просачивалась в params конструктора как будто это гиперпараметр модели — у LightGBM
+        это не крашит (там нет своего 'gamma'), но полностью нарушает ожидание "custom
+        override не влияет на params модели". suggest_loss_params теперь .pop()-ает
+        совпавшие ключи из tunable перед тем, как тот мёрджится в params."""
+        X_train, y_train, X_valid, y_valid = classification_data
+
+        def my_space(trial):
+            return {
+                'n_estimators': trial.suggest_int('n_estimators', 30, 60, step=10),
+                'gamma': trial.suggest_float('gamma', 2.0, 2.5),
+            }
+
+        spec = LossSpec(name='focal', loss_cls=FocalLoss, param_bounds={'gamma': (1.0, 5.0), 'alpha': (0.1, 0.9)})
+        model = LightGBMClassifier(
+            n_optuna_trials=2, model_settings={'param_space': my_space, 'loss_spec': spec},
+        )
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+        assert 2.0 <= model.best_params_['loss_params']['gamma'] <= 2.5
+        assert 'gamma' not in model.best_params_
+
 
 class TestLightGBMOptunaPruner:
     @pytest.mark.slow

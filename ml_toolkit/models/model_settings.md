@@ -203,8 +203,8 @@ model = CatBoostClassifier(n_optuna_trials=50, model_settings=model_settings)   
 - `param_bounds={}` — у лосса нет тюнящихся параметров, конструируется с дефолтами класса.
 - После `fit()` `best_params_['loss_name']`/`best_params_['loss_params']` — человекочитаемые имя и фактически выбранные параметры лосса лучшего trial (сам объект-лосс в `best_params_[...]` под ключом `loss_function`/`objective` — живой, нужен для реконструкции модели, но для логов неинформативен).
 - CatBoost принимает `calc_ders_range`/`calc_ders_multi`-объекты нативно; при кастомном `loss_function` CatBoost **требует** `eval_metric` явно и падает собственной `CatBoostError`, если `model_settings['eval_metric']` не задан (см. раздел «Метрика раннего останова» ниже — у `eval_metric` нет дефолта в адаптере); для мультикласса дополнительно передаётся `classes_count`.
-- LightGBM/XGBoost (sklearn-обёртки) используют свою объектную сигнатуру (`objective(y_true, y_pred) -> grad, hess`, см. `_loss_spec.py`); гессиан мультикласса там — только диагональ (ограничение custom objective API обоих фреймворков, не этого модуля). **Важно**: `predict_proba()` обоих фреймворков не умеет сам понять, что делать с кастомным objective, и для LightGBM документированно/эмпирически возвращает raw margins вместо вероятностей (с warning'ом) — адаптеры применяют sigmoid/softmax вручную поверх raw score, когда `loss_spec` задан, так что `predict_proba()` снаружи всегда возвращает корректную вероятность независимо от того, используется `loss_spec` или нет.
-- XGBoost-ветка реализована по документированному API sklearn-обёртки, но не верифицирована вживую (xgboost не входит в обязательные зависимости проекта, см. `tests/models/_tabular/_boosting/test_xgboost.py`) — особенно мультикласс, где форма `y_pred`, которую XGBoost передаёт в custom objective, зависит от версии.
+- LightGBM/XGBoost (sklearn-обёртки) используют свою объектную сигнатуру (`objective(y_true, y_pred) -> grad, hess`, см. `_loss_spec.py`); гессиан мультикласса там — только диагональ (ограничение custom objective API обоих фреймворков, не этого модуля). **LightGBM и XGBoost ведут себя по-разному на `predict_proba()`** при кастомном objective: LightGBM документированно/эмпирически возвращает raw margins вместо вероятностей (с warning'ом) — адаптер применяет sigmoid/softmax вручную поверх raw score. **XGBoost, наоборот, уже возвращает настоящие вероятности сам** — Booster помнит `'multi:softprob'`/аналог для бинарного на уровне learner config независимо от того, что градиенты считала Python-функция (верифицировано вживую на xgboost==3.2.0 через `uv run --with xgboost`, т.к. пакет не входит в обязательные зависимости проекта) — адаптер **не** применяет к нему ничего дополнительно; более ранняя версия этого кода ошибочно копировала LightGBM-паттерн и для XGBoost тоже, что на практике ломало `predict_proba()` двойным sigmoid/softmax (см. `tests/models/_tabular/_boosting/test_xgboost.py::TestXGBoostLossSpec` — регрессионный тест на этот конкретный баг).
+- Мультиклассовая форма `y_pred` в custom objective (2D `(n, n_classes)`, без флэттенинга) верифицирована вживую на xgboost==3.2.0.
 - Несовместим с явным `loss_function`/`objective` в `param_space` — `loss_spec`, если задан, имеет приоритет (переопределяет его).
 
 ---
@@ -222,7 +222,7 @@ model = CatBoostClassifier(n_optuna_trials=50, model_settings=model_settings)   
 **У `eval_metric` нет дефолта в адаптере** (ни в одном из трёх фреймворков) — `model_settings.get('eval_metric')` без запасного значения; не задан → ключ просто не попадает в params, и framework сам решает:
 - CatBoost: без кастомного `loss_function` — подставляет метрику, соответствующую `loss_function`, сам; с кастомным (`loss_spec`) — требует `eval_metric` явно и падает `CatBoostError`, если его нет (не маскируется).
 - LightGBM: выводит метрику из строки `objective` (`'mae'` → `'l1'`, `'binary'` → `'binary_logloss'`, и т.п.); при `objective=callable` (т.е. `loss_spec` без явного `eval_metric`) молча откатывается на общий дефолт по типу задачи (`'l2'` для регрессии) — это поведение LightGBM, не ml_toolkit, и оно может быть не связано с тем, что реально тюнится кастомным лоссом. Указывайте `eval_metric` явно при использовании `loss_spec`.
-- XGBoost: аналогично LightGBM — выводит метрику из `objective`, если не задана явно (не верифицировано вживую, xgboost не в обязательных зависимостях).
+- XGBoost: аналогично LightGBM — выводит метрику из `objective`, если `eval_metric` не задан явно (верифицировано вживую на xgboost==3.2.0). **Важно про направление**: если `eval_metric` — строка, XGBoost сам верно определяет maximize/minimize по встроенному вайтлисту префиксов имени (`'auc'`, `'aucpr'`, `'pre'`, `'map'`, `'ndcg'` → maximize, иначе minimize). Для callable этот же вайтлист матчится по имени ФУНКЦИИ — `sklearn.metrics.roc_auc_score` под него не попадает и тихо считается minimize, из-за чего early stopping останавливается на первой же итерации (`best_iteration=0`, полностью сломанная модель, без единой ошибки — проверено вживую). Поэтому **для XGBoost голый callable не принимается** — только `(callable, direction)` с явным `'minimize'`/`'maximize'` (см. пример ниже); строки по-прежнему можно передавать как есть.
 
 ```python
 model_settings = {
@@ -231,16 +231,21 @@ model_settings = {
 }
 ```
 
-Можно передать и callable (не только строку) — сигнатура зависит от фреймворка:
-- CatBoost: собственный объект метрики (`is_max_optimal()`/`evaluate(approxes, target, weight)`/`get_final_error(error, weight)`).
-- LightGBM: `(y_true, y_pred[, weight[, group]]) -> (name, value, is_higher_better)` — передаётся в `.fit(eval_metric=...)` (не в конструктор — LightGBM принимает callable только там). Когда `eval_metric` задан, адаптер дополнительно ставит `'metric': 'None'` в конструкторе, чтобы подавить автоматический вывод LightGBM — иначе он добавился бы ВТОРЫМ метрикой рядом с вашей, и pruning-колбэк (берёт метрику с индексом 0) мог бы молча использовать не ту.
-- XGBoost: `(y_true, y_pred) -> (name, value)`, sklearn-конвенция (не верифицировано вживую).
+Можно передать и callable (не только строку) — сигнатура и способ указать направление зависят от фреймворка:
+- CatBoost: собственный объект метрики (`is_max_optimal()`/`evaluate(approxes, target, weight)`/`get_final_error(error, weight)`) — направление уже внутри объекта, передаётся как есть.
+- LightGBM: `(y_true, y_pred[, weight[, group]]) -> (name, value, is_higher_better)` — направление явно в возвращаемом кортеже, передаётся как есть. Уходит в `.fit(eval_metric=...)` (не в конструктор — LightGBM принимает callable только там); адаптер дополнительно ставит `'metric': 'None'` в конструкторе, чтобы подавить автоматический вывод LightGBM — иначе он добавился бы ВТОРЫМ метрикой рядом с вашей, и pruning-колбэк (берёт метрику с индексом 0) мог бы молча использовать не ту.
+- XGBoost: **только `(callable, direction)`**, `direction` ∈ `{'minimize', 'maximize'}`, сам `callable` — обычная sklearn-метрика `(y_true, y_pred) -> float` (например, `sklearn.metrics.roc_auc_score`, `mean_absolute_error` как есть, без обёрток). Голый callable (без направления) отклоняется `ValueError` — см. предупреждение выше про то, почему угадать direction по имени функции нельзя. Реализовано через явный `xgboost.callback.EarlyStopping(maximize=...)` вместо встроенного шортката `early_stopping_rounds=<int>`.
 
 ```python
+# LightGBM
 def custom_metric(y_true, y_pred):
-    return 'custom', float(((y_true - y_pred) ** 2).mean()), False   # LightGBM-конвенция
+    return 'custom', float(((y_true - y_pred) ** 2).mean()), False   # is_higher_better=False
 
 model_settings = {'eval_metric': custom_metric}
+
+# XGBoost — направление обязательно, функция возвращает голый float
+from sklearn.metrics import roc_auc_score
+model_settings = {'eval_metric': (roc_auc_score, 'maximize')}
 ```
 
 ---
@@ -311,7 +316,7 @@ model_settings = {
 | `baseline_col` | `str \| None` | catboost, lightgbm, xgboost, lama (regressor), linear (regressor) | `None` → бейзлайн не используется |
 | `param_space` | `Callable[[optuna.Trial], dict] \| None` | catboost, lightgbm, xgboost | `None` → дефолтное пространство |
 | `loss_spec` | `LossSpec \| None` | catboost, lightgbm, xgboost | `None` → фиксированный training loss адаптера |
-| `eval_metric` | `str \| callable \| None` | catboost, lightgbm, xgboost | `None` → фреймворк сам выводит метрику из loss_function/objective (см. «Метрика раннего останова») |
+| `eval_metric` | `str \| callable \| (callable, direction) \| None` | catboost, lightgbm, xgboost | `None` → фреймворк сам выводит метрику из loss_function/objective (см. «Метрика раннего останова»; `(callable, direction)` — только для XGBoost, голый callable там запрещён) |
 | `undersample_majority` | `bool` | catboost, lightgbm, xgboost (классификаторы) | `False` для всех трёх |
 | `optuna_timeout` | `float \| None` (секунды) | все Optuna-адаптеры | `None` → без лимита времени |
 | `optuna_pruner` | `None \| str \| optuna.pruners.BasePruner` | все Optuna-адаптеры (реально отсекает trials только в catboost/lightgbm/xgboost/*_ranker/tabm) | `None` → `MedianPruner()` |

@@ -416,8 +416,16 @@ def make_xgb_pruning_callback(trial: optuna.Trial) -> xgb.callback.TrainingCallb
     """XGBoost TrainingCallback: trial.report()/should_prune() на каждой итерации бустинга.
 
     Ожидает ровно один eval_set (как во всех Optuna-objective этого пакета) — метрика
-    берётся по первому найденному ключу в evals_log, без завязки на конкретное имя
-    eval_metric. xgboost.callback.TrainingCallback — чистый Python, поэтому optuna.TrialPruned
+    берётся по ПОСЛЕДНЕМУ ключу в evals_log (``list(...)[-1]``, не первому), без завязки
+    на конкретное имя eval_metric. Так же, как и собственный ранний останов XGBoost:
+    "If there's more than one metric in eval_metric, the last metric will be used for
+    early stopping" (см. docstring XGBRegressor/XGBClassifier.fit) — когда задан кастомный
+    ``model_settings['eval_metric']``, XGBoost не подавляет авто-выведенную метрику (в
+    отличие от LightGBM, где мы явно ставим ``metric='None'``), а добавляет кастомную
+    ВТОРОЙ; если бы пруинг брал первую метрику, он молча следил бы за авто-метрикой, а
+    не за той, что реально запросил пользователь. При единственной метрике (обычный
+    случай без eval_metric) first/last совпадают — поведение не меняется.
+    xgboost.callback.TrainingCallback — чистый Python, поэтому optuna.TrialPruned
     доходит до study.optimize без оборачивания сторонним исключением.
     """
     import optuna
@@ -428,7 +436,7 @@ def make_xgb_pruning_callback(trial: optuna.Trial) -> xgb.callback.TrainingCallb
             self, model: xgb.Booster, epoch: int, evals_log: dict[str, dict[str, list[float]]],
         ) -> bool:
             valid_log = next(iter(evals_log.values()))
-            value = next(iter(valid_log.values()))[-1]
+            value = list(valid_log.values())[-1][-1]
             trial.report(value, step=epoch)
             if trial.should_prune():
                 raise optuna.TrialPruned(f'Trial pruned at iteration {epoch}.')
