@@ -187,5 +187,6 @@ class RuleFitClassifier(BaseModel):
         raw = self._model.predict_proba(
             self._prep.transform(X[self._num_feats_].to_numpy(dtype=float))
         )[:, 1]
-        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        return np.column_stack([1.0 - score, score])
 

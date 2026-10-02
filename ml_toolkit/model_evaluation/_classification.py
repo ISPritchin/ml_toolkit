@@ -13,6 +13,7 @@ from ._base import BaseEvaluator, SavePath, logger
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+    from numpy.typing import ArrayLike
 
 # ── Preset metric functions ────────────────────────────────────────────────────
 
@@ -238,6 +239,26 @@ class ClassificationEvaluator(BaseEvaluator):
             raise ValueError(f"task must be 'binary' or 'multiclass', got {task!r}")
         super().__init__()
         self._task = task
+
+    def add(self, name: str, y_true: ArrayLike, y_second: ArrayLike) -> ClassificationEvaluator:
+        """Register a split. y_second — y_proba, как его вернул predict_proba() модели.
+
+        При ``task='binary'`` все ml_toolkit-адаптеры возвращают (n, 2) — тот же
+        sklearn-контракт, что и при мультиклассе (см. CLAUDE.md про единый
+        predict_proba()); здесь это нормализуется в 1D P(y=1) один раз, до записи
+        в ``self._splits``, чтобы все метрики/графики ниже (которые различают
+        бинарный/мультикласс по ``y_proba.ndim``, а не по ``self._task``) продолжали
+        работать без изменений. Мультикласс (ndim=2, больше 2 столбцов) не трогаем.
+        """
+        y_second = np.asarray(y_second)
+        if self._task == 'binary' and y_second.ndim == 2:
+            if y_second.shape[1] != 2:
+                raise ValueError(
+                    f"task='binary', но y_second имеет {y_second.shape[1]} столбцов — "
+                    f"ожидались 1 (P(y=1)) или 2 (P(y=0), P(y=1))"
+                )
+            y_second = y_second[:, 1]
+        return super().add(name, y_true, y_second)
 
     # ── Threshold & stability analysis ────────────────────────────────────────
 

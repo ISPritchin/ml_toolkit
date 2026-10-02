@@ -523,5 +523,6 @@ class TabMClassifier(BaseModel):
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         data = self._prep.transform(X, self._device)
         raw = np.nan_to_num(_avg_pred(_predict_raw(self._model, data), 'classification'), nan=0.5)
-        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        return np.column_stack([1.0 - score, score])
 

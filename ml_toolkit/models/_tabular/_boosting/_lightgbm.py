@@ -371,8 +371,9 @@ class LightGBMClassifier(BaseModel):
     — прямое обучение без тюнинга (в этой ветке `objective`/`num_class` для
     мультикласса подбирает сам LightGBM по данным, если не заданы явно).
 
-    - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает 1D-массив
-      `P(y=1)`. Optuna: `objective='binary'`. Калибратор — `self.calibrator_`.
+    - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает `(n, 2)`-матрицу
+      (`P(y=0)`, `P(y=1)` по столбцам) — тот же sklearn-контракт, что и при
+      мультиклассе. Optuna: `objective='binary'`. Калибратор — `self.calibrator_`.
     - **Мультикласс**: `predict_proba()` возвращает `(n, K)`-матрицу, строки
       нормированы к 1. Optuna: `objective='multiclass'` + `num_class=K`.
       Внутренний `is_unbalance` в этом режиме не поддерживается LightGBM вовсе —
@@ -648,7 +649,8 @@ class LightGBMClassifier(BaseModel):
             raw = _lgb_margins_to_proba(raw, self.n_classes_ == 2)
         if self.n_classes_ == 2:
             score = raw[:, 1]
-            return self.calibrator_.predict(score) if self.calibrator_ is not None else score
+            score = self.calibrator_.predict(score) if self.calibrator_ is not None else score
+            return np.column_stack([1.0 - score, score])
         if self.calibrators_ is not None:
             return apply_multiclass_calibrators(raw, self.calibrators_)
         return raw

@@ -368,5 +368,6 @@ class IModelsClassifier(BaseModel):
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         X_prep = self._prep.transform(X[self._num_feats_].to_numpy(dtype=float))
         raw = _safe_proba(self._model, self._to_model_space(X_prep))
-        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        return np.column_stack([1.0 - score, score])
 

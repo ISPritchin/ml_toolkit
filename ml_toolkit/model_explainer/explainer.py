@@ -244,8 +244,16 @@ class ModelExplainer:
         self.X_valid: pd.DataFrame = X_valid[self.feature_names_].copy()
         self.y_valid: pd.Series = y_valid.copy()
 
+        # predict_proba() у бинарных классификаторов отдаёт (n, 2) — тот же sklearn-контракт,
+        # что и при мультиклассе (см. CLAUDE.md про единый predict_proba()). local_contribution/
+        # PDP ниже считают скалярную Δ по одному числу на объект, поэтому для бинарного случая
+        # здесь всегда берём P(y=1) (столбец 1), как и раньше, до перехода на (n, 2).
+        def _classification_predict_fn(X: pd.DataFrame) -> np.ndarray:
+            proba = model.predict_proba(X)
+            return proba[:, 1] if proba.ndim == 2 and proba.shape[1] == 2 else proba
+
         self._predict_fn: Callable = (
-            model.predict_proba if task == 'classification' else model.predict
+            _classification_predict_fn if task == 'classification' else model.predict
         )
 
         self.supports_shap_: bool = self.model_name_ in _SHAP_SUPPORTED

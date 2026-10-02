@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ml_toolkit.model_evaluation import CLASSIFICATION_PRESETS, fbeta
+from ml_toolkit.model_evaluation import CLASSIFICATION_PRESETS, ClassificationEvaluator, fbeta
 
 
 @pytest.fixture
@@ -75,3 +75,71 @@ class TestClassificationPresetsMulticlassSafety:
         y_true, y_proba = binary_data
         v = CLASSIFICATION_PRESETS[name](y_true, y_proba)
         assert np.isfinite(v)
+
+
+class TestClassificationEvaluatorAddNormalizesBinaryTwoColumnProba:
+    """Все ml_toolkit-адаптеры возвращают (n, 2) для бинарной классификации (единый
+    sklearn-контракт с мультиклассом, см. CLAUDE.md). CLASSIFICATION_PRESETS/метрики
+    внутри ClassificationEvaluator различают binary/multiclass по y_proba.ndim, а не по
+    self._task — без нормализации в add() любой (n, 2) результат от модели был бы
+    молча принят за мультикласс. add() теперь приводит его к 1D P(y=1) при task='binary',
+    так что всё ниже (метрики, графики, psi) продолжает работать как раньше.
+    """
+
+    def test_two_column_binary_proba_normalized_to_1d(self):
+        rng = np.random.default_rng(0)
+        y_true = rng.integers(0, 2, size=200)
+        p1 = np.clip(y_true * 0.6 + rng.normal(scale=0.3, size=200) + 0.2, 0, 1)
+        proba_2col = np.column_stack([1 - p1, p1])
+
+        ev = ClassificationEvaluator(task='binary')
+        ev.add('valid', y_true, proba_2col)
+        stored_y_true, stored_proba = ev._splits['valid']
+        assert stored_proba.ndim == 1
+        np.testing.assert_allclose(stored_proba, p1)
+
+    def test_1d_binary_proba_still_accepted_unchanged(self):
+        """Обратная совместимость: пресеты (ml_toolkit.presets) всё ещё отдают 1D — не трогаем."""
+        rng = np.random.default_rng(0)
+        y_true = rng.integers(0, 2, size=200)
+        p1 = np.clip(y_true * 0.6 + rng.normal(scale=0.3, size=200) + 0.2, 0, 1)
+
+        ev = ClassificationEvaluator(task='binary')
+        ev.add('valid', y_true, p1)
+        _, stored_proba = ev._splits['valid']
+        np.testing.assert_allclose(stored_proba, p1)
+
+    def test_metrics_identical_whether_1d_or_2col_passed(self):
+        """Суть фикса: метрика не должна зависеть от того, в каком виде пришла бинарная proba."""
+        rng = np.random.default_rng(0)
+        y_true = rng.integers(0, 2, size=200)
+        p1 = np.clip(y_true * 0.6 + rng.normal(scale=0.3, size=200) + 0.2, 0, 1)
+
+        ev_1d = ClassificationEvaluator(task='binary')
+        ev_1d.add('valid', y_true, p1).add_metric('roc_auc')
+        ev_2col = ClassificationEvaluator(task='binary')
+        ev_2col.add('valid', y_true, np.column_stack([1 - p1, p1])).add_metric('roc_auc')
+
+        assert ev_1d.metrics(splits=['valid']).loc['roc_auc', 'valid'] == pytest.approx(
+            ev_2col.metrics(splits=['valid']).loc['roc_auc', 'valid']
+        )
+
+    def test_multiclass_proba_not_touched(self):
+        rng = np.random.default_rng(1)
+        y_true = rng.integers(0, 3, size=200)
+        proba = rng.dirichlet(np.ones(3), size=200)
+
+        ev = ClassificationEvaluator(task='multiclass')
+        ev.add('valid', y_true, proba)
+        _, stored_proba = ev._splits['valid']
+        assert stored_proba.shape == (200, 3)
+        np.testing.assert_allclose(stored_proba, proba)
+
+    def test_wrong_column_count_for_binary_raises(self):
+        rng = np.random.default_rng(1)
+        y_true = rng.integers(0, 2, size=50)
+        proba = rng.dirichlet(np.ones(3), size=50)  # 3 столбца — не бинарная задача
+
+        ev = ClassificationEvaluator(task='binary')
+        with pytest.raises(ValueError, match='столбцов'):
+            ev.add('valid', y_true, proba)

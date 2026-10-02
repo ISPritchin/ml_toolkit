@@ -351,8 +351,9 @@ class CatBoostClassifier(BaseModel):
     Бинарный или мультикласс определяется автоматически по числу уникальных
     значений `y_train` (`self.n_classes_`), явно указывать не нужно:
 
-    - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает 1D-массив
-      `P(y=1)`. Калибратор — `self.calibrator_` (`IsotonicRegression`).
+    - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает `(n, 2)`-матрицу
+      (`P(y=0)`, `P(y=1)` по столбцам) — тот же sklearn-контракт, что и при
+      мультиклассе. Калибратор — `self.calibrator_` (`IsotonicRegression`).
     - **Мультикласс**: `predict_proba()` возвращает `(n, K)`-матрицу, строки
       нормированы к 1. Калибраторы — `self.calibrators_`, список из `K`
       `IsotonicRegression` (по одной на класс, схема One-vs-Rest); бинарный
@@ -615,7 +616,8 @@ class CatBoostClassifier(BaseModel):
         raw = self._model.predict_proba(pool)
         if self.n_classes_ == 2:
             score = raw[:, 1]
-            return self.calibrator_.predict(score) if self.calibrator_ is not None else score
+            score = self.calibrator_.predict(score) if self.calibrator_ is not None else score
+            return np.column_stack([1.0 - score, score])
         if self.calibrators_ is not None:
             return apply_multiclass_calibrators(raw, self.calibrators_)
         return raw

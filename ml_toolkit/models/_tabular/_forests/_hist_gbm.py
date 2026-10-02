@@ -221,5 +221,6 @@ class HistGBMClassifier(BaseModel):
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
         raw = self._model.predict_proba(X_enc[self.selected_features_].to_numpy(dtype=float))[:, 1]
-        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        return np.column_stack([1.0 - score, score])
 

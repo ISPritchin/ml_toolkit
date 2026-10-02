@@ -16,7 +16,7 @@ from sklearn.metrics import roc_auc_score
 
 from ml_toolkit.models._tabular._boosting._catboost_ranker import CatBoostRanker
 from ml_toolkit.models._tabular._boosting._lightgbm_ranker import LightGBMRanker
-from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_proba
+from tests.models.conftest import MULTI_CAT_FEATURES, assert_valid_ranker_score
 
 FAST_CB_RANK = {'iterations': 40, 'max_depth': 3, 'learning_rate': 0.2, 'loss_function': 'YetiRank', 'verbose': False}
 FAST_LGB_RANK = {'n_estimators': 40, 'num_leaves': 7, 'max_depth': 3, 'objective': 'lambdarank', 'verbose': -1}
@@ -27,7 +27,7 @@ class TestCatBoostRanker:
         X_train, y_train, X_valid, y_valid = classification_data
         model = CatBoostRanker(params=FAST_CB_RANK)
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_calibrator_fitted_with_valid(self, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data
@@ -54,13 +54,13 @@ class TestCatBoostRanker:
         X_train, y_train, X_valid, y_valid = classification_data
         model = CatBoostRanker(params=FAST_CB_RANK, model_settings={'group_size': 50})
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_fit_with_optuna(self, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data
         model = CatBoostRanker(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
         assert model.best_params_['loss_function'] == 'YetiRank'
 
     def test_rank_objective_setting(self, classification_data):
@@ -70,20 +70,20 @@ class TestCatBoostRanker:
             model_settings={'rank_objective': 'QuerySoftMax'},
         )
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_custom_cls_metric_used_by_optuna(self, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data
         model = CatBoostRanker(n_optuna_trials=2, model_settings={'cls_metric': (roc_auc_score, 'maximize')})
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_multiple_categorical_features(self, classification_data_multi_cat):
         X_train, y_train, X_valid, y_valid = classification_data_multi_cat
         model = CatBoostRanker(params=FAST_CB_RANK)
         model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
         assert model.cat_features_ == MULTI_CAT_FEATURES
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
 
 class TestLightGBMRanker:
@@ -91,7 +91,7 @@ class TestLightGBMRanker:
         X_train, y_train, X_valid, y_valid = classification_data
         model = LightGBMRanker(params=FAST_LGB_RANK)
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_calibrator_fitted_with_valid(self, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data
@@ -109,7 +109,7 @@ class TestLightGBMRanker:
         X_train, y_train, X_valid, y_valid = classification_data
         model = LightGBMRanker(params=FAST_LGB_RANK, model_settings={'group_size': 50})
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_predict_without_calibrator_still_bounded(self, classification_data):
         X_train, y_train, _, _ = classification_data
@@ -123,7 +123,7 @@ class TestLightGBMRanker:
         X_train, y_train, X_valid, y_valid = classification_data
         model = LightGBMRanker(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
         assert model.best_params_['objective'] == 'lambdarank'
 
     def test_rank_objective_setting(self, classification_data):
@@ -133,14 +133,14 @@ class TestLightGBMRanker:
             model_settings={'rank_objective': 'rank_xendcg'},
         )
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_multiple_categorical_features(self, classification_data_multi_cat):
         X_train, y_train, X_valid, y_valid = classification_data_multi_cat
         model = LightGBMRanker(params=FAST_LGB_RANK)
         model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
         assert model.cat_features_ == MULTI_CAT_FEATURES
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
 
 class TestXGBoostRanker:
@@ -153,7 +153,7 @@ class TestXGBoostRanker:
             'n_estimators': 40, 'max_depth': 3, 'learning_rate': 0.2, 'objective': 'rank:ndcg',
         })
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_predict_without_calibrator_still_bounded(self, classification_data):
         pytest.importorskip('xgboost')
@@ -175,7 +175,7 @@ class TestXGBoostRanker:
         X_train, y_train, X_valid, y_valid = classification_data
         model = XGBoostRanker(n_optuna_trials=2)
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
         assert model.best_params_['objective'] == 'rank:ndcg'
 
     def test_rank_objective_setting(self, classification_data):
@@ -188,7 +188,7 @@ class TestXGBoostRanker:
             model_settings={'rank_objective': 'rank:pairwise'},
         )
         model.fit(X_train, y_train, X_valid, y_valid)
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)
 
     def test_multiple_categorical_features(self, classification_data_multi_cat):
         """XGBoostRanker не поддерживает category/object dtype нативно — _to_float() кодирует любую колонку.
@@ -207,4 +207,4 @@ class TestXGBoostRanker:
         })
         model.fit(X_train, y_train, X_valid, y_valid, cat_features=MULTI_CAT_FEATURES)
         assert model.cat_features_ == MULTI_CAT_FEATURES
-        assert_valid_proba(model, X_valid)
+        assert_valid_ranker_score(model, X_valid)

@@ -189,4 +189,4 @@ class TestMakeFbeta:
         model = LightGBMClassifier(n_optuna_trials=2, model_settings={'cls_metric': make_fbeta(2.0)})
         model.fit(X_train, y_train, X_valid, y_valid)
         proba = model.predict_proba(X_valid)
-        assert proba.shape == (len(X_valid),)
+        assert proba.shape == (len(X_valid), 2)

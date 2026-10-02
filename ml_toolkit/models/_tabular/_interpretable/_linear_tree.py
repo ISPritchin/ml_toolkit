@@ -181,5 +181,6 @@ class LinearTreeClassifier(BaseModel):
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         X_t = self._scaler.transform(self._imputer.transform(X[self._num_feats_].to_numpy(dtype=float)))
         raw = self._model.predict_proba(X_t)[:, 1]
-        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        return np.column_stack([1.0 - score, score])
 

@@ -213,5 +213,6 @@ class MARSClassifier(BaseModel):
     def _predict_proba_impl(self, X: pd.DataFrame) -> np.ndarray:
         X_imp = self._imputer.transform(X[self._num_feats_].to_numpy(dtype=float))
         raw = self._clf.predict_proba(self._model.transform(X_imp))[:, 1]
-        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        return np.column_stack([1.0 - score, score])
 

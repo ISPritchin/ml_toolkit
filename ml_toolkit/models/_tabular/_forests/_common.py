@@ -28,7 +28,13 @@ def predict_via_pipeline(self: BaseModel, X: pd.DataFrame) -> np.ndarray:
 
 
 def predict_proba_via_pipeline(self: BaseModel, X: pd.DataFrame) -> np.ndarray:
-    """_predict_proba_impl (бинарный) для адаптеров с self._model = Pipeline([imputer, estimator]) + calibrator_."""
+    """_predict_proba_impl (бинарный) для адаптеров с self._model = Pipeline([imputer, estimator]) + calibrator_.
+
+    Возвращает (n, 2) — P(y=0), P(y=1) по столбцам, как у sklearn и у всех
+    остальных адаптеров пакета (включая мультиклассовые) — единый контракт
+    independent от числа классов.
+    """
     X_enc = apply_cat_encoder(X, self._cat_encoder_, self._cat_in_sel_, self._cat_col_names_)
     raw = self._model.predict_proba(X_enc[self.selected_features_])[:, 1]
-    return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+    score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+    return np.column_stack([1.0 - score, score])

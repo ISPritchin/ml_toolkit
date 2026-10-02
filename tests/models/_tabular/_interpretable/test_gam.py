@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 pytest.importorskip('pygam')
@@ -71,14 +72,14 @@ class TestPyGAMClassifier:
             assert col not in model._num_feats_
         assert_valid_proba(model, X_valid)
 
-    def test_predict_proba_is_1d_and_valid(self, classification_data):
-        """LogisticGAM.predict_proba() отдаёт 1D массив, не 2D как sklearn.
-
-        Проверяем, что адаптер корректно с этим работает и не индексирует [:, 1].
+    def test_predict_proba_handles_pygam_1d_quirk_and_returns_sklearn_shape(self, classification_data):
+        """LogisticGAM.predict_proba() отдаёт 1D массив, не 2D как sklearn, — адаптер
+        не индексирует [:, 1] на нём (там нет второго столбца), но наружу всё равно
+        отдаёт (n, 2), как и все остальные адаптеры пакета (единый контракт, см. CLAUDE.md).
         """
         X_train, y_train, X_valid, y_valid = classification_data
         model = PyGAMClassifier(params=FAST_PARAMS)
         model.fit(X_train, y_train, X_valid, y_valid)
         proba = model.predict_proba(X_valid)
-        assert proba.ndim == 1
-        assert proba.shape == (len(X_valid),)
+        assert proba.shape == (len(X_valid), 2)
+        np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-6)

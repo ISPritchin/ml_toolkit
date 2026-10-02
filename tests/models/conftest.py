@@ -118,6 +118,24 @@ def regression_data_multi_cat():
 
 
 def assert_valid_proba(model, X_valid) -> np.ndarray:
+    """Проверяет контракт predict_proba() для БИНАРНОГО классификатора: (n, 2),
+    P(y=0)+P(y=1)==1 по строкам, как у sklearn (единый контракт с мультиклассом,
+    см. CLAUDE.md). Возвращает P(y=1) как 1D-срез — большинство вызывающих тестов
+    дальше используют его как скалярный скор (roc_auc_score, .std(), пороги и т.п.),
+    им не нужно знать про 2D-форму.
+    """
+    proba = model.predict_proba(X_valid)
+    assert proba.shape == (len(X_valid), 2)
+    assert np.all((proba >= 0) & (proba <= 1))
+    np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-6)
+    return proba[:, 1]
+
+
+def assert_valid_ranker_score(model, X_valid) -> np.ndarray:
+    """Для *Ranker: predict_proba() там — нормализованный [0,1] relevance score, 1D,
+    НЕ вероятность класса (нет комплементарного "1 - score") — в отличие от классификаторов
+    не переведён на (n, 2), см. CLAUDE.md про единый контракт predict_proba() классификаторов.
+    """
     proba = model.predict_proba(X_valid)
     assert proba.shape == (len(X_valid),)
     assert np.all((proba >= 0) & (proba <= 1))

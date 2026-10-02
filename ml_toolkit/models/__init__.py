@@ -7,7 +7,8 @@
     # Без Optuna (явные параметры):
     model = LightGBMClassifier(params={'n_estimators': 500, 'num_leaves': 31})
     model.fit(X_train, y_train)
-    proba = model.predict_proba(X_new)
+    proba = model.predict_proba(X_new)  # (n, n_classes) — и для бинарной, и для мультикласса,
+                                         # P(y=1) = proba[:, 1] (не 1D-скор напрямую)
 
     # С Optuna (params=None, X_valid обязателен):
     model = CatBoostRegressor(n_optuna_trials=50,

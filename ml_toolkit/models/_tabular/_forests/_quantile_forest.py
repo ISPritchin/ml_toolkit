@@ -248,5 +248,6 @@ class QuantileForestClassifier(BaseModel):
         q75 = self._qrf.predict(X_imp, quantiles=0.75)
         F = np.column_stack([q25, q50, q75, q75 - q25])
         raw = self._clf.predict_proba(F)[:, 1]
-        return self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        score = self.calibrator_.predict(raw) if self.calibrator_ is not None else raw
+        return np.column_stack([1.0 - score, score])
 

@@ -165,6 +165,23 @@ class TestLinearClassifier:
         assert contrib.name == 'coef_contribution'
 
 
+def test_explain_row_binary_classifier_two_column_proba_does_not_crash(classification_data):
+    """Регрессионный тест: predict_proba() бинарных классификаторов отдаёт (n, 2) (единый
+    sklearn-контракт с мультиклассом, см. CLAUDE.md). explain_row() считает скалярную Δ
+    по одному числу на объект (local permutation) — без явного сведения к P(y=1) здесь
+    `float(self._predict_fn(X_row)[0])` получил бы 2-элементный массив вместо скаляра и
+    упал бы TypeError («only length-1 arrays can be converted to Python scalars»)."""
+    X_train, y_train, X_valid, y_valid = classification_data
+    model = DecisionTreeClassifier(params={'max_depth': 3, 'random_state': 42})
+    model.fit(X_train, y_train, X_valid, y_valid)
+    assert model.predict_proba(X_valid).shape == (len(X_valid), 2)
+
+    explainer = ModelExplainer(model, X_valid, y_valid, task='classification')
+    contrib = explainer.explain_row(X_valid.iloc[[0]])
+    assert_valid_contribution(contrib, explainer.feature_names_)
+    assert not (contrib == 0.0).all()  # не все дельты тихо обнулились через except-fallback
+
+
 class TestInterpretableTreeRegressorLocallyLinearForest:
     @pytest.mark.slow
     def test_full_battery(self, regression_data, tmp_path):

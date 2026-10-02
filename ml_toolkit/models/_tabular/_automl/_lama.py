@@ -166,8 +166,9 @@ class LAMAClassifier(BaseModel):
     `y_train` (`self.n_classes_`), явно указывать не нужно — тот же контракт, что у
     `CatBoostClassifier`:
 
-    - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает 1D-массив
-      `P(y=1)`. Калибратор — `self.calibrator_` (`IsotonicRegression`).
+    - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает `(n, 2)`-матрицу
+      (`P(y=0)`, `P(y=1)` по столбцам) — тот же sklearn-контракт, что и при
+      мультиклассе. Калибратор — `self.calibrator_` (`IsotonicRegression`).
     - **Мультикласс**: `predict_proba()` возвращает `(n, K)`-матрицу, строки
       нормированы к 1 (LightAutoML нумерует классы по возрастанию значения
       `y_train`, когда таргет уже целочисленный 0..K-1 — наш случай, см.
@@ -269,8 +270,12 @@ class LAMAClassifier(BaseModel):
         df = _coerce_cat_dtypes(X[self._feats].copy(), self.cat_features_)
         raw = self._model.predict(df).data
         if self.n_classes_ == 2:
+            # LAMA кладёт P(y=1) в столбец 0 (в отличие от CatBoost/LightGBM/XGBoost, где это
+            # столбец 1) — после column_stack порядок столбцов на выходе всё равно
+            # нормализован к стандартной sklearn-конвенции (0=P(y=0), 1=P(y=1)).
             score = raw[:, 0]
-            return self.calibrator_.predict(score) if self.calibrator_ is not None else score
+            score = self.calibrator_.predict(score) if self.calibrator_ is not None else score
+            return np.column_stack([1.0 - score, score])
         if self.calibrators_ is not None:
             return apply_multiclass_calibrators(raw, self.calibrators_)
         return raw

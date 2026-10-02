@@ -96,7 +96,7 @@ class TestIModelsClassifierBRL:
         model = IModelsClassifier(params=BRL_PARAMS, model_settings={'name': 'brl'})
         model.fit(X_train, y_train, X_valid, y_valid)
         proba = model.predict_proba(X_train)
-        assert proba.shape == (len(X_train),)
+        assert proba.shape == (len(X_train), 2)
         assert ((proba >= 0) & (proba <= 1)).all()
 
 
