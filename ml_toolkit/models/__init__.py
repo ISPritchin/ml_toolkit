@@ -51,6 +51,13 @@ ml_toolkit.model_evaluation.REGRESSION_PRESETS/CLASSIFICATION_PRESETS —
                                              param_bounds={'gamma': (1.0, 5.0), 'alpha': (0.1, 0.9)})}
     model = CatBoostClassifier(n_optuna_trials=50, model_settings=model_settings)
 
+Метрика раннего останова/Optuna-пруинга (model_settings['eval_metric'],
+catboost/lightgbm/xgboost; независима от loss_spec и от reg_metric/cls_metric —
+см. ml_toolkit/models/model_settings.md, раздел «Метрика раннего останова»).
+Без дефолта в адаптере: не задана → framework сам выводит её из loss_function/
+objective; задана (строка или callable) → полностью её заменяет:
+    model_settings = {'loss_spec': ..., 'eval_metric': 'Logloss'}
+
 Lazy imports: класс модели загружается только при первом обращении к нему.
 """
 

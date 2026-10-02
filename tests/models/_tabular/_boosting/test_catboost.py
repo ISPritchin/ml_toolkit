@@ -241,6 +241,10 @@ class TestCatBoostLossSpec:
     """model_settings['loss_spec'] — тюнинг кастомного лосса (и его параметров) через Optuna,
     см. ml_toolkit/models/_loss_spec.py. CatBoost принимает calc_ders_range/calc_ders_multi
     объекты нативно (to_catboost_loss — passthrough), в отличие от LightGBM/XGBoost.
+
+    model_settings['eval_metric'] не имеет дефолта в адаптере (см. model_settings.md) —
+    при кастомном loss_function CatBoost сам требует eval_metric явно и падает собственной
+    CatBoostError, если его нет, поэтому каждый loss_spec-тест ниже передаёт eval_metric.
     """
 
     @pytest.fixture
@@ -258,16 +262,25 @@ class TestCatBoostLossSpec:
         X_train, y_train, X_valid, y_valid = regression_data
         spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
                          param_bounds={'over_cost': (0.5, 2.0), 'under_cost': (0.5, 2.0)})
-        model = CatBoostRegressor(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model = CatBoostRegressor(n_optuna_trials=2, model_settings={'loss_spec': spec, 'eval_metric': 'MAE'})
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_predictions(model, X_valid)
         assert model.best_params_['loss_name'] == 'asym_mse'
         assert set(model.best_params_['loss_params']) == {'over_cost', 'under_cost'}
 
+    def test_regressor_tunable_loss_without_eval_metric_raises(self, regression_data):
+        """Без eval_metric CatBoost сам требует его при кастомном loss_function — не маскируем это дефолтом."""
+        X_train, y_train, X_valid, y_valid = regression_data
+        spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
+                         param_bounds={'over_cost': (0.5, 2.0), 'under_cost': (0.5, 2.0)})
+        model = CatBoostRegressor(n_optuna_trials=1, model_settings={'loss_spec': spec})
+        with pytest.raises(Exception, match='eval metric'):
+            model.fit(X_train, y_train, X_valid, y_valid)
+
     def test_classifier_binary_tunable_loss(self, classification_data):
         X_train, y_train, X_valid, y_valid = classification_data
         spec = LossSpec(name='focal', loss_cls=FocalLoss, param_bounds={'gamma': (1.0, 3.0), 'alpha': (0.1, 0.9)})
-        model = CatBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model = CatBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec, 'eval_metric': 'PRAUC'})
         model.fit(X_train, y_train, X_valid, y_valid)
         assert_valid_proba(model, X_valid)
         assert model.best_params_['loss_name'] == 'focal'
@@ -276,13 +289,48 @@ class TestCatBoostLossSpec:
     def test_classifier_multiclass_tunable_loss(self, multiclass_data):
         X_train, y_train, X_valid, y_valid = multiclass_data
         spec = LossSpec(name='logitnorm', loss_cls=LogitNormLoss, param_bounds={'temperature': (0.02, 0.2)})
-        model = CatBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec})
+        model = CatBoostClassifier(n_optuna_trials=2, model_settings={'loss_spec': spec, 'eval_metric': 'AUC'})
         model.fit(X_train, y_train, X_valid, y_valid)
         assert model.n_classes_ == 3
         proba = model.predict_proba(X_valid)
         assert proba.shape == (len(X_valid), 3)
         np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-6)
         assert model.best_params_['loss_name'] == 'logitnorm'
+
+
+class TestCatBoostEvalMetric:
+    """model_settings['eval_metric'] — без дефолта в адаптере (см. model_settings.md):
+    не задан — ключ не попадает в params, CatBoost сам подставляет метрику по loss_function;
+    задан — переопределяет её (строка или собственный объект CatBoost-метрики).
+    """
+
+    def test_regressor_string_eval_metric_used(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = CatBoostRegressor(n_optuna_trials=2, model_settings={'eval_metric': 'RMSE'})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert model.best_params_['eval_metric'] == 'RMSE'
+
+    def test_regressor_no_eval_metric_key_when_unset(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = CatBoostRegressor(n_optuna_trials=2)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert 'eval_metric' not in model.best_params_
+
+    def test_classifier_string_eval_metric_used(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = CatBoostClassifier(n_optuna_trials=2, model_settings={'eval_metric': 'Logloss'})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+        assert model.best_params_['eval_metric'] == 'Logloss'
+
+    def test_classifier_no_eval_metric_key_when_unset(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = CatBoostClassifier(n_optuna_trials=2)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+        assert 'eval_metric' not in model.best_params_
 
 
 class TestCatBoostUndersampleMajority:

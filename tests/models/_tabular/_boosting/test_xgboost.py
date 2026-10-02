@@ -287,6 +287,35 @@ class TestXGBoostLossSpec:
         assert model.best_params_['loss_name'] == 'logitnorm'
 
 
+class TestXGBoostEvalMetric:
+    """model_settings['eval_metric'] — без дефолта в адаптере (см. model_settings.md):
+    не задан — ключ не попадает в params, XGBoost сам выводит метрику из objective;
+    задан — полностью заменяет её (строка или sklearn-конвенции callable, не верифицировано
+    вживую — xgboost не установлен в dev-окружении, см. docstring TestXGBoostLossSpec).
+    """
+
+    def test_regressor_string_eval_metric_used(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = XGBoostRegressor(n_optuna_trials=2, model_settings={'eval_metric': 'rmse'})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert model.best_params_['eval_metric'] == 'rmse'
+
+    def test_regressor_no_eval_metric_key_when_unset(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = XGBoostRegressor(n_optuna_trials=2)
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert 'eval_metric' not in model.best_params_
+
+    def test_classifier_string_eval_metric_used(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        model = XGBoostClassifier(n_optuna_trials=2, model_settings={'eval_metric': 'logloss'})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+        assert model.best_params_['eval_metric'] == 'logloss'
+
+
 class TestXGBoostUndersampleMajority:
     def test_default_false_trains_on_full_data(self, classification_data, caplog):
         import logging

@@ -136,6 +136,12 @@ class CatBoostRegressor(BaseModel):
     - ``reg_metric`` (`str | callable | (callable, direction)`, дефолт `'mae'`) —
       метрика Optuna-objective; `reg_metric_direction` — направление для
       «голого» callable.
+    - ``eval_metric`` (`str | callable | None`, без дефолта) — метрика раннего
+      останова/Optuna-пруинга, независима от `loss_spec`/`reg_metric`; не
+      задана — CatBoost сам подставляет её по `loss_function` (`'MAE'` при
+      тюнинге без `loss_spec`); с `loss_spec` CatBoost требует её явно и падает
+      `CatBoostError`, если не задана. См. `model_settings.md`, раздел «Метрика
+      раннего останова».
     - ``param_space`` (`Callable[[trial], dict] | None`) — полностью заменяет
       дефолтное пространство поиска (`iterations`/`max_depth`/`learning_rate`/
       `l2_leaf_reg`/`min_data_in_leaf`/`random_strength`/`border_count`/
@@ -252,6 +258,10 @@ class CatBoostRegressor(BaseModel):
         ms = self.model_settings
         task_type: str = ms.get('task_type', 'CPU')
         loss_spec: LossSpec | None = ms.get('loss_spec')
+        # Без дефолта: не задан — ключ eval_metric вообще не попадает в params, и CatBoost
+        # сам решает (матчит loss_function для встроенных строк; для кастомного loss_function
+        # из loss_spec — требует eval_metric явно и падает собственной CatBoostError, если его нет).
+        custom_eval_metric = ms.get('eval_metric')
 
         def objective(trial: optuna.Trial) -> float:
             tunable = param_space(trial) if param_space is not None else _default_reg_param_space(trial, task_type)
@@ -264,7 +274,7 @@ class CatBoostRegressor(BaseModel):
             params = {
                 **tunable,
                 'loss_function': loss_fn,
-                'eval_metric': ms.get('eval_metric', 'MAE'),
+                **({'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}),
                 'verbose': 0,
                 'early_stopping_rounds': 100,
                 'random_seed': 42,
@@ -356,8 +366,13 @@ class CatBoostClassifier(BaseModel):
     - ``cls_metric`` (`str | callable | (callable, direction)`, дефолт
       `'pr_auc'`) — метрика Optuna-objective; `cls_metric_direction` — для
       «голого» callable.
-    - ``loss_function`` / ``eval_metric`` — переопределяют дефолт внутри Optuna
-      (`'Logloss'`/`'PRAUC'` бинарный, `'MultiClass'`/`'AUC'` мультикласс).
+    - ``loss_function`` — переопределяет training loss (`'Logloss'` бинарный/
+      `'MultiClass'` мультикласс по умолчанию); ``loss_spec`` (см. ниже) имеет
+      приоритет, если задан. ``eval_metric`` — метрика раннего останова/Optuna-
+      пруинга, без дефолта в адаптере: не задан — CatBoost сам подставляет её
+      по ``loss_function``, задан — переопределяет (см.
+      ``ml_toolkit/models/model_settings.md``, раздел «Метрика раннего останова»;
+      независима и от ``loss_function``, и от ``cls_metric``).
     - ``undersample_majority`` (`bool`, дефолт `False`) — `True` включает урезание
       мажоритарного класса на каждом Optuna-триале (бинарный — `majority_fraction`,
       мультикласс — `balance_fraction`, тоже тюнится Optuna); финальная модель
@@ -479,7 +494,10 @@ class CatBoostClassifier(BaseModel):
 
         loss_spec: LossSpec | None = ms.get('loss_spec')
         cb_loss_fixed = ms.get('loss_function', 'Logloss' if is_binary else 'MultiClass')
-        cb_eval = ms.get('eval_metric', 'PRAUC' if is_binary else 'AUC')
+        # Без дефолта: не задан — ключ eval_metric вообще не попадает в params, и CatBoost
+        # сам решает (матчит loss_function для встроенных строк; для кастомного loss_function
+        # из loss_spec — требует eval_metric явно и падает собственной CatBoostError, если его нет).
+        custom_eval_metric = ms.get('eval_metric')
 
         # undersample_majority=True: урезаем мажоритарный класс, финальная модель
         # обучается на том же сэмпле, что и лучший trial (тот же fraction и тот же
@@ -509,7 +527,7 @@ class CatBoostClassifier(BaseModel):
             params = {
                 **tunable,
                 'loss_function': cb_loss,
-                'eval_metric': cb_eval,
+                **({'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}),
                 'verbose': 0,
                 'early_stopping_rounds': 100,
                 'random_seed': 42,

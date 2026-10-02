@@ -313,6 +313,63 @@ class TestLightGBMLossSpec:
         assert model.best_params_['loss_name'] == 'logitnorm'
 
 
+class TestLightGBMEvalMetric:
+    """model_settings['eval_metric'] — кастомная метрика для early stopping/Optuna-пруинга.
+
+    Без дефолта в адаптере (см. model_settings.md): не задан — LightGBM сам выводит метрику
+    из objective; задан — гасит вывод LightGBM ('metric': 'None' в конструкторе) и передаёт
+    ТОЛЬКО свою метрику через .fit(eval_metric=...), иначе наш pruning callback (индекс 0
+    в evaluation_result_list) мог бы молча подхватить не ту метрику.
+    """
+
+    def test_regressor_custom_callable_eval_metric_is_used(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        calls = []
+
+        def custom_metric(y_true, y_pred):
+            err = float(np.mean(np.abs(y_true - y_pred)))
+            calls.append(err)
+            return 'custom_mae', err, False
+
+        model = LightGBMRegressor(n_optuna_trials=2, model_settings={'eval_metric': custom_metric})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert model.best_params_['metric'] == 'None'  # дефолт LightGBM подавлен
+        assert len(calls) > 0  # кастомная метрика реально вызывалась во время обучения
+
+    def test_regressor_string_eval_metric_overrides_default(self, regression_data):
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = LightGBMRegressor(n_optuna_trials=2, model_settings={'eval_metric': 'rmse'})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_predictions(model, X_valid)
+        assert model.best_params_['metric'] == 'None'
+
+    def test_classifier_custom_callable_eval_metric_is_used(self, classification_data):
+        X_train, y_train, X_valid, y_valid = classification_data
+        calls = []
+
+        def custom_metric(y_true, y_pred):
+            calls.append(1)
+            return 'custom_logloss', float(np.mean((y_true - y_pred) ** 2)), False
+
+        model = LightGBMClassifier(n_optuna_trials=2, model_settings={'eval_metric': custom_metric})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert_valid_proba(model, X_valid)
+        assert model.best_params_['metric'] == 'None'
+        assert len(calls) > 0
+
+    def test_loss_spec_without_eval_metric_still_fits(self, regression_data):
+        """Без eval_metric + loss_spec LightGBM молча откатывается на 'l2' (см. model_settings.md) —
+        в отличие от CatBoost, это не ошибка, просто подобранная заново итерация может быть неоптимальной
+        относительно кастомного лосса. Регрессионный тест на то, что хотя бы не падает."""
+        spec = LossSpec(name='asym_mse', loss_cls=AsymmetricMSELoss,
+                         param_bounds={'over_cost': (0.5, 2.0), 'under_cost': (0.5, 2.0)})
+        X_train, y_train, X_valid, y_valid = regression_data
+        model = LightGBMRegressor(n_optuna_trials=1, model_settings={'loss_spec': spec})
+        model.fit(X_train, y_train, X_valid, y_valid)
+        assert 'metric' not in model.best_params_
+
+
 class TestLightGBMUndersampleMajority:
     @pytest.mark.slow
     def test_default_false_trains_on_full_data(self, classification_data, caplog):

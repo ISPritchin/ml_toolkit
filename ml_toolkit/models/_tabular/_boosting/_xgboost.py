@@ -88,11 +88,17 @@ class XGBoostRegressor(BaseModel):
       прибавляется; train и predict должны получать один и тот же столбец.
     - ``reg_metric`` / ``reg_metric_direction`` — метрика Optuna-objective,
       дефолт `'mae'`.
+    - ``eval_metric`` (`str | callable | None`, без дефолта) — метрика раннего
+      останова/Optuna-пруинга, независима от `loss_spec`/`reg_metric`; не
+      задана — ключ не попадает в params, XGBoost сам выводит её из `objective`;
+      задана — полностью заменяет. См. `model_settings.md`, раздел «Метрика
+      раннего останова».
     - ``param_space`` (`Callable[[trial], dict] | None`) — переопределяет
       дефолтный search space (`n_estimators`/`max_depth`/`learning_rate`/
       `subsample`/`colsample_bytree`/`reg_alpha`/`reg_lambda`). `objective`/
-      `eval_metric`/`random_state`/`enable_categorical`/`early_stopping_rounds`
-      подставляются адаптером и приоритетнее одноимённых ключей из `param_space`.
+      `random_state`/`enable_categorical`/`early_stopping_rounds` (и `eval_metric`,
+      если задан через `model_settings`) подставляются адаптером и приоритетнее
+      одноимённых ключей из `param_space`.
     - ``optuna_timeout`` / ``optuna_pruner`` / ``optuna_verbose`` — общие для
       всех Optuna-адаптеров, см. `ml_toolkit/models/model_settings.md`.
 
@@ -177,6 +183,10 @@ class XGBoostRegressor(BaseModel):
                 raise ValueError('X_valid обязателен при params=None (режим Optuna)')
             param_space: Callable[[optuna.Trial], dict] | None = ms.get('param_space')
             loss_spec: LossSpec | None = ms.get('loss_spec')
+            # Без дефолта: не задан — ключ eval_metric не попадает в params, XGBoost сам выводит
+            # его из objective (см. model_settings.md). Задан (строка или callable sklearn-конвенции
+            # (y_true, y_pred) -> (name, value)) — полностью заменяет вывод XGBoost.
+            custom_eval_metric = ms.get('eval_metric')
 
             def objective(trial: optuna.Trial) -> float:
                 tunable = param_space(trial) if param_space is not None else _default_xgb_param_space(trial)
@@ -188,7 +198,8 @@ class XGBoostRegressor(BaseModel):
                     objective_val = 'reg:absoluteerror'
                 params = {
                     **tunable,
-                    'objective': objective_val, 'eval_metric': 'mae',
+                    'objective': objective_val,
+                    **({'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}),
                     'random_state': 42, 'enable_categorical': has_cat, 'early_stopping_rounds': 100,
                 }
                 trial.set_user_attr('xgb_params', params)
@@ -247,13 +258,16 @@ class XGBoostClassifier(BaseModel):
     в `bool(cat_features)`, как у `XGBoostRegressor`.
 
     - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает 1D-массив
-      `P(y=1)`. Optuna: `objective='binary:logistic'`, `eval_metric='aucpr'`.
-      Калибратор — `self.calibrator_`.
+      `P(y=1)`. Optuna: `objective='binary:logistic'`. Калибратор — `self.calibrator_`.
     - **Мультикласс**: `predict_proba()` возвращает `(n, K)`-матрицу, строки
-      нормированы к 1. Optuna: `objective='multi:softprob'` + `num_class=K`,
-      `eval_metric='auc'` (XGBoost считает multiclass AUC нативно, macro OvR).
+      нормированы к 1. Optuna: `objective='multi:softprob'` + `num_class=K`.
       Калибраторы — `self.calibrators_`, список из `K` `IsotonicRegression`
       (OvR); бинарный `self.calibrator_` в этом случае остаётся `None`.
+    - ``eval_metric`` (`str | callable | None`, без дефолта) — метрика раннего
+      останова/Optuna-пруинга; не задана — XGBoost сам выводит её из `objective`
+      (`'aucpr'`-подобную для бинарного, `'auc'`/multiclass-AUC OvR для
+      мультикласса, по документации); задана — полностью заменяет. См.
+      `model_settings.md`, раздел «Метрика раннего останова».
 
     Калибратор(ы) обучаются только если передана валидационная выборка.
 
@@ -347,6 +361,9 @@ class XGBoostClassifier(BaseModel):
             param_space: Callable[[optuna.Trial], dict] | None = ms.get('param_space')
             undersample_majority: bool = ms.get('undersample_majority', False)
             loss_spec: LossSpec | None = ms.get('loss_spec')
+            # Без дефолта: не задан — ключ eval_metric не попадает в params, XGBoost сам выводит
+            # его из objective. Задан — полностью заменяет вывод XGBoost (строка или callable).
+            custom_eval_metric = ms.get('eval_metric')
 
             full_idx = np.arange(len(y_tr))
             sampler = UndersampleSampler(y_tr, is_binary=is_binary, log_prefix='[XGBoost Cls]') if undersample_majority else None
@@ -371,7 +388,7 @@ class XGBoostClassifier(BaseModel):
                 params = {
                     **tunable,
                     'objective': objective_val,
-                    'eval_metric': 'aucpr' if is_binary else 'auc',
+                    **({'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}),
                     'random_state': 42, 'enable_categorical': has_cat, 'early_stopping_rounds': 100,
                 }
                 if not is_binary:

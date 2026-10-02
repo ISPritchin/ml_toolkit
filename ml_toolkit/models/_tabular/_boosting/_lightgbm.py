@@ -141,6 +141,13 @@ class LightGBMRegressor(BaseModel):
       иначе предсказание окажется смещено на величину пропущенного baseline).
     - ``reg_metric`` / ``reg_metric_direction`` — метрика Optuna-objective,
       дефолт `'mae'`.
+    - ``eval_metric`` (`str | callable | None`, без дефолта) — метрика раннего
+      останова/Optuna-пруинга, независима от `loss_spec`/`reg_metric`; не
+      задана — LightGBM сам выводит её из `objective` (при `objective=callable`
+      из `loss_spec` молча откатывается на `'l2'`); задана — гасит вывод
+      LightGBM (`'metric': 'None'`) и передаёт только свою метрику через
+      `.fit(eval_metric=...)`. См. `model_settings.md`, раздел «Метрика
+      раннего останова».
     - ``param_space`` (`Callable[[trial], dict] | None`) — переопределяет
       дефолтный search space. Может (но не обязан) вернуть ключ
       `'boosting_type'` (`'gbdt'`/`'dart'`/`'goss'`) — если не вернул,
@@ -255,6 +262,14 @@ class LightGBMRegressor(BaseModel):
         )
         param_space: Callable[[optuna.Trial], dict] | None = self.model_settings.get('param_space')
         loss_spec: LossSpec | None = self.model_settings.get('loss_spec')
+        # Без дефолта: не задан — 'metric' вообще не трогаем, LightGBM сам выводит его из
+        # objective-строки ('mae' -> 'l1', и т.п.; для objective=callable из loss_spec это
+        # молча откатывается на 'l2' — см. model_settings.md). Задан — гасим вывод LightGBM
+        # ('metric': 'None' в конструкторе) и передаём ТОЛЬКО свою метрику через .fit(eval_metric=...),
+        # иначе LightGBM добавляет её ВТОРОЙ к автоматической, и наш pruning callback (берёт
+        # eval-метрику с индексом 0) молча использовал бы не ту метрику.
+        custom_eval_metric = self.model_settings.get('eval_metric')
+        fit_eval_kwargs = {'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}
 
         def objective(trial: optuna.Trial) -> float:
             tunable = dict(param_space(trial) if param_space is not None else _default_lgb_param_space(trial))
@@ -271,6 +286,7 @@ class LightGBMRegressor(BaseModel):
                 'random_state': 42,
                 'verbose': -1,
                 'n_jobs': -1,
+                **({'metric': 'None'} if custom_eval_metric is not None else {}),
                 **_boosting_lgb_params(lgb, boosting_type),
             }
             trial.set_user_attr('lgb_params', params)
@@ -280,6 +296,7 @@ class LightGBMRegressor(BaseModel):
                 Xtr, resid_tr, eval_set=[(Xva, resid_va)],
                 categorical_feature=cat_in_sel or 'auto',
                 callbacks=[*_lgb_callbacks(boosting_type), make_lgb_pruning_callback(trial)],
+                **fit_eval_kwargs,
             )
             pred = pp(X_valid, add_baseline(m.predict(Xva), baseline_va))
             return metric_fn(y_valid.values, pred)
@@ -301,6 +318,7 @@ class LightGBMRegressor(BaseModel):
             Xtr, resid_tr, eval_set=[(Xva, resid_va)],
             categorical_feature=cat_in_sel or 'auto',
             callbacks=_lgb_callbacks(best_bt),
+            **fit_eval_kwargs,
         )
         if loss_spec is not None:
             # objective в best_params — живой callable (нужен для реконструкции модели
@@ -354,13 +372,11 @@ class LightGBMClassifier(BaseModel):
     мультикласса подбирает сам LightGBM по данным, если не заданы явно).
 
     - **Бинарный** (`n_classes_ == 2`): `predict_proba()` возвращает 1D-массив
-      `P(y=1)`. Optuna: `objective='binary'`, внутренняя метрика
-      `'average_precision'`. Калибратор — `self.calibrator_`.
+      `P(y=1)`. Optuna: `objective='binary'`. Калибратор — `self.calibrator_`.
     - **Мультикласс**: `predict_proba()` возвращает `(n, K)`-матрицу, строки
-      нормированы к 1. Optuna: `objective='multiclass'` + `num_class=K`,
-      внутренняя метрика `'auc_mu'` (нативный multiclass AUC LightGBM). Внутренний
-      `is_unbalance` в этом режиме не поддерживается LightGBM вовсе — не
-      выставляется; балансировка классов идёт только через
+      нормированы к 1. Optuna: `objective='multiclass'` + `num_class=K`.
+      Внутренний `is_unbalance` в этом режиме не поддерживается LightGBM вовсе —
+      не выставляется; балансировка классов идёт только через
       `undersample_majority` (`balance_fraction`). Калибраторы —
       `self.calibrators_`, список из `K` `IsotonicRegression` (OvR); бинарный
       `self.calibrator_` в этом случае остаётся `None`.
@@ -375,6 +391,12 @@ class LightGBMClassifier(BaseModel):
       дефолт `'pr_auc'`. `average_precision_score`/`roc_auc_score` из sklearn
       поддерживают мультикласс напрямую (1D `y_true` + 2D `y_score`), поэтому
       кастомную `cls_metric` можно использовать в обоих режимах без обёрток.
+    - ``eval_metric`` (`str | callable | None`, без дефолта) — метрика раннего
+      останова/Optuna-пруинга, независима от `loss_spec`/`cls_metric`; не
+      задана — LightGBM сам выводит её из `objective` (`'binary_logloss'`/
+      `'multi_logloss'`); задана — гасит вывод LightGBM (`'metric': 'None'`) и
+      передаёт только свою метрику через `.fit(eval_metric=...)`. См.
+      `model_settings.md`, раздел «Метрика раннего останова».
     - ``undersample_majority`` (`bool`, дефолт `False`) — `True` включает урезание
       классов на каждом Optuna-триале (бинарный — `majority_fraction`, мультикласс —
       `balance_fraction`, тоже тюнится Optuna); финальная модель обучается на
@@ -493,6 +515,13 @@ class LightGBMClassifier(BaseModel):
         param_space: Callable[[optuna.Trial], dict] | None = self.model_settings.get('param_space')
         undersample_majority: bool = self.model_settings.get('undersample_majority', False)
         loss_spec: LossSpec | None = self.model_settings.get('loss_spec')
+        # Без дефолта: не задан — 'metric' не трогаем, LightGBM сам выводит его из objective
+        # ('binary' -> 'binary_logloss', 'multiclass' -> 'multi_logloss'; для objective=callable
+        # из loss_spec молча откатывается на то же самое по application-типу классификатора).
+        # Задан — гасим вывод LightGBM ('metric': 'None') и передаём ТОЛЬКО свою метрику через
+        # .fit(eval_metric=...), см. комментарий в LightGBMRegressor._fit_with_optuna.
+        custom_eval_metric = self.model_settings.get('eval_metric')
+        fit_eval_kwargs = {'eval_metric': custom_eval_metric} if custom_eval_metric is not None else {}
 
         y_arr = np.asarray(y_train)
         full_idx = np.arange(len(y_arr))
@@ -519,10 +548,10 @@ class LightGBMClassifier(BaseModel):
             params = {
                 **tunable,
                 'objective': objective_val,
-                'metric': 'average_precision' if is_binary else 'auc_mu',
                 'random_state': 42,
                 'verbose': -1,
                 'n_jobs': -1,
+                **({'metric': 'None'} if custom_eval_metric is not None else {}),
                 **_boosting_lgb_params(lgb, boosting_type),
             }
             if is_binary:
@@ -543,6 +572,7 @@ class LightGBMClassifier(BaseModel):
                 Xtr_trial, ytr_trial, eval_set=[(Xva, y_valid)],
                 categorical_feature=cat_in_sel or 'auto',
                 callbacks=[*_lgb_callbacks(boosting_type), make_lgb_pruning_callback(trial)],
+                **fit_eval_kwargs,
             )
             proba = m.predict_proba(Xva)
             if loss_spec is not None:
@@ -573,6 +603,7 @@ class LightGBMClassifier(BaseModel):
             Xtr_final, ytr_final, eval_set=[(Xva, y_valid)],
             categorical_feature=cat_in_sel or 'auto',
             callbacks=_lgb_callbacks(best_bt),
+            **fit_eval_kwargs,
         )
         if loss_spec is not None:
             # objective в best_params — живой callable (нужен для реконструкции модели
