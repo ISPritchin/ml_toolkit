@@ -316,3 +316,83 @@ model_settings = {
 | `optuna_timeout` | `float \| None` (секунды) | все Optuna-адаптеры | `None` → без лимита времени |
 | `optuna_pruner` | `None \| str \| optuna.pruners.BasePruner` | все Optuna-адаптеры (реально отсекает trials только в catboost/lightgbm/xgboost/*_ranker/tabm) | `None` → `MedianPruner()` |
 | `optuna_verbose` | `bool` | все Optuna-адаптеры | `False` → форсирует WARNING-уровень логов Optuna |
+
+---
+
+## Примеры вызова: пять сценариев возрастающей сложности
+
+Один и тот же `CatBoostClassifier` на одних и тех же `X_train`/`y_train`/`X_valid`/`y_valid` — различается только то, что передано в конструктор. `LightGBMClassifier`/`XGBoostClassifier`/соответствующие `*Regressor` читают те же ключи `model_settings` без изменений (различаются только имена гиперпараметров внутри `params` в сценарии 1 — у каждого фреймворка свой нативный словарь).
+
+### 1. Нативный бустинг — без Optuna, явные параметры
+
+```python
+from ml_toolkit.models import CatBoostClassifier
+
+model = CatBoostClassifier(params={'iterations': 500, 'depth': 6, 'learning_rate': 0.05, 'verbose': 0})
+model.fit(X_train, y_train, X_valid, y_valid)
+proba = model.predict_proba(X_valid)
+```
+
+`params` — готовый словарь, уходит в CatBoost как есть, Optuna не запускается; `model.best_params_ == params`.
+
+### 2. Бустинг с Optuna — тюнинг гиперпараметров дерева
+
+```python
+model = CatBoostClassifier(n_optuna_trials=50)
+model.fit(X_train, y_train, X_valid, y_valid)
+proba = model.predict_proba(X_valid)
+print(model.best_params_)
+```
+
+`params=None` (дефолт конструктора) запускает Optuna по дефолтному search space (`iterations`/`depth`/`learning_rate`/...). Лучший trial выбирается по `cls_metric` (дефолт `'pr_auc'`) — ничего об этом знать не обязательно, если дефолт подходит.
+
+### 3. + перебор параметров лосса (`loss_spec`)
+
+```python
+from ml_toolkit.losses import FocalLoss
+from ml_toolkit.models._loss_spec import LossSpec
+
+model = CatBoostClassifier(
+    n_optuna_trials=50,
+    model_settings={
+        'loss_spec': LossSpec(name='focal', loss_cls=FocalLoss,
+                               param_bounds={'gamma': (1.0, 5.0), 'alpha': (0.1, 0.9)}),
+        'eval_metric': 'Logloss',   # у CatBoost обязателен при кастомном loss_function, см. ниже
+    },
+)
+model.fit(X_train, y_train, X_valid, y_valid)
+print(model.best_params_['loss_name'], model.best_params_['loss_params'])
+```
+
+Теперь Optuna тюнит не только `iterations`/`depth`/..., но и собственные параметры лосса (`gamma`/`alpha` у `FocalLoss`) — training loss каждого trial'а свой. `eval_metric` здесь не опционален: CatBoost не умеет сам подобрать метрику раннего останова под кастомный `loss_function` и падает `CatBoostError`, если её не дать (у LightGBM/XGBoost в этой же ситуации падения нет — молчаливый откат на дефолт по типу задачи, см. раздел «Метрика раннего останова» выше).
+
+### 4. + своя метрика раннего останова (`eval_metric`), без кастомного лосса
+
+```python
+model = CatBoostClassifier(n_optuna_trials=50, model_settings={'eval_metric': 'AUC'})
+model.fit(X_train, y_train, X_valid, y_valid)
+proba = model.predict_proba(X_valid)
+```
+
+Training loss — обычный `'Logloss'` (дефолт адаптера), но early stopping и Optuna-пруинг внутри каждого trial'а теперь следят за `AUC`, а не за тем, что CatBoost подставил бы сам. Независимо от сценария 2 — `cls_metric`, который выбирает лучший trial *между* trial'ами, как и раньше, не трогали.
+
+### 5. Всё вместе — перебор параметров лосса + своя метрика Optuna + своя метрика раннего останова
+
+```python
+from sklearn.metrics import roc_auc_score
+
+model = CatBoostClassifier(
+    n_optuna_trials=50,
+    model_settings={
+        'loss_spec': LossSpec(name='focal', loss_cls=FocalLoss,
+                               param_bounds={'gamma': (1.0, 5.0), 'alpha': (0.1, 0.9)}),
+        'eval_metric': 'AUC',                         # (2) ранний останов/пруинг внутри trial'а
+        'cls_metric': (roc_auc_score, 'maximize'),     # (3) выбор лучшего trial между trial'ами
+    },
+)
+model.fit(X_train, y_train, X_valid, y_valid)
+proba = model.predict_proba(X_valid)
+print(model.best_params_['loss_name'], model.best_params_['loss_params'])
+```
+
+Три независимые функции в одном вызове: `FocalLoss` растит деревья (1 — training loss), `AUC` решает, когда остановить бустинг и когда прибить trial досрочно (2 — `eval_metric`), `roc_auc_score` сравнивает уже обученные trial'ы между собой и выбирает лучший (3 — `cls_metric`). Ничто не обязывает их совпадать — см. «Метрика раннего останова» выше про то, почему это осмысленно разделено.
